@@ -1,0 +1,75 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+usage() {
+  cat <<'EOF'
+Usage:
+  mc-root-action [--dry-run] [--request-id ID] <action_id> [key=value ...]
+
+Examples:
+  mc-root-action dns.unbound.flush_all
+  mc-root-action service.systemctl.restart unit=unbound.service
+  mc-root-action --dry-run package.apt.install_one package=curl
+  mc-root-action package.apt.install_one package=curl
+EOF
+}
+
+if [[ "${1:-}" == "" || "${1:-}" == "-h" || "${1:-}" == "--help" ]]; then
+  usage
+  exit 0
+fi
+
+dry_run="false"
+request_id=""
+
+while [[ "${1:-}" == "--dry-run" || "${1:-}" == "--request-id" ]]; do
+  case "$1" in
+    --dry-run)
+      dry_run="true"
+      shift
+      ;;
+    --request-id)
+      shift
+      request_id="${1:-}"
+      if [[ -z "${request_id}" ]]; then
+        echo "Missing value for --request-id"
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+ACTION_ID="${1:-}"
+if [[ -z "${ACTION_ID}" ]]; then
+  usage
+  exit 1
+fi
+shift || true
+
+EXEC_PATH="/usr/lib/mastercontrol/root-exec"
+
+if [[ ! -x "${EXEC_PATH}" ]]; then
+  echo "Missing ${EXEC_PATH}. Run scripts/install-privilege-bootstrap.sh first."
+  exit 1
+fi
+
+args=()
+for kv in "$@"; do
+  args+=(--arg "${kv}")
+done
+
+runner=(pkexec "${EXEC_PATH}")
+if [[ "${dry_run}" == "true" ]]; then
+  runner=("${EXEC_PATH}")
+fi
+
+cmd=("${runner[@]}" exec --action "${ACTION_ID}" "${args[@]}")
+if [[ -n "${request_id}" ]]; then
+  cmd+=(--request-id "${request_id}")
+fi
+if [[ "${dry_run}" == "true" ]]; then
+  cmd+=(--dry-run)
+fi
+
+"${cmd[@]}"

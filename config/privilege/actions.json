@@ -1,0 +1,127 @@
+{
+  "version": 1,
+  "actions": {
+    "dns.unbound.flush_all": {
+      "risk": "medium",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/sbin/unbound-control",
+        "-c",
+        "/etc/unbound/unbound.conf",
+        "flush_zone",
+        "."
+      ],
+      "args": {}
+    },
+    "dns.unbound.flush_negative": {
+      "risk": "low",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/sbin/unbound-control",
+        "-c",
+        "/etc/unbound/unbound.conf",
+        "flush_negative"
+      ],
+      "args": {}
+    },
+    "dns.unbound.flush_bogus": {
+      "risk": "low",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/sbin/unbound-control",
+        "-c",
+        "/etc/unbound/unbound.conf",
+        "flush_bogus"
+      ],
+      "args": {}
+    },
+    "service.systemctl.restart": {
+      "risk": "high",
+      "timeout_sec": 30,
+      "command": [
+        "/bin/systemctl",
+        "restart",
+        "{unit}"
+      ],
+      "args": {
+        "unit": {
+          "required": true,
+          "pattern": "^[A-Za-z0-9@_.:-]+(\\.service)?$"
+        }
+      }
+    },
+    "service.systemctl.start": {
+      "risk": "high",
+      "timeout_sec": 30,
+      "command": [
+        "/bin/systemctl",
+        "start",
+        "{unit}"
+      ],
+      "args": {
+        "unit": {
+          "required": true,
+          "pattern": "^[A-Za-z0-9@_.:-]+(\\.service)?$"
+        }
+      }
+    },
+    "service.systemctl.stop": {
+      "risk": "high",
+      "timeout_sec": 30,
+      "command": [
+        "/bin/systemctl",
+        "stop",
+        "{unit}"
+      ],
+      "args": {
+        "unit": {
+          "required": true,
+          "pattern": "^[A-Za-z0-9@_.:-]+(\\.service)?$"
+        }
+      }
+    },
+    "package.apt.update": {
+      "risk": "medium",
+      "timeout_sec": 600,
+      "command": [
+        "/usr/bin/apt-get",
+        "update"
+      ],
+      "args": {}
+    },
+    "package.apt.install_one": {
+      "risk": "high",
+      "timeout_sec": 1200,
+      "command": [
+        "/usr/bin/apt-get",
+        "install",
+        "-y",
+        "--",
+        "{package}"
+      ],
+      "args": {
+        "package": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9+.-]*$"
+        }
+      }
+    },
+    "package.apt.remove_one": {
+      "risk": "high",
+      "timeout_sec": 1200,
+      "command": [
+        "/usr/bin/apt-get",
+        "remove",
+        "-y",
+        "--",
+        "{package}"
+      ],
+      "args": {
+        "package": {
+          "required": true,
+          "pattern": "^[a-z0-9][a-z0-9+.-]*$"
+        }
+      }
+    }
+  }
+}
