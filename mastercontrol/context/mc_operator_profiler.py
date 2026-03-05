@@ -88,6 +88,23 @@ class OperatorProfiler:
                     payload_json TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'new'
                 );
+
+                CREATE TABLE IF NOT EXISTS learned_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operator_id TEXT NOT NULL,
+                    rule_key TEXT NOT NULL,
+                    intent_cluster TEXT NOT NULL,
+                    day_of_week TEXT NOT NULL DEFAULT '*',
+                    hour_start INTEGER NOT NULL DEFAULT -1,
+                    hour_end INTEGER NOT NULL DEFAULT -1,
+                    recommended_path TEXT NOT NULL,
+                    confidence_delta REAL NOT NULL DEFAULT 0.0,
+                    reason TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'dream',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(operator_id, rule_key)
+                );
                 """
             )
 
@@ -332,4 +349,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

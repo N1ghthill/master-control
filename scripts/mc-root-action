@@ -4,7 +4,7 @@ set -euo pipefail
 usage() {
   cat <<'EOF'
 Usage:
-  mc-root-action [--dry-run] [--request-id ID] <action_id> [key=value ...]
+  mc-root-action [--dry-run] [--request-id ID] [--actions-file PATH] <action_id> [key=value ...]
 
 Examples:
   mc-root-action dns.unbound.flush_all
@@ -21,8 +21,12 @@ fi
 
 dry_run="false"
 request_id=""
+actions_file=""
 
-while [[ "${1:-}" == "--dry-run" || "${1:-}" == "--request-id" ]]; do
+REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
+default_actions_file="${REPO_ROOT}/config/privilege/actions.json"
+
+while [[ "${1:-}" == "--dry-run" || "${1:-}" == "--request-id" || "${1:-}" == "--actions-file" ]]; do
   case "$1" in
     --dry-run)
       dry_run="true"
@@ -33,6 +37,15 @@ while [[ "${1:-}" == "--dry-run" || "${1:-}" == "--request-id" ]]; do
       request_id="${1:-}"
       if [[ -z "${request_id}" ]]; then
         echo "Missing value for --request-id"
+        exit 1
+      fi
+      shift
+      ;;
+    --actions-file)
+      shift
+      actions_file="${1:-}"
+      if [[ -z "${actions_file}" ]]; then
+        echo "Missing value for --actions-file"
         exit 1
       fi
       shift
@@ -65,6 +78,10 @@ if [[ "${dry_run}" == "true" ]]; then
 fi
 
 cmd=("${runner[@]}" exec --action "${ACTION_ID}" "${args[@]}")
+resolved_actions_file="${actions_file:-${MC_ACTIONS_FILE:-${default_actions_file}}}"
+if [[ -f "${resolved_actions_file}" ]]; then
+  cmd=("${runner[@]}" --actions-file "${resolved_actions_file}" exec --action "${ACTION_ID}" "${args[@]}")
+fi
 if [[ -n "${request_id}" ]]; then
   cmd+=(--request-id "${request_id}")
 fi

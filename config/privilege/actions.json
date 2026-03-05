@@ -35,6 +35,50 @@
       ],
       "args": {}
     },
+    "network.diagnose.ping": {
+      "risk": "low",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/bin/ping",
+        "-c",
+        "3",
+        "-W",
+        "2",
+        "{host}"
+      ],
+      "args": {
+        "host": {
+          "required": true,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$"
+        }
+      }
+    },
+    "network.diagnose.resolve": {
+      "risk": "low",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/bin/getent",
+        "hosts",
+        "{host}"
+      ],
+      "args": {
+        "host": {
+          "required": true,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9.-]{0,252}$"
+        }
+      }
+    },
+    "network.diagnose.route_default": {
+      "risk": "low",
+      "timeout_sec": 20,
+      "command": [
+        "/usr/bin/ip",
+        "route",
+        "show",
+        "default"
+      ],
+      "args": {}
+    },
     "service.systemctl.restart": {
       "risk": "high",
       "timeout_sec": 30,

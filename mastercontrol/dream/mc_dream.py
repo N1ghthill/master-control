@@ -35,7 +35,7 @@ class DreamEngine:
 
     def _init_tables(self) -> None:
         with self._conn() as conn:
-            conn.execute(
+            conn.executescript(
                 """
                 CREATE TABLE IF NOT EXISTS dream_insights (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -44,7 +44,24 @@ class DreamEngine:
                     insight_type TEXT NOT NULL,
                     payload_json TEXT NOT NULL,
                     status TEXT NOT NULL DEFAULT 'new'
-                )
+                );
+
+                CREATE TABLE IF NOT EXISTS learned_rules (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    operator_id TEXT NOT NULL,
+                    rule_key TEXT NOT NULL,
+                    intent_cluster TEXT NOT NULL,
+                    day_of_week TEXT NOT NULL DEFAULT '*',
+                    hour_start INTEGER NOT NULL DEFAULT -1,
+                    hour_end INTEGER NOT NULL DEFAULT -1,
+                    recommended_path TEXT NOT NULL,
+                    confidence_delta REAL NOT NULL DEFAULT 0.0,
+                    reason TEXT NOT NULL,
+                    source TEXT NOT NULL DEFAULT 'dream',
+                    enabled INTEGER NOT NULL DEFAULT 1,
+                    updated_at TEXT NOT NULL,
+                    UNIQUE(operator_id, rule_key)
+                );
                 """
             )
 
@@ -54,9 +71,12 @@ class DreamEngine:
         insights.extend(self._pattern_repetition(rows))
         insights.extend(self._risk_correction(rows))
         insights.extend(self._error_hotspots(rows))
+        learned_rules = self._derive_learned_rules(rows)
 
         for item in insights:
             self._store_insight(operator_id, item["type"], item)
+        for rule in learned_rules:
+            self._upsert_rule(operator_id=operator_id, rule=rule)
 
         return {
             "ts_utc": utc_now(),
@@ -64,6 +84,8 @@ class DreamEngine:
             "window_days": window_days,
             "insights": insights,
             "count": len(insights),
+            "learned_rules": learned_rules,
+            "rules_count": len(learned_rules),
         }
 
     def _load_events(self, operator_id: str, window_days: int) -> list[sqlite3.Row]:
@@ -92,6 +114,40 @@ class DreamEngine:
                     operator_id,
                     insight_type,
                     json.dumps(payload, ensure_ascii=True),
+                ),
+            )
+
+    def _upsert_rule(self, operator_id: str, rule: dict[str, Any]) -> None:
+        with self._conn() as conn:
+            conn.execute(
+                """
+                INSERT INTO learned_rules (
+                    operator_id, rule_key, intent_cluster, day_of_week, hour_start, hour_end,
+                    recommended_path, confidence_delta, reason, source, enabled, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'dream', 1, ?)
+                ON CONFLICT(operator_id, rule_key) DO UPDATE SET
+                    intent_cluster=excluded.intent_cluster,
+                    day_of_week=excluded.day_of_week,
+                    hour_start=excluded.hour_start,
+                    hour_end=excluded.hour_end,
+                    recommended_path=excluded.recommended_path,
+                    confidence_delta=excluded.confidence_delta,
+                    reason=excluded.reason,
+                    source='dream',
+                    enabled=1,
+                    updated_at=excluded.updated_at
+                """,
+                (
+                    operator_id,
+                    str(rule["rule_key"]),
+                    str(rule["intent_cluster"]),
+                    str(rule.get("day_of_week", "*")),
+                    int(rule.get("hour_start", -1)),
+                    int(rule.get("hour_end", -1)),
+                    str(rule["recommended_path"]),
+                    float(rule["confidence_delta"]),
+                    str(rule["reason"]),
+                    utc_now(),
                 ),
             )
 
@@ -185,6 +241,89 @@ class DreamEngine:
             )
         return insights
 
+    @staticmethod
+    def _derive_learned_rules(rows: list[sqlite3.Row]) -> list[dict[str, Any]]:
+        if len(rows) < 10:
+            return []
+
+        by_cluster: dict[str, list[sqlite3.Row]] = defaultdict(list)
+        for row in rows:
+            cluster = str(row["intent_cluster"] or "").strip()
+            if not cluster or cluster == "unknown":
+                continue
+            by_cluster[cluster].append(row)
+
+        rules: list[dict[str, Any]] = []
+        for cluster, items in by_cluster.items():
+            if len(items) < 5:
+                continue
+
+            path_counts = Counter(str(it["selected_path"]) for it in items)
+            preferred_path, preferred_count = path_counts.most_common(1)[0]
+            confidence_path = preferred_count / len(items)
+            if confidence_path < 0.65:
+                continue
+
+            success_rate = sum(int(it["success"]) for it in items) / len(items)
+            if success_rate < 0.75:
+                continue
+
+            dow_counts = Counter()
+            hours: list[int] = []
+            for it in items:
+                try:
+                    ts = dt.datetime.fromisoformat(str(it["ts_utc"]))
+                except ValueError:
+                    continue
+                dow = ts.strftime("%a").lower()[:3]
+                dow_counts[dow] += 1
+                hours.append(ts.hour)
+
+            if hours:
+                hour_counts = Counter(hours)
+                top_hours = [h for h, _ in hour_counts.most_common(6)]
+                hour_start = min(top_hours)
+                hour_end = max(top_hours)
+            else:
+                hour_start = -1
+                hour_end = -1
+
+            day_of_week = "*"
+            if dow_counts:
+                top_day, top_day_count = dow_counts.most_common(1)[0]
+                if top_day_count / len(items) >= 0.5:
+                    day_of_week = top_day
+
+            delta = 0.0
+            if preferred_path == "fast":
+                delta = 0.08
+            elif preferred_path == "fast_with_confirm":
+                delta = 0.05
+            elif preferred_path == "deep":
+                delta = 0.06
+
+            if delta == 0.0:
+                continue
+
+            rule_key = f"dream.{cluster}.{preferred_path}"
+            reason = (
+                f"Historical pattern favors {preferred_path} for {cluster} "
+                f"(success_rate={success_rate:.2f}, freq={len(items)})."
+            )
+            rules.append(
+                {
+                    "rule_key": rule_key,
+                    "intent_cluster": cluster,
+                    "day_of_week": day_of_week,
+                    "hour_start": hour_start,
+                    "hour_end": hour_end,
+                    "recommended_path": preferred_path,
+                    "confidence_delta": round(delta, 3),
+                    "reason": reason,
+                }
+            )
+        return rules[:15]
+
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -207,4 +346,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

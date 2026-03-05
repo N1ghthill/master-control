@@ -7,7 +7,18 @@ import argparse
 import json
 import re
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
+
+try:
+    from mastercontrol.tone.intent_classifier import IntentClassifier
+except ImportError:  # pragma: no cover
+    import sys
+
+    repo_root = Path(__file__).resolve().parents[2]
+    if str(repo_root) not in sys.path:
+        sys.path.insert(0, str(repo_root))
+    from mastercontrol.tone.intent_classifier import IntentClassifier  # type: ignore
 
 
 @dataclass
@@ -15,6 +26,8 @@ class ToneResult:
     tone: str
     confidence: float
     intent_cluster: str
+    intent_confidence: float
+    intent_source: str
     frustration_score: float
     mode: str
 
@@ -63,6 +76,9 @@ class ToneAnalyzer:
         "investigar",
     }
 
+    def __init__(self) -> None:
+        self.intent_classifier = IntentClassifier(mode="auto")
+
     def analyze(self, text: str, mode: str = "heuristic") -> ToneResult:
         # v0: heuristic mode is the default and recommended.
         return self._heuristic(text=text, mode=mode)
@@ -74,7 +90,8 @@ class ToneAnalyzer:
         joined = " ".join(tokens)
 
         frustration_score = self._frustration_score(t, token_set, joined)
-        intent_cluster = self._intent_cluster(token_set, joined)
+        intent_prediction = self.intent_classifier.classify(t)
+        intent_cluster = intent_prediction.intent_cluster
 
         urgent_hit = bool(token_set.intersection(self._normalize(self.URGENT_MARKERS)))
         incident_hit = bool(token_set.intersection(self._normalize(self.INCIDENT_MARKERS)))
@@ -105,6 +122,8 @@ class ToneAnalyzer:
             tone=tone,
             confidence=confidence,
             intent_cluster=intent_cluster,
+            intent_confidence=intent_prediction.confidence,
+            intent_source=intent_prediction.source,
             frustration_score=frustration_score,
             mode=mode,
         )
@@ -127,28 +146,6 @@ class ToneAnalyzer:
             score += 0.15
         return round(max(0.0, min(score, 1.0)), 3)
 
-    @staticmethod
-    def _intent_cluster(token_set: set[str], joined: str) -> str:
-        if "dns" in token_set or "unbound" in token_set:
-            if "flush" in token_set or "cache" in token_set:
-                return "dns.flush"
-            return "dns.inspect"
-        if "systemctl" in token_set or "service" in token_set:
-            if {"restart", "reiniciar"}.intersection(token_set):
-                return "service.restart"
-            if {"start", "iniciar"}.intersection(token_set):
-                return "service.start"
-            if {"stop", "parar"}.intersection(token_set):
-                return "service.stop"
-            return "service.inspect"
-        if "apt" in token_set or "package" in token_set or "pacote" in token_set:
-            return "package.manage"
-        if "security" in token_set or "seguranca" in token_set or "segurança" in joined:
-            return "security.audit"
-        if "rede" in token_set or "network" in token_set:
-            return "network.diagnose"
-        return "general.assist"
-
 
 def parser() -> argparse.ArgumentParser:
     p = argparse.ArgumentParser(
@@ -168,6 +165,8 @@ def main() -> int:
         "tone": result.tone,
         "confidence": result.confidence,
         "intent_cluster": result.intent_cluster,
+        "intent_confidence": result.intent_confidence,
+        "intent_source": result.intent_source,
         "frustration_score": result.frustration_score,
         "mode": result.mode,
     }
@@ -177,4 +176,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-
