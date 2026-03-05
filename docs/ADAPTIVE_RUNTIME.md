@@ -9,6 +9,13 @@ Tone analysis:
   --text "PELO AMOR resolve dns agora"
 ```
 
+Intent classification (local-first):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-intent-classifier \
+  --text "reiniciar serviço unbound urgente"
+```
+
 Operator profile snapshot:
 
 ```bash
@@ -43,5 +50,6 @@ MasterControl core loop (auto adaptive):
 
 - Profile and insights are local in:
   - `~/.local/share/mastercontrol/mastercontrol.db`
+- Learned path rules are also local in `learned_rules` (same SQLite DB).
 - Dream output is suggestion-only.
 - Adaptive logic does not bypass privilege policy.

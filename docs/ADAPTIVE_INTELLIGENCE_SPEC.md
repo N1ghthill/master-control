@@ -6,6 +6,7 @@ This document specifies three components to push MasterControl from static conte
 
 - `mc-operator-profiler`
 - `mc-tone-analyzer`
+- `mc-intent-classifier`
 - `mc-dream`
 
 All data is local-only (SQLite). No telemetry leaves the machine.
@@ -77,7 +78,9 @@ Infer urgency and operator tone quickly without invoking heavy LLM.
 
 - `tone`: `urgent | exploratory | routine | incident`
 - `confidence`: `0.0..1.0`
-- `intent_cluster`: e.g. `dns.flush`, `service.restart`, `package.manage`
+- `intent_cluster`: e.g. `dns.flush`, `service.restart`, `package.update`
+- `intent_confidence`: confidence for intent classification
+- `intent_source`: `transformer | history | heuristic`
 - `frustration_score`: `0.0..1.0`
 
 ### Integration
@@ -108,11 +111,28 @@ Recommended via `systemd timer` at low activity hours.
 - `payload_json TEXT NOT NULL`
 - `status TEXT NOT NULL DEFAULT 'new'`
 
+`learned_rules`
+
+- `id INTEGER PRIMARY KEY`
+- `operator_id TEXT NOT NULL`
+- `rule_key TEXT NOT NULL`
+- `intent_cluster TEXT NOT NULL`
+- `day_of_week TEXT NOT NULL DEFAULT '*'`
+- `hour_start INTEGER NOT NULL DEFAULT -1`
+- `hour_end INTEGER NOT NULL DEFAULT -1`
+- `recommended_path TEXT NOT NULL`
+- `confidence_delta REAL NOT NULL DEFAULT 0.0`
+- `reason TEXT NOT NULL`
+- `source TEXT NOT NULL DEFAULT 'dream'`
+- `enabled INTEGER NOT NULL DEFAULT 1`
+- `updated_at TEXT NOT NULL`
+
 ### Insight types
 
 - `pattern_repetition`
 - `risk_correction`
 - `error_hotspot`
+- `learned_rule` (persisted in `learned_rules` and consumed by `PathSelector`)
 
 ### Guarantee
 
@@ -123,12 +143,13 @@ Insights are suggestions only. Never execute actions automatically.
 `mastercontrold` flow:
 
 1. parse intent
-2. tone analyze
-3. load operator profile
-4. path select with profile + tone hints
-5. plan + execute
-6. reflection
-7. record event in profiler
+2. classify intent (local-first: transformer local optional -> history -> heuristic)
+3. tone analyze
+4. load operator profile
+5. path select with profile + tone hints + `learned_rules`
+6. plan + execute
+7. reflection
+8. record event in profiler
 
 ## Performance target
 
@@ -136,4 +157,3 @@ Insights are suggestions only. Never execute actions automatically.
 - profile read: < 10 ms
 - path selection: < 2 ms
 - total overhead for adaptive layer: < 25 ms (p95 local)
-

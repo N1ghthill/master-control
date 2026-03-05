@@ -35,6 +35,12 @@ Dry-run seguro:
 /home/irving/ruas/repos/master-control/scripts/mc-root-action --dry-run service.systemctl.restart unit=unbound.service
 ```
 
+Diagnostico de rede (dry-run):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-root-action --dry-run network.diagnose.ping host=1.1.1.1
+```
+
 Reiniciar servico:
 
 ```bash
@@ -47,6 +53,7 @@ Reiniciar servico:
 - Apenas `action_id` presente no `actions.json`.
 - Argumentos fora do schema sao rejeitados.
 - Toda execucao grava auditoria.
+- `mc-root-action` usa `config/privilege/actions.json` do repositorio por padrao quando presente (ou `MC_ACTIONS_FILE`/`--actions-file`).
 
 ## Integracao futura
 

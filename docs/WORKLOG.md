@@ -179,3 +179,228 @@ Deixar o inventario de codigo claro por camada para facilitar manutencao e evolu
 
 - Navegacao rapida de arquivos e responsabilidades sem ambiguidade.
 - Base documental alinhada com estado atual do repositorio.
+
+## 2026-03-05 - Integracao de execucao real no mastercontrold
+
+### Objetivo do ciclo
+
+Sair de simulacao e operar acao allowlisted real no loop principal:
+interpretacao -> decisao de path -> execucao -> auditoria -> reflexao -> aprendizado.
+
+### Acoes executadas
+
+1. Atualizado `mastercontrold` para:
+   - mapear intents para `action_id` allowlisted no `_build_plan`,
+   - executar acoes reais via `scripts/mc-root-action`,
+   - capturar `stdout/stderr/returncode` e refletir no resultado final,
+   - registrar auditoria complementar em `~/.local/share/mastercontrol/mastercontrold.log`.
+2. Integrada telemetria real no profiler:
+   - `command_error` real,
+   - latencia real,
+   - sucesso/falha real.
+3. Corrigido mapeamento de service restart:
+   - precedencia de `restart` no `_map_action`,
+   - regex de extracao de unit corrigida.
+
+### Validacao de resultado
+
+- `flush negative cache` com `--execute --dry-run`: OK, mapeado para `dns.unbound.flush_negative`.
+- `flush dns cache` com `--execute --dry-run`: OK, mapeado para `dns.unbound.flush_negative`.
+- `flush dns cache` com `--execute`: OK, execucao real concluida com sucesso.
+- `restart unbound service --execute`: bloqueado por confirmacao (`fast_with_confirm`) sem `--approve`.
+- `restart unbound service --execute --approve`: bloqueado por risco alto sem `--allow-high-risk`.
+- `restart unbound service --execute --approve --allow-high-risk --dry-run`: OK.
+
+### Evidencias de artefatos
+
+- Core atualizado: `mastercontrol/core/mastercontrold.py`
+- Runtime doc atualizado: `docs/MASTERCONTROLD_RUNTIME.md`
+- Log core: `~/.local/share/mastercontrol/mastercontrold.log`
+
+### Observacoes
+
+- Leitura direta de `/var/log/mastercontrol/root-exec.log` depende de permissao root no ambiente atual.
+
+## 2026-03-05 - Intent intelligence + mod_dns + learned rules
+
+### Objetivo do ciclo
+
+Evoluir de heuristica fraca para interpretacao mais robusta e fechar o ciclo adaptativo:
+operador -> log -> dream -> learned rules -> path selector.
+
+### Acoes executadas
+
+1. Criado classificador de intencao local-first:
+   - `transformer` local opcional (`MC_INTENT_MODEL_DIR`),
+   - fallback por historico local (`command_events`),
+   - fallback heuristico robusto.
+2. Integrado classificador ao `mc-tone-analyzer` com novos campos:
+   - `intent_source`
+   - `intent_confidence`
+3. Criado modulo operacional real `mod_dns` com contrato:
+   - `capabilities()`
+   - `pre_check()`
+   - `apply()`
+   - `verify()`
+   - `rollback()`
+4. `mastercontrold` passou a delegar DNS ao `mod_dns` e incluir verificacoes no plano.
+5. Adicionada tabela `learned_rules` no SQLite e suporte no `mc-dream` para gerar/upsert de regras.
+6. `PathSelector` passou a consumir `learned_rules` com guardrails de seguranca para risco alto/incidente.
+
+### Validacao de resultado
+
+- `mc-intent-classifier --text "flush negative cache now"`: `dns.flush`.
+- `mc-intent-classifier --text "reiniciar serviço unbound"`: `service.restart`.
+- `mastercontrol --intent "flush negative cache" --execute --dry-run --json`:
+  - mapeamento DNS por `mod_dns` validado,
+  - pre-check/verify presentes no plano,
+  - acao allowlisted executada em dry-run com sucesso.
+- `mc-dream --operator-id irving --window-days 30`:
+  - gerou `learned_rules` e persistiu no banco.
+- teste isolado do `PathSelector` com regra injetada:
+  - `rule_applied=True` e ajuste de caminho/confianca confirmado.
+
+### Evidencias de artefatos
+
+- Intent classifier: `mastercontrol/tone/intent_classifier.py`
+- Tone integration: `mastercontrol/tone/mc_tone_analyzer.py`
+- DNS module: `mastercontrol/modules/mod_dns.py`
+- Core integration: `mastercontrol/core/mastercontrold.py`
+- Learned rules in selector: `mastercontrol/core/path_selector.py`
+- Dream rule generation: `mastercontrol/dream/mc_dream.py`
+
+## 2026-03-05 - mod_services integration
+
+### Objetivo do ciclo
+
+Separar operacoes de servicos do core para reduzir heuristica ad-hoc e manter o orquestrador enxuto.
+
+### Acoes executadas
+
+1. Criado `mod_services` com contrato:
+   - `capabilities()`
+   - `pre_check()`
+   - `apply()`
+   - `verify()`
+   - `rollback()`
+2. Implementada extracao de unit (`unbound`, `nginx`, `docker`, `*.service`) no modulo.
+3. `mastercontrold` passou a resolver modulo por precedencia (`mod_services` antes de `mod_dns` quando aplicavel).
+4. Removido parsing ad-hoc de service unit do core e mantido fallback minimo apenas para casos nao modulares.
+
+### Validacao de resultado
+
+- `reiniciar serviço unbound --execute --dry-run`: mapeado via `mod_services` para `service.systemctl.restart`.
+- `start nginx service --execute --dry-run`: mapeado via `mod_services` para `service.systemctl.start`.
+- `parar docker service --execute --dry-run`: mapeado via `mod_services` para `service.systemctl.stop`.
+- `reiniciar serviço unbound --execute` sem `--approve`: bloqueio por `fast_with_confirm` mantido.
+
+### Evidencias de artefatos
+
+- Modulo: `mastercontrol/modules/mod_services.py`
+- Integracao no core: `mastercontrol/core/mastercontrold.py`
+
+## 2026-03-05 - mod_packages integration
+
+### Objetivo do ciclo
+
+Tirar operacoes de pacote do core e padronizar em modulo com contrato operacional.
+
+### Acoes executadas
+
+1. Criado `mod_packages` com contrato:
+   - `capabilities()`
+   - `pre_check()`
+   - `apply()`
+   - `verify()`
+   - `rollback()`
+2. Implementada extracao de pacote para intents:
+   - `apt update`
+   - `apt install <package>`
+   - `apt remove <package>`
+   - variações em linguagem natural.
+3. Integrado `mastercontrold` para resolver modulo por cluster:
+   - `service.*` -> prioridade `mod_services`
+   - `package.*` -> prioridade `mod_packages`
+   - `dns.*` -> prioridade `mod_dns`
+4. Ajustado `mod_dns` para tokenizacao por palavras e evitar falso positivo por substring (ex.: `dnsutils`).
+
+### Validacao de resultado
+
+- `apt update --execute --dry-run`: mapeado para `package.apt.update` via `mod_packages`.
+- `apt install htop --execute --dry-run`: mapeado para `package.apt.install_one`.
+- `apt remove htop --execute --dry-run`: mapeado para `package.apt.remove_one`.
+- `instalar pacote dnsutils --execute --dry-run`: mapeado para pacote corretamente (sem desvio para DNS).
+
+### Evidencias de artefatos
+
+- Modulo: `mastercontrol/modules/mod_packages.py`
+- Integracao no core: `mastercontrol/core/mastercontrold.py`
+- Ajuste DNS tokenizado: `mastercontrol/modules/mod_dns.py`
+
+## 2026-03-05 - ModuleRegistry e core mais enxuto
+
+### Objetivo do ciclo
+
+Remover fallback heuristico residual do core e centralizar resolucao de modulo em uma camada unica.
+
+### Acoes executadas
+
+1. Criado contrato compartilhado de modulo:
+   - `mastercontrol/modules/base.py` (`ModulePlan`, `OperationalModule`).
+2. Criado `ModuleRegistry`:
+   - resolucao por prioridade de cluster (`dns.*`, `service.*`, `package.*`),
+   - fallback deterministico entre modulos registrados.
+3. Refatorado `mastercontrold` para:
+   - usar `registry.resolve(...)`,
+   - remover fallback ad-hoc de mapeamento direto para DNS/pacotes,
+   - registrar no plano quando nenhuma acao foi resolvida (`attempted_modules`).
+4. Padronizados `mod_dns`, `mod_services` e `mod_packages` para o contrato comum.
+
+### Validacao de resultado
+
+- `flush negative cache --execute --dry-run`: resolvido por `mod_dns`.
+- `reiniciar serviço unbound --execute --dry-run`: resolvido por `mod_services`.
+- `apt install htop --execute --dry-run`: resolvido por `mod_packages`.
+- `faz algo sem sentido xyz`: sem acao mapeada, analysis-only, com lista de modulos tentados.
+
+### Evidencias de artefatos
+
+- Contrato: `mastercontrol/modules/base.py`
+- Registry: `mastercontrol/modules/registry.py`
+- Core refatorado: `mastercontrol/core/mastercontrold.py`
+
+## 2026-03-05 - mod_network + allowlist de diagnostico
+
+### Objetivo do ciclo
+
+Adicionar diagnostico de rede no mesmo padrao modular, com acoes read-only e risco baixo.
+
+### Acoes executadas
+
+1. Criado `mod_network` com contrato:
+   - `capabilities()`
+   - `pre_check()`
+   - `apply()`
+   - `verify()`
+   - `rollback()`
+2. Capabilities adicionadas:
+   - `network.ping` -> `network.diagnose.ping`
+   - `network.resolve` -> `network.diagnose.resolve`
+   - `network.route.default` -> `network.diagnose.route_default`
+3. Integrado no `ModuleRegistry` e no `mastercontrold` como modulo de primeira classe.
+4. Expandida allowlist de privilegios com acoes de rede de baixo risco em `actions.json`.
+5. Ajustado `mc-root-action` para usar por padrao o `actions.json` do repositorio quando presente (evita mismatch entre `/etc` e repo em desenvolvimento).
+
+### Validacao de resultado
+
+- `ping 1.1.1.1 --execute --dry-run`: `network.diagnose.ping` validado.
+- `resolve openai.com --execute --dry-run`: `network.diagnose.resolve` validado.
+- `show default route --execute --dry-run`: `network.diagnose.route_default` validado.
+- `flush negative cache --execute --dry-run`: DNS continua operacional apos integracao.
+
+### Evidencias de artefatos
+
+- Modulo: `mastercontrol/modules/mod_network.py`
+- Registry: `mastercontrol/modules/registry.py`
+- Allowlist: `config/privilege/actions.json`
+- Wrapper: `scripts/mc-root-action`

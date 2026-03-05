@@ -16,6 +16,13 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `mastercontrol/core/humanized_kernel.py`
 - `mastercontrol/core/path_selector.py`
 - `mastercontrol/core/__init__.py`
+- `mastercontrol/modules/mod_dns.py`
+- `mastercontrol/modules/mod_network.py`
+- `mastercontrol/modules/mod_services.py`
+- `mastercontrol/modules/mod_packages.py`
+- `mastercontrol/modules/registry.py`
+- `mastercontrol/modules/base.py`
+- `mastercontrol/modules/__init__.py`
 
 ### Entrypoint de uso
 
@@ -57,11 +64,13 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `mastercontrol/context/mc_operator_profiler.py`
 - `mastercontrol/context/__init__.py`
 - `mastercontrol/tone/mc_tone_analyzer.py`
+- `mastercontrol/tone/intent_classifier.py`
 - `mastercontrol/tone/__init__.py`
 - `mastercontrol/dream/mc_dream.py`
 - `mastercontrol/dream/__init__.py`
 - `scripts/mc-operator-profiler`
 - `scripts/mc-tone-analyzer`
+- `scripts/mc-intent-classifier`
 - `scripts/mc-dream`
 - `scripts/install-dream-timer.sh`
 
@@ -71,6 +80,7 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
   - `command_events`
   - `operator_patterns`
   - `dream_insights`
+  - `learned_rules`
 
 ## 4) Soul / Identity Config
 
@@ -94,4 +104,3 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `docs/ADAPTIVE_RUNTIME.md`
 - `docs/DREAM_TIMER.md`
 - `docs/WORKLOG.md`
-
