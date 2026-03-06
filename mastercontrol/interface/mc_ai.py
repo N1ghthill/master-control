@@ -25,8 +25,8 @@ except ImportError:  # pragma: no cover
 
 
 VALID_MODES = {"confirm", "plan", "dry-run", "execute"}
-DEFAULT_LLM_MODEL = "qwen3.5:4b"
-DEFAULT_LLM_TIMEOUT_S = 45
+DEFAULT_LLM_MODEL = "qwen2.5:7b"
+DEFAULT_LLM_TIMEOUT_S = 25
 LOCAL_OLLAMA_BIN = Path.home() / ".local/ollama-latest/bin/ollama"
 LOCAL_OLLAMA_HOST = "127.0.0.1:11435"
 

@@ -46,7 +46,7 @@ Prototipo funcional `v0.1` com:
 
 - loop principal executavel (`mastercontrold`),
 - modulos DNS/service/package/network conectados ao runtime,
-- interface conversacional `mc-ai` com assistente local opcional via Ollama (`qwen3.5:4b` recomendado para conversa, `qwen2.5:7b` para menor latencia),
-- atalho de uso conversacional: `scripts/mc-ai-chat` (preset para `qwen3.5:4b`),
+- interface conversacional `mc-ai` com assistente local opcional via Ollama (`qwen2.5:7b` como padrao recomendado),
+- atalho de uso conversacional: `scripts/mc-ai-chat` (preset para `qwen2.5:7b`),
 - bootstrap de privilegios ativo via `pkexec` + allowlist,
 - testes automatizados iniciais em `tests/` (`python3 -m unittest discover -s tests -v`).

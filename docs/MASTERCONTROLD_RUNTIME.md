@@ -35,7 +35,7 @@ Interface interativa IA:
 /home/irving/ruas/repos/master-control/scripts/mc-ai
 ```
 
-Padrao atual do `mc-ai`: `qwen3.5:4b` com `--llm-timeout 45` e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
+Padrao atual do `mc-ai`: `qwen2.5:7b` com `--llm-timeout 25` e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
 
 Interface interativa IA (preset conversacional):
 
@@ -52,13 +52,13 @@ Interface IA sem LLM (fallback manual):
 Interface IA com modelo explicito:
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
 ```
 
-Interface IA com foco em menor latencia:
+Interface IA com foco em resposta mais elaborada (latencia maior):
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
 ```
 
 Example:

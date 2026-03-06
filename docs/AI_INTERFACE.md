@@ -9,15 +9,15 @@ Simplificar a interacao com o MasterControl sem precisar lembrar combinacoes lon
 Modelos recomendados no host atual:
 
 ```bash
-ollama pull qwen3.5:4b
 ollama pull qwen2.5:7b
+ollama pull qwen3.5:4b
 ```
 
 Recomendacao para uso conversacional:
 
 - `ollama` como runtime local
-- `qwen3.5:4b` para resposta mais natural (com `--llm-timeout 45`)
-- `qwen2.5:7b` para menor latencia
+- `qwen2.5:7b` como padrao para conversa com latencia mais baixa e roteamento mais estavel
+- `qwen3.5:4b` como opcao para estilo mais elaborado (latencia maior)
 
 Se o modelo/runtime falhar, a interface entra automaticamente em fallback local (sem LLM), mantendo o fluxo deterministico do runtime.
 No adapter atual, `mc-ai` tenta `--think=false` por padrao para priorizar resposta conversacional com menor latencia (com fallback automatico sem essa flag em runtimes antigos).
@@ -25,7 +25,7 @@ No adapter atual, `mc-ai` tenta `--think=false` por padrao para priorizar respos
 
 ## Como iniciar
 
-Atalho conversacional recomendado (tenta runtime local atualizado automaticamente; usa `qwen3.5:4b` com timeout maior quando disponivel):
+Atalho conversacional recomendado (tenta runtime local atualizado automaticamente):
 
 ```bash
 /home/irving/ruas/repos/master-control/scripts/mc-ai-chat
@@ -45,8 +45,8 @@ Entrada padrao da interface (sem preset conversacional):
 
 Padrao atual do `mc-ai`:
 
-- modelo: `qwen3.5:4b`
-- timeout: `45s`
+- modelo: `qwen2.5:7b`
+- timeout: `25s`
 - autodetecta `~/.local/ollama-latest/bin/ollama` e usa `OLLAMA_HOST=127.0.0.1:11435` quando disponivel
 
 Comando unico (sem entrar no REPL):
@@ -64,13 +64,13 @@ Desabilitar LLM:
 Trocar modelo:
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
 ```
 
-Perfil de menor latencia:
+Perfil de resposta mais elaborada (maior latencia):
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
 ```
 
 ## Fluxo de uso

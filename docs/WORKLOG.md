@@ -1,5 +1,40 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Decisao final de modelo padrao (Qwen2.5)
+
+### Objetivo do ciclo
+
+Fechar modelo padrao para uso conversacional no `mc-ai` com base em benchmark mais representativo do fluxo real.
+
+### Acoes executadas
+
+1. Configurado runtime local persistente:
+   - `ollama-local.service` em `~/.config/systemd/user`,
+   - `OLLAMA_HOST=127.0.0.1:11435`,
+   - `loginctl enable-linger` para manter servico no boot.
+2. Executado benchmark de 20 prompts por modelo (10 conversacionais + 10 operacionais):
+   - arquivo de resultado: `/tmp/bench_mc_ai_realistic_results.json`.
+3. Ajustado padrao do projeto para `qwen2.5:7b`:
+   - `mastercontrol/interface/mc_ai.py` (`DEFAULT_LLM_MODEL`, `DEFAULT_LLM_TIMEOUT_S`),
+   - `scripts/mc-ai-chat` (preset padrao em `qwen2.5:7b`).
+
+### Resultados observados
+
+- `qwen2.5:7b`:
+  - `avg_latency_s=8.621`,
+  - `route_accuracy_overall=0.95`,
+  - `route_accuracy_conversational=1.0`.
+- `qwen3.5:4b`:
+  - `avg_latency_s=16.287`,
+  - `route_accuracy_overall=0.8`,
+  - `route_accuracy_conversational=0.7`.
+- Sem timeout/fallback em ambos no benchmark final, mas com maior estabilidade de rota no `qwen2.5:7b`.
+
+### Conclusao de produto
+
+- Modelo padrao aprovado: `qwen2.5:7b` (`--llm-timeout 25`).
+- `qwen3.5:4b` permanece opcional para respostas mais elaboradas, com custo de latencia maior.
+
 ## 2026-03-06 - Benchmark conversacional (Qwen2.5 vs Qwen3.5)
 
 ### Objetivo do ciclo

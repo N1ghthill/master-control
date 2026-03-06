@@ -10,6 +10,7 @@ from unittest.mock import patch
 
 from mastercontrol.interface.mc_ai import (
     InterfaceState,
+    build_parser,
     _resolve_ollama_bin,
     apply_directive,
     parse_directive,
@@ -57,6 +58,16 @@ class MCAIInterfaceTests(unittest.TestCase):
         self.assertIn("qwen2.5:7b", message)
         self.assertFalse(should_exit)
         self.assertEqual(state.llm_model, "qwen2.5:7b")
+
+    def test_interface_state_defaults(self) -> None:
+        state = InterfaceState()
+        self.assertEqual(state.llm_model, "qwen2.5:7b")
+        self.assertEqual(state.llm_timeout_s, 25)
+
+    def test_parser_defaults(self) -> None:
+        args = build_parser().parse_args([])
+        self.assertEqual(args.llm_model, "qwen2.5:7b")
+        self.assertEqual(args.llm_timeout, 25)
 
     def test_resolve_ollama_bin_keeps_explicit_binary(self) -> None:
         resolved = _resolve_ollama_bin("/usr/bin/ollama")
