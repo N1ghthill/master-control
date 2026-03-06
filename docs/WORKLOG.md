@@ -1,5 +1,23 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Documentacao de fluxo operacional da interface IA
+
+### Objetivo do ciclo
+
+Registrar de forma clara o fluxo ponta a ponta do `mc-ai` e um roteiro pratico de uso diario.
+
+### Acoes executadas
+
+1. Expandida documentacao da interface em `docs/AI_INTERFACE.md`:
+   - secao "Fluxo ponta a ponta",
+   - secao "Roteiro diario (5 comandos)".
+2. Sincronizada referencia em `docs/MASTERCONTROLD_RUNTIME.md` para manter navegacao entre guias.
+
+### Resultado
+
+- Fluxo de interacao ficou explicitamente documentado (chat vs intent, fallback, execucao por modo e guardrails).
+- Operacao diaria passou a ter guia rapido e padronizado para o operador.
+
 ## 2026-03-06 - Decisao final de modelo padrao (Qwen2.5)
 
 ### Objetivo do ciclo

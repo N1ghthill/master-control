@@ -73,24 +73,32 @@ Perfil de resposta mais elaborada (maior latencia):
 /home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
 ```
 
-## Fluxo de uso
+## Fluxo ponta a ponta
 
-1. Digite o comando natural (ex.: `restart nginx service`).
-2. Se LLM estiver ativo:
-   - o modelo classifica entrada como `intent` ou `chat`,
-   - em `intent`, pode normalizar o texto para melhorar mapeamento,
-   - em `chat`, responde no terminal sem acionar execucao.
-3. A interface mostra:
-   - mensagem humanizada,
-   - path escolhido,
-   - intent cluster,
-   - acao mapeada,
-   - outcome.
-4. Se houver acao mapeada:
-   - modo `confirm`: pergunta `nao / dry-run / executar`.
-   - modo `dry-run`: executa dry-run automaticamente.
-   - modo `execute`: executa automaticamente (alto risco pede confirmacao textual `EXECUTAR`).
-   - modo `plan`: somente analise (sem executar).
+1. Voce envia uma entrada no `mc-ai`:
+   - exemplo conversacional: `como voce esta?`
+   - exemplo operacional: `restart nginx service`
+2. O adapter LLM tenta interpretar a entrada:
+   - classifica como `chat` ou `intent`
+   - em `intent`, pode normalizar texto para melhorar mapeamento
+   - em erro/timeout do LLM, entra fallback local deterministico
+3. Se for `chat`:
+   - a interface responde no terminal com `[ai] ...`
+   - nao aciona execucao operacional
+4. Se for `intent`:
+   - o `mastercontrold` roda analise de tom/contexto
+   - escolhe `path` (`fast`, `deep`, `fast_with_confirm`)
+   - tenta mapear para `action_id` allowlisted
+   - monta plano, risco, outcome e next step
+5. Quando existe acao mapeada, o comportamento depende do modo:
+   - `plan`: so analise (nao executa)
+   - `confirm`: pergunta `nao / dry-run / executar`
+   - `dry-run`: valida sem mutar sistema
+   - `execute`: executa (alto risco exige confirmar `EXECUTAR`)
+6. Toda mutacao real passa pelos guardrails:
+   - policy de risco + confirmacoes
+   - execucao privilegiada via allowlist confiavel
+   - trilha de auditoria com `request_id`
 
 ## Comandos da interface
 
@@ -113,3 +121,37 @@ Perfil de resposta mais elaborada (maior latencia):
   - bloqueio/passo explicito para alto risco,
   - allowlist privilegiada confiavel em `/etc/mastercontrol`.
 - O LLM nao executa comandos do sistema e nao substitui as validacoes do runtime.
+
+## Roteiro diario (5 comandos)
+
+1. Validar servico LLM local:
+
+```bash
+systemctl --user status ollama-local.service --no-pager
+```
+
+2. Iniciar interface no perfil padrao:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai
+```
+
+3. Conversar sem executar nada:
+
+```text
+/mode plan
+```
+
+4. Testar uma intencao operacional com seguranca:
+
+```text
+restart nginx service
+```
+
+na pergunta de execucao, escolher `d` (dry-run).
+
+5. Ver estado atual da sessao:
+
+```text
+/status
+```

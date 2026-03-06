@@ -35,6 +35,9 @@ Interface interativa IA:
 /home/irving/ruas/repos/master-control/scripts/mc-ai
 ```
 
+Fluxo detalhado e roteiro diario da interface:
+- `docs/AI_INTERFACE.md` (secoes "Fluxo ponta a ponta" e "Roteiro diario (5 comandos)")
+
 Padrao atual do `mc-ai`: `qwen2.5:7b` com `--llm-timeout 25` e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
 
 Interface interativa IA (preset conversacional):
