@@ -4,6 +4,7 @@
 from __future__ import annotations
 
 import argparse
+import os
 import shlex
 import sys
 from dataclasses import dataclass
@@ -13,15 +14,21 @@ from typing import Any
 try:
     from mastercontrol.core.mastercontrold import MasterControlD, OperatorRequest
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK
+    from mastercontrol.llm.ollama_adapter import OllamaAdapter, OllamaAdapterError
 except ImportError:  # pragma: no cover
     repo_root = Path(__file__).resolve().parents[2]
     if str(repo_root) not in sys.path:
         sys.path.insert(0, str(repo_root))
     from mastercontrol.core.mastercontrold import MasterControlD, OperatorRequest  # type: ignore
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK  # type: ignore
+    from mastercontrol.llm.ollama_adapter import OllamaAdapter, OllamaAdapterError  # type: ignore
 
 
 VALID_MODES = {"confirm", "plan", "dry-run", "execute"}
+DEFAULT_LLM_MODEL = "qwen3.5:4b"
+DEFAULT_LLM_TIMEOUT_S = 45
+LOCAL_OLLAMA_BIN = Path.home() / ".local/ollama-latest/bin/ollama"
+LOCAL_OLLAMA_HOST = "127.0.0.1:11435"
 
 
 @dataclass
@@ -31,6 +38,10 @@ class InterfaceState:
     path_mode: str = "auto"
     mode: str = "confirm"
     incident: bool = False
+    llm_enabled: bool = True
+    llm_model: str = DEFAULT_LLM_MODEL
+    llm_timeout_s: int = DEFAULT_LLM_TIMEOUT_S
+    ollama_bin: str = "ollama"
 
 
 def parse_directive(line: str) -> tuple[str, list[str]] | None:
@@ -53,14 +64,16 @@ def apply_directive(state: InterfaceState, command: str, args: list[str]) -> tup
         return (
             "Comandos: /help, /status, /risk <low|medium|high|critical>, "
             "/path <auto|fast|deep|fast_with_confirm>, /mode <confirm|plan|dry-run|execute>, "
-            "/incident <on|off>, /operator <nome>, /quit",
+            "/incident <on|off>, /operator <nome>, /llm <on|off|status>, /model <nome>, "
+            "/raw <comando natural>, /quit",
             False,
         )
     if command == "status":
         return (
             "Estado: "
             f"operator={state.operator_name}, risk={state.risk_level}, path={state.path_mode}, "
-            f"mode={state.mode}, incident={state.incident}",
+            f"mode={state.mode}, incident={state.incident}, llm={state.llm_enabled}, "
+            f"model={state.llm_model}",
             False,
         )
     if command == "risk":
@@ -89,6 +102,21 @@ def apply_directive(state: InterfaceState, command: str, args: list[str]) -> tup
             return ("Uso: /operator <nome>", False)
         state.operator_name = " ".join(args).strip()
         return (f"Operador atualizado para '{state.operator_name}'.", False)
+    if command == "llm":
+        if len(args) != 1 or args[0] not in {"on", "off", "status"}:
+            return ("Uso: /llm <on|off|status>", False)
+        if args[0] == "status":
+            return (
+                f"LLM: enabled={state.llm_enabled}, model={state.llm_model}, timeout={state.llm_timeout_s}s.",
+                False,
+            )
+        state.llm_enabled = args[0] == "on"
+        return (f"LLM {'ativado' if state.llm_enabled else 'desativado'}.", False)
+    if command == "model":
+        if len(args) != 1:
+            return ("Uso: /model <nome>", False)
+        state.llm_model = args[0].strip()
+        return (f"Modelo LLM atualizado para '{state.llm_model}'.", False)
     return (f"Comando desconhecido: /{command}. Use /help.", False)
 
 
@@ -111,6 +139,53 @@ class MasterControlInterface:
     def __init__(self, state: InterfaceState, profile_path: Path | None = None) -> None:
         self.state = state
         self.daemon = MasterControlD(profile_path)
+        self.adapter: OllamaAdapter | None = None
+        self._llm_error_reported = False
+        self._sync_adapter()
+
+    def _sync_adapter(self) -> None:
+        if not self.state.llm_enabled:
+            self.adapter = None
+            return
+        if self.adapter is not None and self.adapter.model == self.state.llm_model:
+            return
+        self.adapter = OllamaAdapter(
+            model=self.state.llm_model,
+            ollama_bin=self.state.ollama_bin,
+            timeout_s=self.state.llm_timeout_s,
+        )
+
+    def _prepare_intent(self, text: str, use_llm: bool = True) -> str | None:
+        raw = (text or "").strip()
+        if not raw:
+            return None
+        if not use_llm or not self.state.llm_enabled:
+            return raw
+
+        self._sync_adapter()
+        if self.adapter is None:
+            return raw
+
+        try:
+            interpreted = self.adapter.interpret(raw, operator_name=self.state.operator_name)
+        except OllamaAdapterError as exc:
+            if not self._llm_error_reported:
+                print(f"[ai] LLM indisponivel ({exc}). Fallback para fluxo local.")
+                self._llm_error_reported = True
+            return raw
+
+        self._llm_error_reported = False
+        if interpreted.route == "chat":
+            if interpreted.chat_reply:
+                print(f"[ai] {interpreted.chat_reply}")
+            else:
+                print("[ai] Posso ajudar com comandos operacionais quando voce quiser.")
+            return None
+
+        normalized = interpreted.intent.strip() if interpreted.intent else raw
+        if normalized != raw:
+            print(f"[ai] Intencao normalizada: {normalized}")
+        return normalized
 
     def run_intent(self, intent: str, execute: bool, dry_run: bool) -> dict[str, Any]:
         req = OperatorRequest(
@@ -149,8 +224,12 @@ class MasterControlInterface:
         phrase = input("Acao de alto risco. Digite EXECUTAR para confirmar: ").strip()
         return phrase == "EXECUTAR"
 
-    def handle_intent(self, intent: str) -> None:
-        initial = self.run_intent(intent=intent, execute=False, dry_run=False)
+    def handle_intent(self, intent: str, use_llm: bool = True) -> None:
+        prepared = self._prepare_intent(intent, use_llm=use_llm)
+        if prepared is None:
+            return
+
+        initial = self.run_intent(intent=prepared, execute=False, dry_run=False)
         print(initial["message"])
         print(_format_result(initial))
 
@@ -176,7 +255,7 @@ class MasterControlInterface:
             return
 
         run = self.run_intent(
-            intent=intent,
+            intent=prepared,
             execute=True,
             dry_run=(choice == "d"),
         )
@@ -195,13 +274,30 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--path", default="auto", choices=["auto"] + sorted(VALID_PATH))
     p.add_argument("--mode", default="confirm", choices=sorted(VALID_MODES))
     p.add_argument("--incident", action="store_true")
+    p.add_argument("--no-llm", action="store_true", help="Disable Ollama intent assistant")
+    p.add_argument("--llm-model", default=DEFAULT_LLM_MODEL, help="Ollama model to use in interface")
+    p.add_argument("--llm-timeout", type=int, default=DEFAULT_LLM_TIMEOUT_S, help="LLM timeout in seconds")
+    p.add_argument("--ollama-bin", default="ollama", help="Path/name of ollama binary")
     p.add_argument("--once", default="", help="Run a single intent and exit")
     return p
 
 
+def _resolve_ollama_bin(ollama_bin: str) -> str:
+    binary = (ollama_bin or "ollama").strip() or "ollama"
+    if binary != "ollama":
+        return binary
+    if LOCAL_OLLAMA_BIN.exists() and os.access(LOCAL_OLLAMA_BIN, os.X_OK):
+        os.environ.setdefault("OLLAMA_HOST", LOCAL_OLLAMA_HOST)
+        return str(LOCAL_OLLAMA_BIN)
+    return binary
+
+
 def repl(interface: MasterControlInterface) -> int:
     print("MasterControl IA Interface")
-    print("Digite o comando natural ou /help para comandos de controle.")
+    llm_status = "on" if interface.state.llm_enabled else "off"
+    print(
+        f"Digite o comando natural ou /help para comandos de controle. LLM={llm_status} ({interface.state.llm_model})."
+    )
     while True:
         try:
             line = input("mc-ai> ").strip()
@@ -218,8 +314,16 @@ def repl(interface: MasterControlInterface) -> int:
         parsed = parse_directive(line)
         if parsed is not None:
             cmd, args = parsed
+            if cmd == "raw":
+                if not args:
+                    print("Uso: /raw <comando natural>")
+                else:
+                    interface.handle_intent(" ".join(args), use_llm=False)
+                continue
             message, should_exit = apply_directive(interface.state, cmd, args)
             print(message)
+            if cmd in {"llm", "model"}:
+                interface._sync_adapter()
             if should_exit:
                 return 0
             continue
@@ -229,12 +333,17 @@ def repl(interface: MasterControlInterface) -> int:
 
 def main() -> int:
     args = build_parser().parse_args()
+    ollama_bin = _resolve_ollama_bin(args.ollama_bin)
     state = InterfaceState(
         operator_name=args.operator_name,
         risk_level=args.risk_level,
         path_mode=args.path,
         mode=args.mode,
         incident=bool(args.incident),
+        llm_enabled=not bool(args.no_llm),
+        llm_model=args.llm_model,
+        llm_timeout_s=max(args.llm_timeout, 5),
+        ollama_bin=ollama_bin,
     )
     interface = MasterControlInterface(
         state=state,
@@ -249,4 +358,3 @@ def main() -> int:
 
 if __name__ == "__main__":
     raise SystemExit(main())
-

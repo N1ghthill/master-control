@@ -35,6 +35,32 @@ Interface interativa IA:
 /home/irving/ruas/repos/master-control/scripts/mc-ai
 ```
 
+Padrao atual do `mc-ai`: `qwen3.5:4b` com `--llm-timeout 45` e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
+
+Interface interativa IA (preset conversacional):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai-chat
+```
+
+Interface IA sem LLM (fallback manual):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm
+```
+
+Interface IA com modelo explicito:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
+```
+
+Interface IA com foco em menor latencia:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
+```
+
 Example:
 
 ```bash
@@ -121,6 +147,7 @@ Network diagnostic dry-run (module path):
 - `name`, `creator`, and `role` are always present through soul profile.
 - Reflection checks are always generated and exposed.
 - Safety boundaries remain non-negotiable.
+- In `mc-ai`, local LLM routing (`intent` vs `chat`) is optional and does not bypass runtime policy.
 
 ## Execution guardrails
 

@@ -1,5 +1,11 @@
 # MasterControl - Roadmap de execucao
 
+## Estado atual (2026-03-06)
+
+- Fase 4 iniciada parcialmente com adapter LLM local no `mc-ai` (Ollama).
+- Benchmark local comparando `qwen2.5:7b` e `qwen3.5:4b` concluido para uso conversacional.
+- Integracao LLM no loop principal `mastercontrold` continua pendente.
+
 ## Fase 0 - Fundacao (1 semana)
 
 - Definir schemas de `Intent`, `ActionPlan`, `PolicyDecision`, `ActionResult`.

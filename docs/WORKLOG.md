@@ -1,5 +1,83 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Benchmark conversacional (Qwen2.5 vs Qwen3.5)
+
+### Objetivo do ciclo
+
+Comparar latencia e qualidade de resposta conversacional para escolher modelo padrao de interacao no `mc-ai`.
+
+### Acoes executadas
+
+1. Validado requisito de runtime do `qwen3.5:4b`:
+   - exige Ollama `>= 0.17.1`.
+2. Subido runtime local atualizado (`0.17.6`) em porta dedicada (`127.0.0.1:11435`) para teste.
+3. Baixados modelos no runtime local:
+   - `qwen3.5:4b` (3.4 GB)
+   - `qwen2.5:7b` (4.7 GB)
+4. Executados benchmarks curtos de prompt conversacional no `mc-ai` e no adapter.
+5. Criado atalho operacional `scripts/mc-ai-chat`:
+   - preset conversacional (`qwen3.5:4b`, timeout 45s, com fallback para `qwen2.5:7b` se runtime local novo nao existir),
+   - autodetecta runtime local em `~/.local/ollama-latest/bin/ollama`,
+   - usa `OLLAMA_HOST=127.0.0.1:11435` por padrao quando runtime local existe.
+6. Aplicado recomendado como padrao do `mc-ai`:
+   - `--llm-model qwen3.5:4b`,
+   - `--llm-timeout 45`,
+   - autodeteccao de Ollama local atualizado (`~/.local/ollama-latest/bin/ollama`).
+
+### Resultados observados
+
+- Benchmark curto (4 prompts):
+  - `qwen2.5:7b`: `avg_latency_s=10.844`, `ok_count=4/4`, respostas mais objetivas.
+  - `qwen3.5:4b` (`--think=false`): `avg_latency_s=18.265`, `ok_count=4/4`, respostas mais naturais.
+- Teste direto no `mc-ai` (mesmo prompt):
+  - `qwen2.5:7b`: ~11s
+  - `qwen3.5:4b`: ~17s
+- Conclusao de adequacao:
+  - para conversa natural, `qwen3.5:4b` foi superior;
+  - para agilidade/baixa latencia, `qwen2.5:7b` segue melhor.
+
+## 2026-03-06 - Integracao Ollama na interface IA
+
+### Objetivo do ciclo
+
+Permitir comunicacao direta com modelo local no `mc-ai`, reduzindo friccao de uso e mantendo os guardrails do runtime.
+
+### Acoes executadas
+
+1. Criado adapter local de LLM:
+   - `mastercontrol/llm/ollama_adapter.py`
+   - `mastercontrol/llm/__init__.py`
+2. Integrada camada LLM na interface `mc-ai`:
+   - roteamento `intent` vs `chat`,
+   - normalizacao opcional de intent antes do runtime,
+   - fallback automatico para fluxo local quando Ollama/modelo falha.
+3. Ajustado adapter Ollama para modo conversacional:
+   - tentativa padrao com `--think=false` e `--hidethinking`,
+   - fallback automatico sem flags quando runtime nao suporta.
+4. Adicionados controles de sessao no REPL:
+   - `/llm <on|off|status>`
+   - `/model <nome>`
+   - `/raw <comando natural>` (bypass LLM por comando)
+5. Adicionadas flags no CLI da interface:
+   - `--no-llm`
+   - `--llm-model`
+   - `--llm-timeout`
+   - `--ollama-bin`
+6. Adicionados testes automatizados:
+   - `tests/test_ollama_adapter.py`
+   - extensoes em `tests/test_mc_ai_interface.py`
+7. Atualizada documentacao:
+   - `docs/AI_INTERFACE.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+   - `docs/CODE_MAP.md`
+   - `README.md`
+
+### Resultados observados
+
+- `mc-ai` consegue conversar via modelo local sem abrir execucao privilegiada direta.
+- Em falha de modelo/runtime, interface nao quebra e segue no caminho deterministico atual.
+- Guardrails de execucao (`confirm`, `dry-run`, bloqueios de risco) permanecem ativos.
+
 ## 2026-03-06 - Interface IA conversacional (REPL)
 
 ### Objetivo do ciclo

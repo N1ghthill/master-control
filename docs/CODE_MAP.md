@@ -29,11 +29,14 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `scripts/mastercontrol`
 - `scripts/mc-humanized`
 - `scripts/mc-ai`
+- `scripts/mc-ai-chat`
 
 ### Interface conversacional
 
 - `mastercontrol/interface/mc_ai.py`
 - `mastercontrol/interface/__init__.py`
+- `mastercontrol/llm/ollama_adapter.py`
+- `mastercontrol/llm/__init__.py`
 
 ## 2) Security / Privileges
 
@@ -117,3 +120,5 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 
 - `tests/test_root_exec_security.py`
 - `tests/test_intent_classifier.py`
+- `tests/test_mc_ai_interface.py`
+- `tests/test_ollama_adapter.py`
