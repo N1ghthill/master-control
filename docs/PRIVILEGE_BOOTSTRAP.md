@@ -41,6 +41,12 @@ Diagnostico de rede (dry-run):
 /home/irving/ruas/repos/master-control/scripts/mc-root-action --dry-run network.diagnose.ping host=1.1.1.1
 ```
 
+Dry-run com allowlist custom (somente validacao local):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-root-action --dry-run --actions-file /tmp/actions.json network.diagnose.route_default
+```
+
 Reiniciar servico:
 
 ```bash
@@ -53,7 +59,9 @@ Reiniciar servico:
 - Apenas `action_id` presente no `actions.json`.
 - Argumentos fora do schema sao rejeitados.
 - Toda execucao grava auditoria.
-- `mc-root-action` usa `config/privilege/actions.json` do repositorio por padrao quando presente (ou `MC_ACTIONS_FILE`/`--actions-file`).
+- Execucao privilegiada usa `/etc/mastercontrol/actions.json` como fonte padrao.
+- `--actions-file` customizado so e aceito no `mc-root-action` quando `--dry-run`.
+- `root-exec` em modo root rejeita allowlist fora de `/etc/mastercontrol`, com owner != root ou gravavel por grupo/outros.
 
 ## Integracao futura
 

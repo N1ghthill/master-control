@@ -8,7 +8,7 @@
 
 - Receives natural-language intent.
 - Runs lightweight tone analysis (`mc-tone-analyzer`).
-- Runs local-first intent classification (`mc-intent-classifier` path: transformer local optional -> history -> heuristic).
+- Runs local-first intent classification (`mc-intent-classifier`: transformer local optional -> history/heuristic merge with explicit mutation-verb safeguard).
 - Loads operator profile preferences (`mc-operator-profiler`).
 - Selects `fast`, `deep`, or `fast_with_confirm` autonomously (when `--path auto`) using profile + learned rules.
 - Builds an operational plan and maps eligible intents to allowlisted `action_id`.
@@ -125,6 +125,8 @@ Network diagnostic dry-run (module path):
 - Every execution carries a `request_id` for cross-log correlation.
 - Learned rules cannot force unsafe downgrade on incident/high-risk (`fast` is blocked in those contexts).
 - If no module resolves the intent, response stays analysis-only and exposes attempted modules in plan.
+- Privileged execution only accepts trusted allowlist files under `/etc/mastercontrol` (root-owned, not group/other writable).
+- `scripts/mc-root-action` uses `/etc/mastercontrol/actions.json` for privileged execution; custom `--actions-file` is allowed only with `--dry-run`.
 
 ## Audit trails
 
@@ -134,3 +136,11 @@ Network diagnostic dry-run (module path):
   - `/var/log/mastercontrol/root-exec.log` (root-owned)
 
 Together these logs capture interpretation -> path decision -> action execution -> reflection outcome.
+
+## Automated validation
+
+Run unit tests:
+
+```bash
+python3 -m unittest discover -s tests -v
+```

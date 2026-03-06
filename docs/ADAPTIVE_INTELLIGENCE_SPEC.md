@@ -80,7 +80,7 @@ Infer urgency and operator tone quickly without invoking heavy LLM.
 - `confidence`: `0.0..1.0`
 - `intent_cluster`: e.g. `dns.flush`, `service.restart`, `package.update`
 - `intent_confidence`: confidence for intent classification
-- `intent_source`: `transformer | history | heuristic`
+- `intent_source`: `transformer | history | heuristic | heuristic_explicit`
 - `frustration_score`: `0.0..1.0`
 
 ### Integration
@@ -143,7 +143,7 @@ Insights are suggestions only. Never execute actions automatically.
 `mastercontrold` flow:
 
 1. parse intent
-2. classify intent (local-first: transformer local optional -> history -> heuristic)
+2. classify intent (local-first: transformer local optional -> history/heuristic merge with explicit mutation-verb safeguard)
 3. tone analyze
 4. load operator profile
 5. path select with profile + tone hints + `learned_rules`

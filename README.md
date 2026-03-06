@@ -41,4 +41,9 @@ MasterControl deve ser:
 
 ## Estado atual
 
-Projeto em fase de definicao tecnica (`v0.1 spec`).
+Prototipo funcional `v0.1` com:
+
+- loop principal executavel (`mastercontrold`),
+- modulos DNS/service/package/network conectados ao runtime,
+- bootstrap de privilegios ativo via `pkexec` + allowlist,
+- testes automatizados iniciais em `tests/` (`python3 -m unittest discover -s tests -v`).

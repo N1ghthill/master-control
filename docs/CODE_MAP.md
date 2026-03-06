@@ -36,6 +36,7 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - Execucao privilegiada por allowlist.
 - Integracao bootstrap com `pkexec/polkit`.
 - Auditoria de acoes root.
+- Validacao de allowlist confiavel para execucao root.
 
 ### Arquivos
 
@@ -104,3 +105,8 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `docs/ADAPTIVE_RUNTIME.md`
 - `docs/DREAM_TIMER.md`
 - `docs/WORKLOG.md`
+
+## 6) Testes automatizados
+
+- `tests/test_root_exec_security.py`
+- `tests/test_intent_classifier.py`

@@ -6,6 +6,10 @@ usage() {
 Usage:
   mc-root-action [--dry-run] [--request-id ID] [--actions-file PATH] <action_id> [key=value ...]
 
+Notes:
+  --actions-file is accepted in privileged mode only for /etc/mastercontrol/actions.json.
+  Custom --actions-file values are allowed only with --dry-run.
+
 Examples:
   mc-root-action dns.unbound.flush_all
   mc-root-action service.systemctl.restart unit=unbound.service
@@ -23,8 +27,7 @@ dry_run="false"
 request_id=""
 actions_file=""
 
-REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
-default_actions_file="${REPO_ROOT}/config/privilege/actions.json"
+default_actions_file="/etc/mastercontrol/actions.json"
 
 while [[ "${1:-}" == "--dry-run" || "${1:-}" == "--request-id" || "${1:-}" == "--actions-file" ]]; do
   case "$1" in
@@ -77,11 +80,17 @@ if [[ "${dry_run}" == "true" ]]; then
   runner=("${EXEC_PATH}")
 fi
 
-cmd=("${runner[@]}" exec --action "${ACTION_ID}" "${args[@]}")
 resolved_actions_file="${actions_file:-${MC_ACTIONS_FILE:-${default_actions_file}}}"
-if [[ -f "${resolved_actions_file}" ]]; then
-  cmd=("${runner[@]}" --actions-file "${resolved_actions_file}" exec --action "${ACTION_ID}" "${args[@]}")
+if [[ "${dry_run}" != "true" && "${resolved_actions_file}" != "${default_actions_file}" ]]; then
+  echo "Custom --actions-file is only allowed with --dry-run."
+  exit 1
 fi
+if [[ "${dry_run}" != "true" && ! -f "${default_actions_file}" ]]; then
+  echo "Missing ${default_actions_file}. Run scripts/install-privilege-bootstrap.sh first."
+  exit 1
+fi
+
+cmd=("${runner[@]}" --actions-file "${resolved_actions_file}" exec --action "${ACTION_ID}" "${args[@]}")
 if [[ -n "${request_id}" ]]; then
   cmd+=(--request-id "${request_id}")
 fi

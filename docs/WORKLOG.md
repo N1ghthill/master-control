@@ -1,5 +1,41 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Hardening de privilegios + correcoes de classificacao
+
+### Objetivo do ciclo
+
+Fechar risco de allowlist controlada por usuario em execucao root e corrigir desvio de classificacao por historico.
+
+### Acoes executadas
+
+1. Harden de `root_exec`:
+   - fallback de root para `/etc/mastercontrol/actions.json`,
+   - validacao de allowlist confiavel em modo root (`/etc/mastercontrol`, owner root, sem escrita para grupo/outros).
+2. Ajuste de `mc-root-action`:
+   - padrao privilegiado fixo em `/etc/mastercontrol/actions.json`,
+   - `--actions-file` customizado permitido apenas com `--dry-run`.
+3. Ajuste de classificacao em `mc-intent-classifier`:
+   - prioridade para verbos explicitos de mutacao (`restart/start/stop`, `apt install/remove/update`) sobre vies de historico.
+4. Adicao de testes automatizados:
+   - `tests/test_root_exec_security.py`,
+   - `tests/test_intent_classifier.py`.
+5. Reaplicado bootstrap (`install-privilege-bootstrap.sh`) para sincronizar binario/allowlist instalados no host.
+
+### Resultados observados
+
+- `restart nginx service` voltou a mapear para `service.restart` com `intent_source=heuristic_explicit`.
+- Execucao privilegiada continua funcional para acoes allowlisted (`network.diagnose.route_default`).
+- Tentativa de usar `--actions-file` custom em execucao privilegiada via `mc-root-action` foi bloqueada.
+- Suite de testes local passou com sucesso (`python3 -m unittest discover -s tests -v`).
+
+### Evidencias de artefatos
+
+- Runtime root: `mastercontrol/runtime/root_exec.py`
+- Wrapper de privilegio: `scripts/mc-root-action`
+- Classificador: `mastercontrol/tone/intent_classifier.py`
+- Testes: `tests/test_root_exec_security.py`, `tests/test_intent_classifier.py`
+- Documentacao atualizada: `docs/MASTERCONTROLD_RUNTIME.md`, `docs/PRIVILEGE_BOOTSTRAP.md`, `docs/PRIVILEGE_MODEL.md`, `docs/ADAPTIVE_INTELLIGENCE_SPEC.md`, `docs/CODE_MAP.md`
+
 ## 2026-03-05 - Sprint Zero
 
 ### Objetivo do ciclo

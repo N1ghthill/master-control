@@ -8,6 +8,7 @@ import datetime as dt
 import json
 import os
 import re
+import stat
 import subprocess
 import sys
 import time
@@ -18,6 +19,7 @@ DEFAULT_ETC_ACTIONS = Path("/etc/mastercontrol/actions.json")
 DEFAULT_REPO_ACTIONS = (
     Path(__file__).resolve().parents[2] / "config" / "privilege" / "actions.json"
 )
+TRUSTED_ACTIONS_DIR = Path("/etc/mastercontrol")
 DEFAULT_AUDIT_LOG = Path("/var/log/mastercontrol/root-exec.log")
 
 
@@ -43,9 +45,40 @@ def parse_kv(items: list[str]) -> dict[str, str]:
 def resolve_actions_file(explicit: str | None) -> Path:
     if explicit:
         return Path(explicit)
-    if DEFAULT_ETC_ACTIONS.exists():
+    if DEFAULT_ETC_ACTIONS.exists() or os.geteuid() == 0:
         return DEFAULT_ETC_ACTIONS
     return DEFAULT_REPO_ACTIONS
+
+
+def ensure_trusted_actions_file(path: Path) -> Path:
+    resolved = path.resolve(strict=True)
+    trusted_dir = TRUSTED_ACTIONS_DIR.resolve(strict=False)
+
+    if not resolved.is_relative_to(trusted_dir):
+        raise PermissionError(
+            f"trusted actions file must be under {trusted_dir}"
+        )
+
+    file_stat = resolved.stat()
+    if file_stat.st_uid != 0:
+        raise PermissionError(
+            f"trusted actions file must be owned by root: {resolved}"
+        )
+    if file_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise PermissionError(
+            f"trusted actions file cannot be group/other writable: {resolved}"
+        )
+
+    parent_stat = resolved.parent.stat()
+    if parent_stat.st_uid != 0:
+        raise PermissionError(
+            f"actions directory must be owned by root: {resolved.parent}"
+        )
+    if parent_stat.st_mode & (stat.S_IWGRP | stat.S_IWOTH):
+        raise PermissionError(
+            f"actions directory cannot be group/other writable: {resolved.parent}"
+        )
+    return resolved
 
 
 def load_actions(path: Path) -> dict[str, Any]:
@@ -263,6 +296,9 @@ def main() -> int:
     actions_file = resolve_actions_file(args.actions_file)
     audit_log = Path(args.audit_log)
     as_json = bool(args.json)
+
+    if os.geteuid() == 0:
+        actions_file = ensure_trusted_actions_file(actions_file)
 
     try:
         if args.cmd == "list-actions":

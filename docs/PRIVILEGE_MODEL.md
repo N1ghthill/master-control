@@ -61,6 +61,7 @@ Exemplo:
 4. Sempre capturar `stdout/stderr/exit_code`.
 5. Sempre aplicar timeout.
 6. Sempre retornar erro estruturado.
+7. Em modo root, aceitar somente allowlist confiavel em `/etc/mastercontrol` (owner root, sem escrita para grupo/outros).
 
 ## Auditoria minima
 
@@ -81,7 +82,8 @@ Log append-only para operacoes privilegiadas:
 
 ## Bootstrap implementado neste repositorio
 
-- Allowlist: `config/privilege/actions.json`
+- Allowlist instalada (runtime privilegiado): `/etc/mastercontrol/actions.json`
+- Allowlist de origem no repo (artefato de instalacao): `config/privilege/actions.json`
 - Policy polkit: `config/polkit/io.mastercontrol.rootexec.policy`
 - Executor root: `mastercontrol/runtime/root_exec.py`
 - Instalador Debian: `scripts/install-privilege-bootstrap.sh`

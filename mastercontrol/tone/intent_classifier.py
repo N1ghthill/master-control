@@ -142,6 +142,15 @@ class IntentClassifier:
         hist_pred = self._predict_from_history(t)
         if hist_pred is None:
             return heuristic_pred
+
+        explicit_override = self._prefer_explicit_mutation(
+            text=t,
+            heuristic_pred=heuristic_pred,
+            history_pred=hist_pred,
+        )
+        if explicit_override is not None:
+            return explicit_override
+
         if hist_pred.intent_cluster == "general.assist" and heuristic_pred.intent_cluster != "general.assist":
             return heuristic_pred
         if heuristic_pred.intent_cluster != "general.assist" and heuristic_pred.confidence >= hist_pred.confidence + 0.08:
@@ -290,6 +299,47 @@ class IntentClassifier:
             confidence=round(max(0.05, min(confidence, 0.9)), 3),
             source="heuristic",
         )
+
+    def _prefer_explicit_mutation(
+        self,
+        text: str,
+        heuristic_pred: IntentPrediction,
+        history_pred: IntentPrediction,
+    ) -> IntentPrediction | None:
+        if heuristic_pred.intent_cluster == history_pred.intent_cluster:
+            return None
+
+        explicit_cluster = self._explicit_mutation_cluster(text)
+        if not explicit_cluster:
+            return None
+        if heuristic_pred.intent_cluster != explicit_cluster:
+            return None
+        if history_pred.intent_cluster == explicit_cluster:
+            return None
+
+        boosted = round(min(0.95, heuristic_pred.confidence + 0.05), 3)
+        return IntentPrediction(
+            intent_cluster=heuristic_pred.intent_cluster,
+            confidence=max(heuristic_pred.confidence, boosted),
+            source="heuristic_explicit",
+        )
+
+    def _explicit_mutation_cluster(self, text: str) -> str:
+        norm_text = self._normalize_text(text)
+
+        if re.search(r"\b(restart|reiniciar|reload)\b", norm_text):
+            return "service.restart"
+        if re.search(r"\b(start|iniciar)\b", norm_text):
+            return "service.start"
+        if re.search(r"\b(stop|parar)\b", norm_text):
+            return "service.stop"
+        if re.search(r"\bapt(-get)?\s+update\b", norm_text):
+            return "package.update"
+        if re.search(r"\bapt(-get)?\s+install\b", norm_text):
+            return "package.install"
+        if re.search(r"\bapt(-get)?\s+(remove|purge)\b", norm_text):
+            return "package.remove"
+        return ""
 
     @staticmethod
     def _tokenize(text: str) -> set[str]:
