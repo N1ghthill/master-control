@@ -39,7 +39,7 @@ Interface interativa IA:
 Fluxo detalhado e roteiro diario da interface:
 - `docs/AI_INTERFACE.md` (secoes "Fluxo ponta a ponta" e "Roteiro diario (5 comandos)")
 
-Padrao atual do `mc-ai`: `qwen3:4b-instruct-2507-q4_K_M` com `--llm-timeout 25` e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
+Padrao atual do `mc-ai`: `qwen3:4b-instruct-2507-q4_K_M` com `--llm-timeout 25`, warm-up automatico no modo interativo e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
 
 Interface interativa IA (preset conversacional):
 
@@ -51,6 +51,12 @@ Interface IA sem LLM (fallback manual):
 
 ```bash
 /home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm
+```
+
+Interface IA sem warm-up inicial:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm-warmup
 ```
 
 Interface IA com modelo explicito:

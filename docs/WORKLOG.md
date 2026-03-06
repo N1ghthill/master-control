@@ -1,5 +1,36 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Warm-up automatico no startup da interface IA
+
+### Objetivo do ciclo
+
+Reduzir latencia da primeira resposta no modo interativo (`mc-ai`) aquecendo o modelo local antes da primeira entrada.
+
+### Acoes executadas
+
+1. Adicionado warm-up explicito no `mc-ai`:
+   - novo metodo `warmup_llm()` em `mastercontrol/interface/mc_ai.py`,
+   - warm-up automatico no startup do REPL,
+   - rewarm quando LLM e religado (`/llm on`) ou modelo trocado (`/model ...`).
+2. Mantido `--once` sem warm-up inicial para nao penalizar modo one-shot.
+3. Adicionada flag de controle:
+   - `--no-llm-warmup` para pular aquecimento no modo interativo.
+4. Cobertura de testes expandida em `tests/test_mc_ai_interface.py`:
+   - warm-up uma vez por modelo,
+   - rewarm apos troca de modelo,
+   - resiliencia em erro de adapter.
+5. Documentacao sincronizada:
+   - `docs/AI_INTERFACE.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+
+### Resultado
+
+- Primeira resposta no REPL tende a ficar mais estavel apos startup (modelo ja aquecido).
+- Operacao continua com fallback seguro quando warm-up falha.
+- Medicao local de referencia (modelo descarregado):
+  - sem warm-up: primeira resposta ~`9031 ms`,
+  - warm-up: ~`8609 ms` no startup + primeira resposta ~`4751 ms`.
+
 ## 2026-03-06 - Fechamento do gap DNS `flush_all` (todo/todos)
 
 ### Objetivo do ciclo

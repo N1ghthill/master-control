@@ -8,6 +8,7 @@ import os
 import re
 import shlex
 import sys
+import time
 import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
@@ -142,6 +143,7 @@ OP_KIND_GROUPS: tuple[tuple[str, set[str]], ...] = (
     ("flush", {"flush", "limpar", "cache"}),
 )
 CANONICAL_TARGET_TOKEN = {"todo": "all", "tudo": "all"}
+LLM_WARMUP_PROMPT = "oi"
 
 
 @dataclass
@@ -422,6 +424,7 @@ class MasterControlInterface:
         self.daemon = MasterControlD(profile_path)
         self.adapter: OllamaAdapter | None = None
         self._llm_error_reported = False
+        self._warmed_models: set[str] = set()
         self._sync_adapter()
 
     def _sync_adapter(self) -> None:
@@ -435,6 +438,33 @@ class MasterControlInterface:
             ollama_bin=self.state.ollama_bin,
             timeout_s=self.state.llm_timeout_s,
         )
+
+    def warmup_llm(self, announce: bool = False, force: bool = False) -> None:
+        if not self.state.llm_enabled:
+            return
+        self._sync_adapter()
+        if self.adapter is None:
+            return
+
+        model = self.state.llm_model
+        if not force and model in self._warmed_models:
+            return
+
+        started = time.monotonic()
+        try:
+            self.adapter.interpret(LLM_WARMUP_PROMPT, operator_name=self.state.operator_name)
+        except OllamaAdapterError as exc:
+            if announce:
+                print(
+                    f"[ai] Warm-up do modelo '{model}' falhou ({exc}). "
+                    "Seguindo com fallback dinamico."
+                )
+            return
+
+        elapsed_s = time.monotonic() - started
+        self._warmed_models.add(model)
+        if announce:
+            print(f"[ai] Warm-up do modelo '{model}' concluido em {elapsed_s:.1f}s.")
 
     def _prepare_intent(self, text: str, use_llm: bool = True) -> str | None:
         raw = (text or "").strip()
@@ -571,6 +601,11 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--mode", default="confirm", choices=sorted(VALID_MODES))
     p.add_argument("--incident", action="store_true")
     p.add_argument("--no-llm", action="store_true", help="Disable Ollama intent assistant")
+    p.add_argument(
+        "--no-llm-warmup",
+        action="store_true",
+        help="Skip startup warm-up probe for LLM in interactive mode",
+    )
     p.add_argument("--llm-model", default=DEFAULT_LLM_MODEL, help="Ollama model to use in interface")
     p.add_argument("--llm-timeout", type=int, default=DEFAULT_LLM_TIMEOUT_S, help="LLM timeout in seconds")
     p.add_argument("--ollama-bin", default="ollama", help="Path/name of ollama binary")
@@ -620,6 +655,10 @@ def repl(interface: MasterControlInterface) -> int:
             print(message)
             if cmd in {"llm", "model"}:
                 interface._sync_adapter()
+            if cmd == "model" and interface.state.llm_enabled:
+                interface.warmup_llm(announce=True)
+            if cmd == "llm" and args and args[0] == "on":
+                interface.warmup_llm(announce=True)
             if should_exit:
                 return 0
             continue
@@ -649,6 +688,8 @@ def main() -> int:
     if args.once:
         interface.handle_intent(args.once)
         return 0
+    if not args.no_llm_warmup:
+        interface.warmup_llm(announce=True)
     return repl(interface)
 
 

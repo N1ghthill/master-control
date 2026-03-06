@@ -48,6 +48,7 @@ Padrao atual do `mc-ai`:
 - modelo: `qwen3:4b-instruct-2507-q4_K_M`
 - timeout: `25s`
 - autodetecta `~/.local/ollama-latest/bin/ollama` e usa `OLLAMA_HOST=127.0.0.1:11435` quando disponivel
+- no modo interativo, faz warm-up automatico do LLM na abertura para reduzir latencia da primeira resposta
 
 Comando unico (sem entrar no REPL):
 
@@ -59,6 +60,12 @@ Desabilitar LLM:
 
 ```bash
 /home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm
+```
+
+Desabilitar warm-up automatico (somente modo interativo):
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm-warmup
 ```
 
 Trocar modelo:
@@ -78,6 +85,7 @@ Perfil alternativo com fallback estavel:
 1. Voce envia uma entrada no `mc-ai`:
    - exemplo conversacional: `como voce esta?`
    - exemplo operacional: `restart nginx service`
+   - no REPL, warm-up inicial do modelo ocorre automaticamente antes da primeira mensagem
 2. O adapter LLM tenta interpretar a entrada:
    - classifica como `chat` ou `intent`
    - em `intent`, pode normalizar texto para melhorar mapeamento

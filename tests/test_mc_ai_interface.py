@@ -12,6 +12,7 @@ from unittest.mock import MagicMock, patch
 from mastercontrol.interface.mc_ai import (
     InterfaceState,
     MasterControlInterface,
+    OllamaAdapterError,
     _guardrailed_chat_reply,
     _looks_like_explicit_operational_command,
     _looks_like_operational_request,
@@ -74,6 +75,7 @@ class MCAIInterfaceTests(unittest.TestCase):
         args = build_parser().parse_args([])
         self.assertEqual(args.llm_model, "qwen3:4b-instruct-2507-q4_K_M")
         self.assertEqual(args.llm_timeout, 25)
+        self.assertFalse(args.no_llm_warmup)
 
     def test_resolve_ollama_bin_keeps_explicit_binary(self) -> None:
         resolved = _resolve_ollama_bin("/usr/bin/ollama")
@@ -201,6 +203,68 @@ class MCAIInterfaceTests(unittest.TestCase):
             interface.adapter = adapter
             out = interface._prepare_intent("mostre a rota default", use_llm=True)
             self.assertEqual(out, "mostre a rota default")
+
+    def test_warmup_llm_runs_once_per_model(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon_cls.return_value = MagicMock()
+            interface = MasterControlInterface(InterfaceState())
+            adapter = MagicMock()
+            adapter.model = interface.state.llm_model
+            adapter.interpret.return_value = SimpleNamespace(
+                route="chat",
+                intent="",
+                chat_reply="ok",
+                confidence=1.0,
+                raw="{}",
+            )
+            interface.adapter = adapter
+            interface.warmup_llm()
+            interface.warmup_llm()
+            self.assertEqual(adapter.interpret.call_count, 1)
+
+    def test_warmup_llm_handles_adapter_error_without_crashing(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon_cls.return_value = MagicMock()
+            interface = MasterControlInterface(InterfaceState())
+            adapter = MagicMock()
+            adapter.model = interface.state.llm_model
+            adapter.interpret.side_effect = OllamaAdapterError("timeout")
+            interface.adapter = adapter
+            interface.warmup_llm()
+            interface.warmup_llm()
+            self.assertEqual(adapter.interpret.call_count, 2)
+
+    def test_warmup_llm_rewarms_after_model_change(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon_cls.return_value = MagicMock()
+            interface = MasterControlInterface(InterfaceState())
+            adapter_v1 = MagicMock()
+            adapter_v1.model = interface.state.llm_model
+            adapter_v1.interpret.return_value = SimpleNamespace(
+                route="chat",
+                intent="",
+                chat_reply="ok",
+                confidence=1.0,
+                raw="{}",
+            )
+            interface.adapter = adapter_v1
+            interface.warmup_llm()
+
+            interface.state.llm_model = "qwen2.5:7b"
+            adapter_v2 = MagicMock()
+            adapter_v2.model = interface.state.llm_model
+            adapter_v2.interpret.return_value = SimpleNamespace(
+                route="chat",
+                intent="",
+                chat_reply="ok",
+                confidence=1.0,
+                raw="{}",
+            )
+            interface.adapter = adapter_v2
+            interface.warmup_llm()
+
+            self.assertEqual(adapter_v1.interpret.call_count, 1)
+            self.assertEqual(adapter_v2.interpret.call_count, 1)
 
 
 if __name__ == "__main__":
