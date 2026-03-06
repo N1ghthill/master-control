@@ -28,11 +28,11 @@ class OllamaAdapter:
 
     def __init__(
         self,
-        model: str = "qwen2.5:7b",
+        model: str = "qwen3:4b-instruct-2507-q4_K_M",
         ollama_bin: str = "ollama",
         timeout_s: int = 25,
     ) -> None:
-        self.model = (model or "qwen2.5:7b").strip()
+        self.model = (model or "qwen3:4b-instruct-2507-q4_K_M").strip()
         self.ollama_bin = (ollama_bin or "ollama").strip()
         self.timeout_s = max(int(timeout_s), 5)
         self.disable_thinking = True

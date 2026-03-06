@@ -13,6 +13,7 @@ class DNSModule:
     """Encapsulates DNS-related capabilities and execution planning."""
 
     MODULE_ID = "mod_dns"
+    FULL_SCOPE_HINTS = {"all", "todo", "todos", "tudo", "full", "completo", "entire", "inteiro"}
     CAPABILITY_ACTION = {
         "dns.flush.negative": "dns.unbound.flush_negative",
         "dns.flush.bogus": "dns.unbound.flush_bogus",
@@ -38,7 +39,9 @@ class DNSModule:
         if tokens.intersection({"negative", "nxdomain"}):
             return "dns.flush.negative"
         if tokens.intersection({"flush", "cache", "clear", "limpar", "reset"}):
-            if tokens.intersection({"all", "tudo", "full", "completo"}):
+            if tokens.intersection(self.FULL_SCOPE_HINTS):
+                return "dns.flush.all"
+            if ("todo" in tokens or "todos" in tokens) and "cache" in tokens:
                 return "dns.flush.all"
             return "dns.flush.negative"
         return None

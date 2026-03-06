@@ -27,7 +27,7 @@ except ImportError:  # pragma: no cover
 
 
 VALID_MODES = {"confirm", "plan", "dry-run", "execute"}
-DEFAULT_LLM_MODEL = "qwen2.5:7b"
+DEFAULT_LLM_MODEL = "qwen3:4b-instruct-2507-q4_K_M"
 DEFAULT_LLM_TIMEOUT_S = 25
 LOCAL_OLLAMA_BIN = Path.home() / ".local/ollama-latest/bin/ollama"
 LOCAL_OLLAMA_HOST = "127.0.0.1:11435"
@@ -60,6 +60,88 @@ EXTERNAL_IDENTITY_TERMS = (
     "gemini",
     "claude",
 )
+OPERATIONAL_ACTION_HINTS = {
+    "restart",
+    "reiniciar",
+    "start",
+    "iniciar",
+    "stop",
+    "parar",
+    "reload",
+    "install",
+    "instalar",
+    "remove",
+    "remover",
+    "desinstalar",
+    "purge",
+    "update",
+    "upgrade",
+    "ping",
+    "resolve",
+    "resolver",
+    "lookup",
+    "route",
+    "rota",
+    "gateway",
+    "flush",
+    "limpar",
+}
+OPERATIONAL_OBJECT_HINTS = {
+    "dns",
+    "unbound",
+    "cache",
+    "service",
+    "servico",
+    "apt",
+    "apt-get",
+    "package",
+    "pacote",
+    "default",
+}
+EXPLANATION_PREFIXES = (
+    "o que",
+    "oque",
+    "what is",
+    "como funciona",
+    "me explica",
+    "explique",
+    "qual a diferenca",
+)
+DNS_SCOPE_HINTS = {"bogus", "negative", "nxdomain", "all", "todo", "tudo"}
+EXPLICIT_COMMAND_RE = re.compile(
+    r"\b(?:"
+    r"apt(?:-get)?\s+(?:update|install|remove|purge)"
+    r"|systemctl\s+(?:restart|start|stop)"
+    r"|ping\s+[a-z0-9_.:-]+"
+    r"|(?:nslookup|getent|dig|host)\s+[a-z0-9_.:-]+"
+    r")\b"
+)
+IP_RE = re.compile(
+    r"\b((?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])"
+    r"(?:\.(?:25[0-5]|2[0-4][0-9]|[01]?[0-9]?[0-9])){3})\b"
+)
+DOMAIN_RE = re.compile(r"\b[a-z0-9][a-z0-9.-]*\.[a-z]{2,}\b")
+SERVICE_RE = re.compile(r"\b([a-z0-9@_.:-]+\.service)\b")
+APT_PACKAGE_RE = re.compile(
+    r"\bapt(?:-get)?\s+(?:install|remove|purge)\s+(?:-y\s+)?(?:--\s+)?([a-z0-9][a-z0-9+.-]*)\b"
+)
+PACKAGE_TAIL_RE = re.compile(
+    r"\b(?:install|instalar|remove|remover|desinstalar|purge)\b(?P<tail>.*)$"
+)
+PACKAGE_STOPWORDS = {"package", "pacote", "apt", "apt-get", "de", "o", "a", "no", "na"}
+OP_KIND_GROUPS: tuple[tuple[str, set[str]], ...] = (
+    ("remove", {"remove", "remover", "desinstalar", "purge"}),
+    ("install", {"install", "instalar"}),
+    ("update", {"update", "upgrade"}),
+    ("restart", {"restart", "reiniciar", "reload"}),
+    ("start", {"start", "iniciar"}),
+    ("stop", {"stop", "parar"}),
+    ("ping", {"ping"}),
+    ("resolve", {"resolve", "resolver", "lookup", "nslookup", "dig", "host", "getent"}),
+    ("route", {"route", "rota", "gateway", "default"}),
+    ("flush", {"flush", "limpar", "cache"}),
+)
+CANONICAL_TARGET_TOKEN = {"todo": "all", "tudo": "all"}
 
 
 @dataclass
@@ -81,6 +163,111 @@ def _normalize_text(text: str) -> str:
     plain = "".join(ch for ch in folded if not unicodedata.combining(ch))
     plain = re.sub(r"\s+", " ", plain)
     return plain.strip()
+
+
+def _tokenize_text(text: str) -> set[str]:
+    return set(re.findall(r"[a-z0-9_.:-]+", _normalize_text(text)))
+
+
+def _looks_like_explanatory_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(normalized.startswith(prefix) for prefix in EXPLANATION_PREFIXES)
+
+
+def _looks_like_explicit_operational_command(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return bool(EXPLICIT_COMMAND_RE.search(normalized))
+
+
+def _looks_like_operational_request(text: str) -> bool:
+    normalized = _normalize_text(text)
+    if not normalized:
+        return False
+    if _looks_like_identity_question(normalized) or _looks_like_location_question(normalized):
+        return False
+    if _looks_like_runtime_context_question(normalized):
+        return False
+    if _looks_like_explanatory_question(normalized):
+        return False
+    if _looks_like_explicit_operational_command(normalized):
+        return True
+
+    tokens = _tokenize_text(normalized)
+    if tokens.intersection(OPERATIONAL_ACTION_HINTS):
+        return True
+    if tokens.intersection({"mostrar", "mostre", "show", "check", "verifique", "verificar"}):
+        return bool(tokens.intersection(OPERATIONAL_OBJECT_HINTS))
+    return False
+
+
+def _extract_operation_kind(text: str) -> str | None:
+    tokens = _tokenize_text(text)
+    for kind, group in OP_KIND_GROUPS:
+        if tokens.intersection(group):
+            return kind
+    return None
+
+
+def _extract_package_target(text: str) -> str | None:
+    normalized = _normalize_text(text)
+    cmd_match = APT_PACKAGE_RE.search(normalized)
+    if cmd_match:
+        return cmd_match.group(1)
+
+    tail_match = PACKAGE_TAIL_RE.search(normalized)
+    if not tail_match:
+        return None
+    tail = tail_match.group("tail")
+    for token in re.findall(r"[a-z0-9+.-]+", tail):
+        if token in PACKAGE_STOPWORDS:
+            continue
+        if re.fullmatch(r"[a-z0-9][a-z0-9+.-]*", token):
+            return token
+    return None
+
+
+def _extract_operational_targets(text: str) -> set[str]:
+    normalized = _normalize_text(text)
+    targets: set[str] = set()
+
+    for match in IP_RE.findall(normalized):
+        targets.add(match)
+    for match in DOMAIN_RE.findall(normalized):
+        targets.add(match)
+    for match in SERVICE_RE.findall(normalized):
+        targets.add(match)
+
+    package = _extract_package_target(normalized)
+    if package:
+        targets.add(package)
+
+    tokens = _tokenize_text(normalized)
+    for token in tokens.intersection(DNS_SCOPE_HINTS):
+        targets.add(CANONICAL_TARGET_TOKEN.get(token, token))
+    return targets
+
+
+def _should_keep_raw_intent(raw: str, normalized: str) -> bool:
+    raw_clean = (raw or "").strip()
+    normalized_clean = (normalized or "").strip()
+    if not raw_clean or raw_clean == normalized_clean:
+        return False
+    if _looks_like_explicit_operational_command(raw_clean):
+        return True
+    if not _looks_like_operational_request(raw_clean):
+        return False
+
+    raw_op = _extract_operation_kind(raw_clean)
+    normalized_op = _extract_operation_kind(normalized_clean)
+    if raw_op and normalized_op and raw_op != normalized_op:
+        return True
+    if raw_op and not normalized_op:
+        return True
+
+    raw_targets = _extract_operational_targets(raw_clean)
+    normalized_targets = _extract_operational_targets(normalized_clean)
+    missing_targets = raw_targets - normalized_targets
+    return bool(missing_targets)
 
 
 def _looks_like_identity_question(text: str) -> bool:
@@ -255,6 +442,8 @@ class MasterControlInterface:
             return None
         if not use_llm or not self.state.llm_enabled:
             return raw
+        if _looks_like_explicit_operational_command(raw):
+            return raw
 
         self._sync_adapter()
         if self.adapter is None:
@@ -270,6 +459,9 @@ class MasterControlInterface:
 
         self._llm_error_reported = False
         if interpreted.route == "chat":
+            if _looks_like_operational_request(raw):
+                print("[ai] Guardrail operacional: mantendo fluxo intent para comando operacional.")
+                return raw
             profile = self.daemon.soul.profile
             runtime_context = self.daemon.runtime_context_snapshot(self.state.operator_name)
             reply = _guardrailed_chat_reply(
@@ -284,6 +476,9 @@ class MasterControlInterface:
             return None
 
         normalized = interpreted.intent.strip() if interpreted.intent else raw
+        if _should_keep_raw_intent(raw, normalized):
+            print("[ai] Guardrail de contexto: mantendo intent original para preservar alvo operacional.")
+            return raw
         if normalized != raw:
             print(f"[ai] Intencao normalizada: {normalized}")
         return normalized

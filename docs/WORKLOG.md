@@ -1,5 +1,89 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Fechamento do gap DNS `flush_all` (todo/todos)
+
+### Objetivo do ciclo
+
+Corrigir o caso remanescente em que pedidos de flush total de cache DNS (`todo/todos`) caiam em `dns.unbound.flush_negative`.
+
+### Acoes executadas
+
+1. Ajustado parser de capacidade no `mod_dns`:
+   - adicionada lista ampliada de sinais de escopo total (`all`, `todo`, `todos`, `tudo`, etc.),
+   - mantida precedencia para `bogus` e `negative`.
+2. Adicionados testes dedicados em `tests/test_dns_module.py`:
+   - resolucao `todo` -> `dns.flush.all`,
+   - resolucao `todos` -> `dns.flush.all`,
+   - mapeamento final para `dns.unbound.flush_all`.
+3. Revalidacao direta no fluxo do `mc-ai`:
+   - `limpar todo o cache dns` mapeando para `dns.unbound.flush_all` de forma consistente.
+4. Reexecutado benchmark completo (2 rodadas, 32 prompts):
+   - comparado `/tmp/bench_qwen3_modules_mastercontrol_guardrail.json` (antes) vs
+     `/tmp/bench_qwen3_modules_mastercontrol_guardrail_post_dnsfix.json` (depois).
+
+### Resultado
+
+- Gap de `dns_all` fechado no parser de modulo.
+- `intent_action_accuracy` subiu de `0.9167` para `1.0`.
+- `mod_dns.action_accuracy` subiu de `0.6667` para `1.0`.
+- `misses` caiu de `2` para `0`.
+- Suite completa segue verde (`38` testes).
+
+## 2026-03-06 - Guardrails operacionais no mc-ai + rebenchmark por modulo
+
+### Objetivo do ciclo
+
+Corrigir falhas de roteamento/normalizacao do `qwen3:4b-instruct-2507-q4_K_M` para operacoes em `mod_network` e `mod_packages`, mantendo boa conversa em `chat`.
+
+### Acoes executadas
+
+1. Hardening do `mc-ai` em `mastercontrol/interface/mc_ai.py`:
+   - detecao de comando operacional explicito (bypass de normalizacao),
+   - fallback de rota: quando LLM responde `chat` para pedido operacional, forca `intent`,
+   - guardrail de contexto: preserva intent original quando normalizacao perde alvo/escopo (IP, dominio, `bogus`, etc.).
+2. Adicionados testes de regressao em `tests/test_mc_ai_interface.py`:
+   - deteccao de pedido operacional vs pergunta explicativa,
+   - bypass para comando explicito,
+   - forca de `intent` quando LLM misclassifica para `chat`,
+   - preservacao de contexto operacional.
+3. Reexecutado benchmark ponta a ponta (2 rodadas, 32 prompts) com guardrails ativos:
+   - relatorio: `/tmp/bench_qwen3_modules_mastercontrol_guardrail.json`.
+
+### Resultado
+
+- `route_accuracy`: `1.0` (antes `0.875`).
+- `intent_module_accuracy`: `1.0` (antes `0.6667`).
+- `intent_action_accuracy`: `0.9167` (antes `0.5417`).
+- `mod_network`: `action_accuracy=1.0` (antes `0.0`).
+- `mod_packages`: `action_accuracy=1.0` (antes `0.6667`).
+- Gap remanescente: `dns_all` ainda cai para `dns.unbound.flush_negative` (2/2), indicando ajuste pendente no parser do `mod_dns`.
+
+## 2026-03-06 - Troca de padrao para Qwen3 4B Instruct (Q4_K_M)
+
+### Objetivo do ciclo
+
+Atualizar o padrao da interface IA para um modelo menor e rapido, com boa conversa em PT-BR e suporte a tool use.
+
+### Acoes executadas
+
+1. Alterado default do `mc-ai` para `qwen3:4b-instruct-2507-q4_K_M`:
+   - `mastercontrol/interface/mc_ai.py`
+   - `scripts/mc-ai-chat`
+2. Sincronizado default do adapter local:
+   - `mastercontrol/llm/ollama_adapter.py`
+3. Ajustada documentacao operacional:
+   - `docs/AI_INTERFACE.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+4. Ajustados testes de default da interface:
+   - `tests/test_mc_ai_interface.py`
+5. Modelo baixado no runtime local Ollama (`127.0.0.1:11435`):
+   - `qwen3:4b-instruct-2507-q4_K_M` (2.5 GB)
+
+### Resultado
+
+- O projeto passa a iniciar com `qwen3:4b-instruct-2507-q4_K_M` por padrao.
+- `qwen2.5:7b` fica documentado como fallback estavel.
+
 ## 2026-03-06 - Hardening da alma no chat + contexto real de host
 
 ### Objetivo do ciclo

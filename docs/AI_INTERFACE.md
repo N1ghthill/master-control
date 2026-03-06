@@ -9,19 +9,19 @@ Simplificar a interacao com o MasterControl sem precisar lembrar combinacoes lon
 Modelos recomendados no host atual:
 
 ```bash
+ollama pull qwen3:4b-instruct-2507-q4_K_M
 ollama pull qwen2.5:7b
-ollama pull qwen3.5:4b
 ```
 
 Recomendacao para uso conversacional:
 
 - `ollama` como runtime local
-- `qwen2.5:7b` como padrao para conversa com latencia mais baixa e roteamento mais estavel
-- `qwen3.5:4b` como opcao para estilo mais elaborado (latencia maior)
+- `qwen3:4b-instruct-2507-q4_K_M` como padrao (modelo menor, rapido e bom em PT-BR)
+- `qwen2.5:7b` como alternativa de fallback com boa estabilidade de rota
 
 Se o modelo/runtime falhar, a interface entra automaticamente em fallback local (sem LLM), mantendo o fluxo deterministico do runtime.
 No adapter atual, `mc-ai` tenta `--think=false` por padrao para priorizar resposta conversacional com menor latencia (com fallback automatico sem essa flag em runtimes antigos).
-`qwen3.5:4b` requer Ollama `>= 0.17.1`.
+Modelos `qwen3` tambem exigem runtime Ollama recente.
 
 ## Como iniciar
 
@@ -45,7 +45,7 @@ Entrada padrao da interface (sem preset conversacional):
 
 Padrao atual do `mc-ai`:
 
-- modelo: `qwen2.5:7b`
+- modelo: `qwen3:4b-instruct-2507-q4_K_M`
 - timeout: `25s`
 - autodetecta `~/.local/ollama-latest/bin/ollama` e usa `OLLAMA_HOST=127.0.0.1:11435` quando disponivel
 
@@ -64,13 +64,13 @@ Desabilitar LLM:
 Trocar modelo:
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3:4b-instruct-2507-q4_K_M --llm-timeout 25
 ```
 
-Perfil de resposta mais elaborada (maior latencia):
+Perfil alternativo com fallback estavel:
 
 ```bash
-/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen3.5:4b --llm-timeout 45
+/home/irving/ruas/repos/master-control/scripts/mc-ai --llm-model qwen2.5:7b --llm-timeout 25
 ```
 
 ## Fluxo ponta a ponta
@@ -81,6 +81,9 @@ Perfil de resposta mais elaborada (maior latencia):
 2. O adapter LLM tenta interpretar a entrada:
    - classifica como `chat` ou `intent`
    - em `intent`, pode normalizar texto para melhorar mapeamento
+   - comandos operacionais explicitos (`apt ...`, `ping ...`, etc.) mantem intent original (bypass de normalizacao)
+   - se o LLM responder `chat` para texto operacional, guardrail local força `intent`
+   - se a normalizacao perder alvo/escopo (IP, dominio, `bogus`, etc.), guardrail preserva o texto original
    - em erro/timeout do LLM, entra fallback local deterministico
 3. Se for `chat`:
    - a interface responde no terminal com `[ai] ...`
@@ -123,6 +126,7 @@ Perfil de resposta mais elaborada (maior latencia):
   - allowlist privilegiada confiavel em `/etc/mastercontrol`.
 - O LLM nao executa comandos do sistema e nao substitui as validacoes do runtime.
 - A identidade de resposta em `chat` eh ancorada no perfil local (`MasterControl`, creator `Irving`) para evitar autoidentificacao incorreta do modelo.
+- Guardrails operacionais reduzem misroute de `intent` para `chat` e evitam perda de contexto na normalizacao de comandos.
 
 ## Roteiro diario (5 comandos)
 

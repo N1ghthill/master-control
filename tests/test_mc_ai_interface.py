@@ -6,11 +6,16 @@ from __future__ import annotations
 import os
 import unittest
 from pathlib import Path
-from unittest.mock import patch
+from types import SimpleNamespace
+from unittest.mock import MagicMock, patch
 
 from mastercontrol.interface.mc_ai import (
     InterfaceState,
+    MasterControlInterface,
     _guardrailed_chat_reply,
+    _looks_like_explicit_operational_command,
+    _looks_like_operational_request,
+    _should_keep_raw_intent,
     build_parser,
     _resolve_ollama_bin,
     apply_directive,
@@ -55,19 +60,19 @@ class MCAIInterfaceTests(unittest.TestCase):
 
     def test_apply_model_updates_state(self) -> None:
         state = InterfaceState()
-        message, should_exit = apply_directive(state, "model", ["qwen2.5:7b"])
-        self.assertIn("qwen2.5:7b", message)
+        message, should_exit = apply_directive(state, "model", ["qwen3:4b-instruct-2507-q4_K_M"])
+        self.assertIn("qwen3:4b-instruct-2507-q4_K_M", message)
         self.assertFalse(should_exit)
-        self.assertEqual(state.llm_model, "qwen2.5:7b")
+        self.assertEqual(state.llm_model, "qwen3:4b-instruct-2507-q4_K_M")
 
     def test_interface_state_defaults(self) -> None:
         state = InterfaceState()
-        self.assertEqual(state.llm_model, "qwen2.5:7b")
+        self.assertEqual(state.llm_model, "qwen3:4b-instruct-2507-q4_K_M")
         self.assertEqual(state.llm_timeout_s, 25)
 
     def test_parser_defaults(self) -> None:
         args = build_parser().parse_args([])
-        self.assertEqual(args.llm_model, "qwen2.5:7b")
+        self.assertEqual(args.llm_model, "qwen3:4b-instruct-2507-q4_K_M")
         self.assertEqual(args.llm_timeout, 25)
 
     def test_resolve_ollama_bin_keeps_explicit_binary(self) -> None:
@@ -144,6 +149,58 @@ class MCAIInterfaceTests(unittest.TestCase):
         )
         self.assertIn("host local 'rainbow'", out)
         self.assertIn("hora_local", out)
+
+    def test_looks_like_operational_request_positive(self) -> None:
+        self.assertTrue(_looks_like_operational_request("mostre a rota default"))
+
+    def test_looks_like_operational_request_explanatory_question(self) -> None:
+        self.assertFalse(_looks_like_operational_request("o que e apt update?"))
+
+    def test_looks_like_explicit_operational_command(self) -> None:
+        self.assertTrue(_looks_like_explicit_operational_command("apt remove htop"))
+
+    def test_should_keep_raw_intent_when_context_lost(self) -> None:
+        self.assertTrue(
+            _should_keep_raw_intent(
+                "ping 1.1.1.1",
+                "Executar comando ping no Linux",
+            )
+        )
+        self.assertTrue(
+            _should_keep_raw_intent(
+                "limpar cache bogus do unbound",
+                "Limpar cache de dados invalidos do unbound",
+            )
+        )
+
+    def test_prepare_intent_bypasses_llm_for_explicit_command(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon_cls.return_value = MagicMock()
+            interface = MasterControlInterface(InterfaceState())
+            adapter = MagicMock()
+            adapter.model = interface.state.llm_model
+            adapter.interpret.side_effect = AssertionError("LLM should not be called")
+            interface.adapter = adapter
+            out = interface._prepare_intent("apt remove htop", use_llm=True)
+            self.assertEqual(out, "apt remove htop")
+            adapter.interpret.assert_not_called()
+
+    def test_prepare_intent_forces_intent_when_llm_routes_operational_text_to_chat(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon_cls.return_value = MagicMock()
+            interface = MasterControlInterface(InterfaceState())
+            adapter = MagicMock()
+            adapter.model = interface.state.llm_model
+            adapter.interpret.return_value = SimpleNamespace(
+                route="chat",
+                intent="",
+                chat_reply="Resposta qualquer",
+                confidence=0.9,
+                raw="{}",
+            )
+            interface.adapter = adapter
+            out = interface._prepare_intent("mostre a rota default", use_llm=True)
+            self.assertEqual(out, "mostre a rota default")
 
 
 if __name__ == "__main__":
