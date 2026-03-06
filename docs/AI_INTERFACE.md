@@ -63,6 +63,8 @@ Padrao atual do `mc-ai`:
 - autodetecta `~/.local/ollama-latest/bin/ollama` e usa `OLLAMA_HOST=127.0.0.1:11435` quando disponivel
 - no modo interativo, faz warm-up automatico do LLM na abertura para reduzir latencia da primeira resposta
 - quando chamado sem argumentos, abre a TUI por padrao
+- na TUI, warm-up/intent rodam em background com indicador de progresso (spinner), mantendo a tela responsiva
+- perguntas factuais locais (`que dia e hoje`, `dias para fim do ano`, `configuracoes do computador`) sao respondidas localmente, sem depender da resposta do modelo
 
 Comando unico (sem entrar no REPL):
 
@@ -110,6 +112,7 @@ Perfil alternativo com fallback estavel:
 3. Se for `chat`:
    - a interface responde no terminal com `[ai] ...`
    - perguntas de identidade/localizacao usam guardrail local (perfil da alma + contexto real do host)
+   - perguntas factuais locais (data atual, dias restantes no ano e configuracao da maquina) usam resposta deterministica local
    - nao aciona execucao operacional
 4. Se for `intent`:
    - o `mastercontrold` roda analise de tom/contexto

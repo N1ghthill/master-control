@@ -1,5 +1,38 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Correcoes de UX na TUI e respostas factuais locais
+
+### Objetivo do ciclo
+
+Eliminar travamento percebido na interface de terminal durante chamadas de LLM e corrigir respostas incorretas para perguntas factuais simples.
+
+### Acoes executadas
+
+1. Refatorada a TUI em `mastercontrol/interface/mc_tui.py` para execucao assincrona:
+   - warm-up e processamento de intents em thread de background,
+   - fila de eventos para atualizar logs sem bloquear loop de input/render,
+   - indicador visual de processamento (spinner) e bloqueio de requisicoes concorrentes.
+2. Ajustada renderizacao de logs da TUI:
+   - quebra de linha por largura da tela para evitar truncamento de respostas longas.
+3. Fortalecidos guardrails factuais em `mastercontrol/interface/mc_ai.py`:
+   - respostas locais deterministicas para:
+     - data atual,
+     - dias restantes para fim do ano,
+     - configuracao local da maquina (host/SO/kernel/CPU/RAM/usuario/cwd).
+   - bypass do LLM nesses casos para evitar alucinacao.
+4. Cobertura de testes expandida em `tests/test_mc_ai_interface.py`:
+   - deteccao de perguntas factuais,
+   - garantia de que `_prepare_intent` nao chama o LLM nesses casos.
+5. Documentacao atualizada:
+   - `docs/AI_INTERFACE.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+
+### Resultado
+
+- A TUI segue responsiva durante processamento.
+- Perguntas factuais nao retornam mais datas incorretas nem respostas vagas.
+- Suite de testes segue verde (`46` testes).
+
 ## 2026-03-06 - TUI padrao ao invocar `mastercontrol`
 
 ### Objetivo do ciclo

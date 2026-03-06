@@ -4,7 +4,9 @@
 from __future__ import annotations
 
 import argparse
+import datetime as dt
 import os
+import platform
 import re
 import shlex
 import sys
@@ -52,6 +54,28 @@ RUNTIME_CONTEXT_HINTS = (
     "o que esta acontecendo agora",
     "qual o contexto atual",
     "estado atual do sistema",
+)
+DATE_HINTS = (
+    "que dia e hoje",
+    "qual a data de hoje",
+    "data de hoje",
+    "what day is today",
+    "today date",
+)
+YEAR_REMAINING_HINTS = (
+    "quantos dias faltam para acabar o ano",
+    "quantos dias faltam para o fim do ano",
+    "dias restantes para acabar o ano",
+    "dias restam para acabar esse ano",
+    "days left in the year",
+)
+SYSTEM_CONFIG_HINTS = (
+    "configuracoes do meu computador",
+    "configuracoes do computador",
+    "config do meu computador",
+    "especificacoes do meu computador",
+    "hardware do meu computador",
+    "configuracao da maquina",
 )
 EXTERNAL_IDENTITY_TERMS = (
     "alibaba",
@@ -144,6 +168,30 @@ OP_KIND_GROUPS: tuple[tuple[str, set[str]], ...] = (
 )
 CANONICAL_TARGET_TOKEN = {"todo": "all", "tudo": "all"}
 LLM_WARMUP_PROMPT = "oi"
+PT_WEEKDAYS = (
+    "segunda-feira",
+    "terca-feira",
+    "quarta-feira",
+    "quinta-feira",
+    "sexta-feira",
+    "sabado",
+    "domingo",
+)
+PT_MONTHS = (
+    "",
+    "janeiro",
+    "fevereiro",
+    "marco",
+    "abril",
+    "maio",
+    "junho",
+    "julho",
+    "agosto",
+    "setembro",
+    "outubro",
+    "novembro",
+    "dezembro",
+)
 
 
 @dataclass
@@ -287,11 +335,56 @@ def _looks_like_runtime_context_question(text: str) -> bool:
     return any(hint in normalized for hint in RUNTIME_CONTEXT_HINTS)
 
 
+def _looks_like_date_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in DATE_HINTS)
+
+
+def _looks_like_year_remaining_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in YEAR_REMAINING_HINTS)
+
+
+def _looks_like_system_config_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in SYSTEM_CONFIG_HINTS)
+
+
 def _reply_violates_identity_contract(reply: str) -> bool:
     normalized = _normalize_text(reply)
     if "criado por irving" in normalized or "mastercontrol" in normalized:
         return False
     return any(term in normalized for term in EXTERNAL_IDENTITY_TERMS)
+
+
+def _read_mem_total_gib() -> str:
+    try:
+        with open("/proc/meminfo", encoding="utf-8") as fp:
+            for line in fp:
+                if line.startswith("MemTotal:"):
+                    parts = line.split()
+                    if len(parts) >= 2:
+                        kb = float(parts[1])
+                        gib = kb / (1024.0 * 1024.0)
+                        return f"{gib:.1f} GiB"
+    except Exception:  # noqa: BLE001
+        return "desconhecida"
+    return "desconhecida"
+
+
+def _local_system_summary(context: dict[str, str]) -> str:
+    host = context.get("hostname", "unknown-host")
+    os_name = context.get("os_pretty", platform.platform())
+    kernel = platform.release()
+    arch = platform.machine() or "unknown-arch"
+    cpu_count = os.cpu_count() or 0
+    mem_total = _read_mem_total_gib()
+    user = context.get("user", "unknown-user")
+    cwd = context.get("cwd", "unknown-cwd")
+    return (
+        f"Host='{host}', SO='{os_name}', kernel='{kernel}', arquitetura='{arch}', "
+        f"CPUs_logicas={cpu_count}, RAM_total~{mem_total}, usuario='{user}', cwd='{cwd}'."
+    )
 
 
 def _guardrailed_chat_reply(
@@ -318,6 +411,21 @@ def _guardrailed_chat_reply(
             f"{identity_line} Estou no host local '{host}' ({os_name}), "
             f"usuario '{user}', cwd '{cwd}', hora_local '{ts_local}'."
         )
+
+    if _looks_like_date_question(user_text):
+        now = dt.datetime.now().astimezone()
+        weekday = PT_WEEKDAYS[now.weekday()]
+        month = PT_MONTHS[now.month]
+        return f"{identity_line} Hoje e {weekday}, {now.day:02d} de {month} de {now.year}."
+
+    if _looks_like_year_remaining_question(user_text):
+        today = dt.datetime.now().astimezone().date()
+        end_of_year = dt.date(today.year, 12, 31)
+        remaining = (end_of_year - today).days
+        return f"{identity_line} Restam {remaining} dia(s) para acabar {today.year}."
+
+    if _looks_like_system_config_question(user_text):
+        return f"{identity_line} {_local_system_summary(context)}"
 
     reply = (model_reply or "").strip()
     if not reply:
@@ -472,6 +580,23 @@ class MasterControlInterface:
             return None
         if not use_llm or not self.state.llm_enabled:
             return raw
+        if (
+            _looks_like_date_question(raw)
+            or _looks_like_year_remaining_question(raw)
+            or _looks_like_system_config_question(raw)
+        ):
+            profile = self.daemon.soul.profile
+            runtime_context = self.daemon.runtime_context_snapshot(self.state.operator_name)
+            reply = _guardrailed_chat_reply(
+                raw,
+                "",
+                profile_name=profile.name,
+                profile_creator=profile.creator,
+                profile_role=profile.role,
+                context=runtime_context,
+            )
+            print(f"[ai] {reply}")
+            return None
         if _looks_like_explicit_operational_command(raw):
             return raw
 

@@ -8,7 +8,11 @@ import contextlib
 import curses
 import io
 import os
+import queue
 import sys
+import threading
+import textwrap
+import traceback
 from pathlib import Path
 from typing import Any
 
@@ -65,6 +69,8 @@ def _safe_curs_set(value: int) -> None:
 
 
 class TerminalUI:
+    SPINNER_FRAMES = ("|", "/", "-", "\\")
+
     def __init__(self, interface: MasterControlInterface, *, warmup_on_start: bool) -> None:
         self.interface = interface
         self.warmup_on_start = warmup_on_start
@@ -73,6 +79,10 @@ class TerminalUI:
         self.logs: list[str] = []
         self.pending_choice: dict[str, Any] | None = None
         self.pending_high_risk: dict[str, Any] | None = None
+        self._events: queue.Queue[Any] = queue.Queue()
+        self._worker: threading.Thread | None = None
+        self._busy_label = ""
+        self._spinner_index = 0
 
     def _log(self, text: str) -> None:
         for line in (text or "").splitlines() or [""]:
@@ -94,6 +104,50 @@ class TerminalUI:
         for line in lines:
             self._log(line)
 
+    def _post(self, event: Any) -> None:
+        self._events.put(event)
+
+    def _drain_events(self) -> None:
+        while True:
+            try:
+                event = self._events.get_nowait()
+            except queue.Empty:
+                break
+            if callable(event):
+                event()
+
+    def _is_busy(self) -> bool:
+        worker = self._worker
+        return bool(worker is not None and worker.is_alive())
+
+    def _mark_idle(self) -> None:
+        self._busy_label = ""
+        self._worker = None
+
+    def _start_job(self, label: str, job_fn: Any) -> bool:
+        if self._is_busy():
+            self._log("[sys] Processando requisicao anterior. Aguarde.")
+            return False
+
+        self._busy_label = label
+
+        def _runner() -> None:
+            try:
+                job_fn()
+            except Exception as exc:  # noqa: BLE001
+                tb_last = traceback.format_exc().strip().splitlines()[-1]
+                self._post(
+                    lambda exc=exc, tb_last=tb_last: self._log(
+                        f"[sys] Erro interno na UI: {exc} ({tb_last})."
+                    )
+                )
+            finally:
+                self._post(self._mark_idle)
+
+        self._worker = threading.Thread(target=_runner, daemon=True)
+        self._worker.start()
+        return True
+
     def _status_line(self) -> str:
         state = self.interface.state
         llm = "on" if state.llm_enabled else "off"
@@ -102,18 +156,43 @@ class TerminalUI:
             f"incident={state.incident} llm={llm} model={state.llm_model}"
         )
 
+    def _wrapped_logs(self, width: int) -> list[str]:
+        wrapped: list[str] = []
+        safe_width = max(1, width)
+        for line in self.logs:
+            text = (line or "").expandtabs(2)
+            if not text:
+                wrapped.append("")
+                continue
+            wrapped.extend(
+                textwrap.wrap(
+                    text,
+                    width=safe_width,
+                    break_long_words=True,
+                    break_on_hyphens=False,
+                    replace_whitespace=False,
+                    drop_whitespace=False,
+                )
+            )
+        return wrapped
+
     def _render(self, stdscr: Any) -> None:
         stdscr.erase()
         max_y, max_x = stdscr.getmaxyx()
         body_top = 3
+        if self._is_busy():
+            spinner = self.SPINNER_FRAMES[self._spinner_index % len(self.SPINNER_FRAMES)]
+            self._spinner_index += 1
+            _add_clipped(stdscr, 3, 0, f"[{spinner}] processando: {self._busy_label}", curses.A_DIM)
+            body_top = 4
         body_bottom = max_y - 2
         body_height = max(1, body_bottom - body_top)
 
         _add_clipped(stdscr, 0, 0, "MasterControl Terminal UI", curses.A_BOLD)
         _add_clipped(stdscr, 1, 0, self._status_line(), curses.A_DIM)
-        _add_clipped(stdscr, 2, 0, "Commands: /help /status /mode /risk /llm /model /quit", curses.A_DIM)
+        _add_clipped(stdscr, 2, 0, "Commands: /help /status /mode /risk /llm /model /raw /quit", curses.A_DIM)
 
-        visible = self.logs[-body_height:]
+        visible = self._wrapped_logs(max_x - 1)[-body_height:]
         for idx, line in enumerate(visible):
             _add_clipped(stdscr, body_top + idx, 0, line)
 
@@ -135,9 +214,73 @@ class TerminalUI:
         self._log_block("[mc] message", result.get("message", "").rstrip())
         self._log(_format_result(result).strip())
 
-    def _run_execute(self, prepared: str, *, dry_run: bool) -> None:
+    def _job_warmup(self, *, force: bool = False) -> None:
+        _out, lines = self._capture_stdout(self.interface.warmup_llm, announce=True, force=force)
+        if lines:
+            self._post(lambda lines=lines: self._log_captured(lines))
+
+    def _job_execute(self, prepared: str, *, dry_run: bool) -> None:
         out = self.interface.run_intent(prepared, execute=True, dry_run=dry_run)
-        self._log_result(out)
+        self._post(lambda out=out: self._log_result(out))
+
+    def _job_handle_intent(self, line: str, *, use_llm: bool = True) -> None:
+        prepared, captured = self._capture_stdout(self.interface._prepare_intent, line, use_llm)
+        if captured:
+            self._post(lambda captured=captured: self._log_captured(captured))
+        if prepared is None:
+            return
+
+        initial = self.interface.run_intent(prepared, execute=False, dry_run=False)
+        self._post(lambda initial=initial: self._log_result(initial))
+
+        mapped = initial.get("mapped_action")
+        if not mapped:
+            return
+        mapped = dict(mapped)
+        mode = self.interface.state.mode
+
+        if mode == "plan":
+            return
+        if mode == "dry-run":
+            execute_out = self.interface.run_intent(prepared, execute=True, dry_run=True)
+            self._post(lambda execute_out=execute_out: self._log_result(execute_out))
+            return
+        if mode == "execute":
+            risk = str(mapped.get("action_risk", "unknown"))
+            if risk in {"high", "critical"}:
+                self._post(
+                    lambda prepared=prepared: self._set_pending_high_risk(prepared)
+                )
+                return
+            execute_out = self.interface.run_intent(prepared, execute=True, dry_run=False)
+            self._post(lambda execute_out=execute_out: self._log_result(execute_out))
+            return
+
+        action_id = str(mapped.get("action_id", "unknown"))
+        action_risk = str(mapped.get("action_risk", "unknown"))
+        self._post(
+            lambda prepared=prepared, mapped=mapped, action_id=action_id, action_risk=action_risk: self._set_pending_choice(
+                prepared=prepared,
+                mapped=mapped,
+                action_id=action_id,
+                action_risk=action_risk,
+            )
+        )
+
+    def _set_pending_choice(
+        self,
+        *,
+        prepared: str,
+        mapped: dict[str, Any],
+        action_id: str,
+        action_risk: str,
+    ) -> None:
+        self.pending_choice = {"prepared": prepared, "mapped": dict(mapped)}
+        self._log(f"[sys] Acao '{action_id}' (risk={action_risk}). Escolha n/d/e.")
+
+    def _set_pending_high_risk(self, prepared: str) -> None:
+        self.pending_high_risk = {"prepared": prepared}
+        self._log("[sys] Acao de alto risco. Digite EXECUTAR para confirmar.")
 
     def _handle_pending_choice(self, line: str) -> bool:
         pending = self.pending_choice
@@ -155,15 +298,14 @@ class TerminalUI:
             self._log("[sys] Execucao cancelada.")
             return True
         if choice == "d":
-            self._run_execute(prepared, dry_run=True)
+            self._start_job("execucao dry-run", lambda prepared=prepared: self._job_execute(prepared, dry_run=True))
             return True
 
         risk = str(mapped.get("action_risk", "unknown"))
         if risk in {"high", "critical"}:
-            self.pending_high_risk = {"prepared": prepared}
-            self._log("[sys] Acao de alto risco. Digite EXECUTAR para confirmar.")
+            self._set_pending_high_risk(prepared)
             return True
-        self._run_execute(prepared, dry_run=False)
+        self._start_job("execucao", lambda prepared=prepared: self._job_execute(prepared, dry_run=False))
         return True
 
     def _handle_pending_high_risk(self, line: str) -> bool:
@@ -174,7 +316,8 @@ class TerminalUI:
         if line.strip() != "EXECUTAR":
             self._log("[sys] Execucao de alto risco cancelada.")
             return True
-        self._run_execute(str(pending["prepared"]), dry_run=False)
+        prepared = str(pending["prepared"])
+        self._start_job("execucao alto risco", lambda prepared=prepared: self._job_execute(prepared, dry_run=False))
         return True
 
     def _handle_directive(self, line: str) -> bool:
@@ -183,51 +326,25 @@ class TerminalUI:
             return False
         command, args = parsed
 
+        if command == "raw":
+            if not args:
+                self._log("[sys] Uso: /raw <comando natural>")
+                return True
+            line_raw = " ".join(args)
+            self._start_job("intent(raw)", lambda line_raw=line_raw: self._job_handle_intent(line_raw, use_llm=False))
+            return True
+
         message, should_exit = apply_directive(self.interface.state, command, args)
         self._log(f"[sys] {message}")
         if command in {"llm", "model"}:
             self.interface._sync_adapter()
         if command == "model" and self.interface.state.llm_enabled:
-            _out, lines = self._capture_stdout(self.interface.warmup_llm, announce=True, force=True)
-            self._log_captured(lines)
+            self._start_job("warm-up modelo", lambda: self._job_warmup(force=True))
         if command == "llm" and args and args[0] == "on":
-            _out, lines = self._capture_stdout(self.interface.warmup_llm, announce=True)
-            self._log_captured(lines)
+            self._start_job("warm-up llm", self._job_warmup)
         if should_exit:
             self.running = False
         return True
-
-    def _handle_intent(self, line: str) -> None:
-        prepared, captured = self._capture_stdout(self.interface._prepare_intent, line, True)
-        self._log_captured(captured)
-        if prepared is None:
-            return
-
-        initial = self.interface.run_intent(prepared, execute=False, dry_run=False)
-        self._log_result(initial)
-        mapped = initial.get("mapped_action")
-        if not mapped:
-            return
-
-        mode = self.interface.state.mode
-        if mode == "plan":
-            return
-        if mode == "dry-run":
-            self._run_execute(prepared, dry_run=True)
-            return
-        if mode == "execute":
-            risk = str(mapped.get("action_risk", "unknown"))
-            if risk in {"high", "critical"}:
-                self.pending_high_risk = {"prepared": prepared}
-                self._log("[sys] Acao de alto risco. Digite EXECUTAR para confirmar.")
-                return
-            self._run_execute(prepared, dry_run=False)
-            return
-
-        action_id = str(mapped.get("action_id", "unknown"))
-        action_risk = str(mapped.get("action_risk", "unknown"))
-        self.pending_choice = {"prepared": prepared, "mapped": dict(mapped)}
-        self._log(f"[sys] Acao '{action_id}' (risk={action_risk}). Escolha n/d/e.")
 
     def _submit(self) -> None:
         line = self.input_buffer.strip()
@@ -236,13 +353,19 @@ class TerminalUI:
             return
         self._log(f"> {line}")
 
+        if self._is_busy():
+            parsed = parse_directive(line)
+            if parsed is None or parsed[0] not in {"quit", "exit"}:
+                self._log("[sys] Processando requisicao anterior. Aguarde.")
+                return
+
         if self._handle_pending_high_risk(line):
             return
         if self._handle_pending_choice(line):
             return
         if self._handle_directive(line):
             return
-        self._handle_intent(line)
+        self._start_job("processando intent", lambda line=line: self._job_handle_intent(line, use_llm=True))
 
     def run(self, stdscr: Any) -> int:
         stdscr.keypad(True)
@@ -252,10 +375,10 @@ class TerminalUI:
         self._log("[sys] MasterControl UI iniciada. Digite /help para comandos.")
         if self.warmup_on_start and self.interface.state.llm_enabled:
             self._log("[sys] Iniciando warm-up do modelo...")
-            _out, lines = self._capture_stdout(self.interface.warmup_llm, announce=True)
-            self._log_captured(lines)
+            self._start_job("warm-up inicial", self._job_warmup)
 
         while self.running:
+            self._drain_events()
             self._render(stdscr)
             try:
                 key = stdscr.get_wch()

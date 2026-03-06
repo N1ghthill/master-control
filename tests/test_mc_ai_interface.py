@@ -14,8 +14,11 @@ from mastercontrol.interface.mc_ai import (
     MasterControlInterface,
     OllamaAdapterError,
     _guardrailed_chat_reply,
+    _looks_like_date_question,
     _looks_like_explicit_operational_command,
     _looks_like_operational_request,
+    _looks_like_system_config_question,
+    _looks_like_year_remaining_question,
     _should_keep_raw_intent,
     build_parser,
     _resolve_ollama_bin,
@@ -152,6 +155,51 @@ class MCAIInterfaceTests(unittest.TestCase):
         self.assertIn("host local 'rainbow'", out)
         self.assertIn("hora_local", out)
 
+    def test_guardrailed_chat_reply_for_date_question(self) -> None:
+        out = _guardrailed_chat_reply(
+            "Sabe que dia e hoje?",
+            "Nao sei.",
+            profile_name="MasterControl",
+            profile_creator="Irving",
+            profile_role="Linux Debian Orchestrator",
+            context={},
+        )
+        self.assertIn("Hoje e", out)
+
+    def test_guardrailed_chat_reply_for_year_remaining_question(self) -> None:
+        out = _guardrailed_chat_reply(
+            "quantos dias faltam para acabar o ano?",
+            "Nao sei.",
+            profile_name="MasterControl",
+            profile_creator="Irving",
+            profile_role="Linux Debian Orchestrator",
+            context={},
+        )
+        self.assertIn("Restam", out)
+        self.assertIn("dia(s)", out)
+
+    def test_guardrailed_chat_reply_for_system_config_question(self) -> None:
+        out = _guardrailed_chat_reply(
+            "Me diz as configuracoes do meu computador",
+            "Nao sei.",
+            profile_name="MasterControl",
+            profile_creator="Irving",
+            profile_role="Linux Debian Orchestrator",
+            context={
+                "hostname": "rainbow",
+                "os_pretty": "Debian GNU/Linux",
+                "user": "irving",
+                "cwd": "/home/irving/ruas/repos/master-control",
+            },
+        )
+        self.assertIn("Host='rainbow'", out)
+        self.assertIn("SO='Debian GNU/Linux'", out)
+
+    def test_question_detectors_for_date_year_and_config(self) -> None:
+        self.assertTrue(_looks_like_date_question("que dia e hoje?"))
+        self.assertTrue(_looks_like_year_remaining_question("quantos dias faltam para acabar o ano?"))
+        self.assertTrue(_looks_like_system_config_question("configuracoes do meu computador"))
+
     def test_looks_like_operational_request_positive(self) -> None:
         self.assertTrue(_looks_like_operational_request("mostre a rota default"))
 
@@ -203,6 +251,36 @@ class MCAIInterfaceTests(unittest.TestCase):
             interface.adapter = adapter
             out = interface._prepare_intent("mostre a rota default", use_llm=True)
             self.assertEqual(out, "mostre a rota default")
+
+    def test_prepare_intent_handles_local_factual_questions_without_llm(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.soul.profile = SimpleNamespace(
+                name="MasterControl",
+                creator="Irving",
+                role="Linux Debian Orchestrator",
+            )
+            daemon.runtime_context_snapshot.return_value = {
+                "hostname": "rainbow",
+                "os_pretty": "Debian GNU/Linux",
+                "user": "irving",
+                "cwd": "/home/irving/ruas/repos/master-control",
+                "timestamp_local": "2026-03-06T04:00:00-03:00",
+            }
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState())
+            adapter = MagicMock()
+            adapter.model = interface.state.llm_model
+            adapter.interpret.side_effect = AssertionError("LLM should not be called")
+            interface.adapter = adapter
+            for question in (
+                "Sabe que dia e hoje?",
+                "Quantos dias faltam para acabar o ano?",
+                "Me diz as configuracoes do meu computador",
+            ):
+                out = interface._prepare_intent(question, use_llm=True)
+                self.assertIsNone(out)
+            adapter.interpret.assert_not_called()
 
     def test_warmup_llm_runs_once_per_model(self) -> None:
         with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
