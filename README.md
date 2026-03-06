@@ -29,6 +29,7 @@ MasterControl deve ser:
 - [Identidade e Confianca](./docs/IDENTITY_AND_TRUST.md)
 - [Soul Core](./docs/SOUL_CORE.md)
 - [Humanization Runtime](./docs/HUMANIZATION_RUNTIME.md)
+- [Interface IA (chat)](./docs/AI_INTERFACE.md)
 - [MasterControlD Runtime](./docs/MASTERCONTROLD_RUNTIME.md)
 - [Inteligencia Operacional](./docs/OPERATIONAL_INTELLIGENCE.md)
 - [Adaptive Intelligence Spec](./docs/ADAPTIVE_INTELLIGENCE_SPEC.md)

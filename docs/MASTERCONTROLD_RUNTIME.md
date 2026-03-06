@@ -29,6 +29,12 @@
 /home/irving/ruas/repos/master-control/scripts/mastercontrol --help
 ```
 
+Interface interativa IA:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-ai
+```
+
 Example:
 
 ```bash

@@ -28,6 +28,12 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 
 - `scripts/mastercontrol`
 - `scripts/mc-humanized`
+- `scripts/mc-ai`
+
+### Interface conversacional
+
+- `mastercontrol/interface/mc_ai.py`
+- `mastercontrol/interface/__init__.py`
 
 ## 2) Security / Privileges
 
@@ -94,6 +100,7 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 - `config/soul/core_profile.yaml`
 - `docs/SOUL_CORE.md`
 - `docs/HUMANIZATION_RUNTIME.md`
+- `docs/AI_INTERFACE.md`
 
 ## 5) Documentacao de referencia
 

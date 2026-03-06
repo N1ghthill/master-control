@@ -1,5 +1,35 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Interface IA conversacional (REPL)
+
+### Objetivo do ciclo
+
+Facilitar a interacao com o MasterControl sem depender de combinacoes extensas de flags em cada comando.
+
+### Acoes executadas
+
+1. Implementada interface IA em REPL:
+   - `mastercontrol/interface/mc_ai.py`
+   - wrapper `scripts/mc-ai`.
+2. Adicionados comandos de controle de sessao:
+   - `/risk`, `/path`, `/mode`, `/incident`, `/operator`, `/status`, `/help`, `/quit`.
+3. Integrado fluxo guiado de execucao:
+   - `confirm` (pergunta por comando),
+   - `plan` (somente analise),
+   - `dry-run` automatico,
+   - `execute` automatico com confirmacao textual para alto risco (`EXECUTAR`).
+4. Adicionados testes da interface:
+   - `tests/test_mc_ai_interface.py`.
+5. Atualizada documentacao de uso:
+   - `docs/AI_INTERFACE.md`
+   - referencias no `README`, `CODE_MAP` e `MASTERCONTROLD_RUNTIME`.
+
+### Resultados observados
+
+- Operacao por linguagem natural ficou direta no terminal, sem repetir flags.
+- Guardrails de runtime foram preservados na interface.
+- Testes de parsing/estado da interface passaram junto da suite existente.
+
 ## 2026-03-06 - Hardening de privilegios + correcoes de classificacao
 
 ### Objetivo do ciclo
