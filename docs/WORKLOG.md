@@ -1,5 +1,32 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - TUI padrao ao invocar `mastercontrol`
+
+### Objetivo do ciclo
+
+Iniciar uma interface de terminal estilo painel (TUI) automaticamente ao digitar `mastercontrol`, reduzindo friccao de uso no dia a dia.
+
+### Acoes executadas
+
+1. Criada TUI em `mastercontrol/interface/mc_tui.py`:
+   - layout continuo (header de estado, area de logs e linha de comando),
+   - processamento de linguagem natural e comandos `/...`,
+   - fluxo de confirmacao (`n/d/e`) e confirmacao de alto risco (`EXECUTAR`),
+   - integracao com guardrails e warm-up do LLM.
+2. Ajustado launcher `scripts/mc-ai`:
+   - sem argumentos em TTY interativo -> abre TUI por padrao,
+   - `--repl` forca interface classica,
+   - `--tui` forca TUI explicitamente.
+3. Mantido comando global `mastercontrol` no ambiente do operador apontando para `scripts/mc-ai`.
+4. Documentacao atualizada:
+   - `docs/AI_INTERFACE.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+
+### Resultado
+
+- `mastercontrol` agora sobe direto a TUI quando invocado sem argumentos.
+- Fluxo classico continua disponivel com `mastercontrol --repl`.
+
 ## 2026-03-06 - Warm-up automatico no startup da interface IA
 
 ### Objetivo do ciclo

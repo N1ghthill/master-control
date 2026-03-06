@@ -3,5 +3,18 @@ set -euo pipefail
 
 REPO_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
-python3 "${REPO_ROOT}/mastercontrol/interface/mc_ai.py" "$@"
+if [[ "${1:-}" == "--tui" ]]; then
+  shift
+  exec python3 "${REPO_ROOT}/mastercontrol/interface/mc_tui.py" "$@"
+fi
 
+if [[ "${1:-}" == "--repl" ]]; then
+  shift
+  exec python3 "${REPO_ROOT}/mastercontrol/interface/mc_ai.py" "$@"
+fi
+
+if [[ $# -eq 0 && -t 0 && -t 1 ]]; then
+  exec python3 "${REPO_ROOT}/mastercontrol/interface/mc_tui.py"
+fi
+
+exec python3 "${REPO_ROOT}/mastercontrol/interface/mc_ai.py" "$@"

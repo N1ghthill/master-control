@@ -31,6 +31,19 @@ Atalho conversacional recomendado (tenta runtime local atualizado automaticament
 /home/irving/ruas/repos/master-control/scripts/mc-ai-chat
 ```
 
+Comando global no terminal:
+
+```bash
+mastercontrol
+```
+
+Sem argumentos em terminal interativo, `mastercontrol` abre a UI de terminal (TUI) com layout continuo.
+Para forcar o REPL classico:
+
+```bash
+mastercontrol --repl
+```
+
 Se o runtime local atualizado nao estiver rodando, iniciar:
 
 ```bash
@@ -49,6 +62,7 @@ Padrao atual do `mc-ai`:
 - timeout: `25s`
 - autodetecta `~/.local/ollama-latest/bin/ollama` e usa `OLLAMA_HOST=127.0.0.1:11435` quando disponivel
 - no modo interativo, faz warm-up automatico do LLM na abertura para reduzir latencia da primeira resposta
+- quando chamado sem argumentos, abre a TUI por padrao
 
 Comando unico (sem entrar no REPL):
 
@@ -114,6 +128,9 @@ Perfil alternativo com fallback estavel:
 
 ## Comandos da interface
 
+- `mastercontrol` (TUI por padrao)
+- `mastercontrol --repl` (REPL classico)
+- `mastercontrol --tui` (forca TUI)
 - `/help`
 - `/status`
 - `/risk <low|medium|high|critical>`

@@ -36,6 +36,12 @@ Interface interativa IA:
 /home/irving/ruas/repos/master-control/scripts/mc-ai
 ```
 
+Comando global (TUI por padrao):
+
+```bash
+mastercontrol
+```
+
 Fluxo detalhado e roteiro diario da interface:
 - `docs/AI_INTERFACE.md` (secoes "Fluxo ponta a ponta" e "Roteiro diario (5 comandos)")
 
@@ -57,6 +63,12 @@ Interface IA sem warm-up inicial:
 
 ```bash
 /home/irving/ruas/repos/master-control/scripts/mc-ai --no-llm-warmup
+```
+
+Interface IA no REPL classico:
+
+```bash
+mastercontrol --repl
 ```
 
 Interface IA com modelo explicito:
