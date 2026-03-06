@@ -7,6 +7,7 @@
 ## What it does now
 
 - Receives natural-language intent.
+- Captures real runtime context snapshot (`hostname`, `os`, `user`, `cwd`, local time).
 - Runs lightweight tone analysis (`mc-tone-analyzer`).
 - Runs local-first intent classification (`mc-intent-classifier`: transformer local optional -> history/heuristic merge with explicit mutation-verb safeguard).
 - Loads operator profile preferences (`mc-operator-profiler`).

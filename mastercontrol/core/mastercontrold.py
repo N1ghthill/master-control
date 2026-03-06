@@ -6,6 +6,9 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import json
+import os
+import platform
+import socket
 import subprocess
 import sys
 import time
@@ -106,6 +109,7 @@ class MasterControlD:
             risk_level=risk,
             path=path_decision["path"],
             intent_cluster=tone_result.intent_cluster,
+            operator_name=req.operator_name,
         )
         plan = plan_bundle["steps"]
         mapped_action = plan_bundle.get("action")
@@ -226,6 +230,45 @@ class MasterControlD:
         risk = (risk_level or "").strip().lower()
         return risk if risk in VALID_RISK else "medium"
 
+    @staticmethod
+    def _detect_os_pretty() -> str:
+        os_release = Path("/etc/os-release")
+        if os_release.exists():
+            try:
+                for line in os_release.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("PRETTY_NAME="):
+                        return line.split("=", 1)[1].strip().strip('"')
+            except OSError:
+                pass
+        return platform.platform()
+
+    def runtime_context_snapshot(self, operator_name: str) -> dict[str, str]:
+        user = os.getenv("USER") or os.getenv("LOGNAME") or "unknown-user"
+        try:
+            cwd = str(Path.cwd())
+        except OSError:
+            cwd = "unknown-cwd"
+        return {
+            "operator": (operator_name or "Operator").strip() or "Operator",
+            "hostname": socket.gethostname() or "unknown-host",
+            "os_pretty": self._detect_os_pretty(),
+            "user": user,
+            "cwd": cwd,
+            "timestamp_local": dt.datetime.now().astimezone().isoformat(timespec="seconds"),
+        }
+
+    @staticmethod
+    def _context_snapshot_step(snapshot: dict[str, str]) -> str:
+        return (
+            "Collect current context snapshot "
+            f"(operator={snapshot.get('operator', 'Operator')}, "
+            f"host={snapshot.get('hostname', 'unknown-host')}, "
+            f"os={snapshot.get('os_pretty', 'unknown-os')}, "
+            f"user={snapshot.get('user', 'unknown-user')}, "
+            f"cwd={snapshot.get('cwd', 'unknown-cwd')}, "
+            f"ts_local={snapshot.get('timestamp_local', 'unknown-time')})."
+        )
+
     def _decide_path(
         self,
         intent: str,
@@ -303,9 +346,11 @@ class MasterControlD:
         risk_level: str,
         path: str,
         intent_cluster: str,
+        operator_name: str,
     ) -> dict[str, Any]:
         text = (intent or "").lower()
-        steps = ["Collect current context snapshot (who/where/when/what-now)."]
+        context_snapshot = self.runtime_context_snapshot(operator_name)
+        steps = [self._context_snapshot_step(context_snapshot)]
         resolved = self.registry.resolve(intent_text=text, intent_cluster=intent_cluster)
         module_plan = resolved.plan
         action = self._map_action(intent_text=text, intent_cluster=intent_cluster, module_plan=module_plan)

@@ -5,8 +5,10 @@ from __future__ import annotations
 
 import argparse
 import os
+import re
 import shlex
 import sys
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -29,6 +31,35 @@ DEFAULT_LLM_MODEL = "qwen2.5:7b"
 DEFAULT_LLM_TIMEOUT_S = 25
 LOCAL_OLLAMA_BIN = Path.home() / ".local/ollama-latest/bin/ollama"
 LOCAL_OLLAMA_HOST = "127.0.0.1:11435"
+IDENTITY_HINTS = (
+    "quem e voce",
+    "quem voce e",
+    "who are you",
+    "qual seu nome",
+    "qual e seu nome",
+    "quem e vc",
+)
+LOCATION_HINTS = (
+    "onde voce esta",
+    "onde vc esta",
+    "where are you",
+    "em qual host",
+    "em qual servidor",
+    "onde estamos",
+)
+RUNTIME_CONTEXT_HINTS = (
+    "o que esta acontecendo agora",
+    "qual o contexto atual",
+    "estado atual do sistema",
+)
+EXTERNAL_IDENTITY_TERMS = (
+    "alibaba",
+    "chatgpt",
+    "openai",
+    "qwen",
+    "gemini",
+    "claude",
+)
 
 
 @dataclass
@@ -42,6 +73,69 @@ class InterfaceState:
     llm_model: str = DEFAULT_LLM_MODEL
     llm_timeout_s: int = DEFAULT_LLM_TIMEOUT_S
     ollama_bin: str = "ollama"
+
+
+def _normalize_text(text: str) -> str:
+    raw = (text or "").strip().lower()
+    folded = unicodedata.normalize("NFKD", raw)
+    plain = "".join(ch for ch in folded if not unicodedata.combining(ch))
+    plain = re.sub(r"\s+", " ", plain)
+    return plain.strip()
+
+
+def _looks_like_identity_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in IDENTITY_HINTS)
+
+
+def _looks_like_location_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in LOCATION_HINTS)
+
+
+def _looks_like_runtime_context_question(text: str) -> bool:
+    normalized = _normalize_text(text)
+    return any(hint in normalized for hint in RUNTIME_CONTEXT_HINTS)
+
+
+def _reply_violates_identity_contract(reply: str) -> bool:
+    normalized = _normalize_text(reply)
+    if "criado por irving" in normalized or "mastercontrol" in normalized:
+        return False
+    return any(term in normalized for term in EXTERNAL_IDENTITY_TERMS)
+
+
+def _guardrailed_chat_reply(
+    user_text: str,
+    model_reply: str,
+    *,
+    profile_name: str,
+    profile_creator: str,
+    profile_role: str,
+    context: dict[str, str],
+) -> str:
+    identity_line = f"Sou o {profile_name}, criado por {profile_creator}, no papel de {profile_role}."
+
+    if _looks_like_identity_question(user_text):
+        return identity_line
+
+    if _looks_like_location_question(user_text) or _looks_like_runtime_context_question(user_text):
+        host = context.get("hostname", "unknown-host")
+        os_name = context.get("os_pretty", "unknown-os")
+        user = context.get("user", "unknown-user")
+        cwd = context.get("cwd", "unknown-cwd")
+        ts_local = context.get("timestamp_local", "unknown-time")
+        return (
+            f"{identity_line} Estou no host local '{host}' ({os_name}), "
+            f"usuario '{user}', cwd '{cwd}', hora_local '{ts_local}'."
+        )
+
+    reply = (model_reply or "").strip()
+    if not reply:
+        return "Posso ajudar com comandos operacionais quando voce quiser."
+    if _reply_violates_identity_contract(reply):
+        return identity_line
+    return reply
 
 
 def parse_directive(line: str) -> tuple[str, list[str]] | None:
@@ -176,10 +270,17 @@ class MasterControlInterface:
 
         self._llm_error_reported = False
         if interpreted.route == "chat":
-            if interpreted.chat_reply:
-                print(f"[ai] {interpreted.chat_reply}")
-            else:
-                print("[ai] Posso ajudar com comandos operacionais quando voce quiser.")
+            profile = self.daemon.soul.profile
+            runtime_context = self.daemon.runtime_context_snapshot(self.state.operator_name)
+            reply = _guardrailed_chat_reply(
+                raw,
+                interpreted.chat_reply,
+                profile_name=profile.name,
+                profile_creator=profile.creator,
+                profile_role=profile.role,
+                context=runtime_context,
+            )
+            print(f"[ai] {reply}")
             return None
 
         normalized = interpreted.intent.strip() if interpreted.intent else raw

@@ -1,5 +1,30 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-06 - Hardening da alma no chat + contexto real de host
+
+### Objetivo do ciclo
+
+Garantir que a interface responda identidade correta do MasterControl no modo chat e exponha contexto real quando operador pergunta "onde voce esta".
+
+### Acoes executadas
+
+1. Adicionado guardrail de identidade no `mc-ai`:
+   - perguntas de identidade retornam resposta deterministica baseada no soul profile,
+   - perguntas de localizacao retornam host/os/user/cwd/time locais,
+   - respostas chat com autoidentificacao externa (ex.: Alibaba) sao substituidas pela identidade local.
+2. Adicionado snapshot real de contexto no `mastercontrold`:
+   - coleta de `hostname`, `os_pretty`, `user`, `cwd`, `timestamp_local`,
+   - plano passou a incluir esses dados no passo inicial de contexto.
+3. Cobertura de testes:
+   - novos testes de guardrail em `tests/test_mc_ai_interface.py`,
+   - novo arquivo `tests/test_mastercontrold_context.py`.
+
+### Resultado
+
+- Fluxo de alma no runtime segue reconhecendo `MasterControl/Irving`.
+- `mc-ai` deixou de responder identidade de provedor do modelo em perguntas de autoidentificacao.
+- Perguntas sobre localizacao agora retornam contexto concreto do host local.
+
 ## 2026-03-06 - Documentacao de fluxo operacional da interface IA
 
 ### Objetivo do ciclo

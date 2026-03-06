@@ -84,6 +84,7 @@ Perfil de resposta mais elaborada (maior latencia):
    - em erro/timeout do LLM, entra fallback local deterministico
 3. Se for `chat`:
    - a interface responde no terminal com `[ai] ...`
+   - perguntas de identidade/localizacao usam guardrail local (perfil da alma + contexto real do host)
    - nao aciona execucao operacional
 4. Se for `intent`:
    - o `mastercontrold` roda analise de tom/contexto
@@ -121,6 +122,7 @@ Perfil de resposta mais elaborada (maior latencia):
   - bloqueio/passo explicito para alto risco,
   - allowlist privilegiada confiavel em `/etc/mastercontrol`.
 - O LLM nao executa comandos do sistema e nao substitui as validacoes do runtime.
+- A identidade de resposta em `chat` eh ancorada no perfil local (`MasterControl`, creator `Irving`) para evitar autoidentificacao incorreta do modelo.
 
 ## Roteiro diario (5 comandos)
 
