@@ -23,6 +23,8 @@ DEFAULT_LABELS = {
     "package.install",
     "package.remove",
     "security.audit",
+    "security.incident",
+    "security.vigilance",
     "network.diagnose",
     "general.assist",
 }
@@ -92,6 +94,51 @@ class IntentClassifier:
         "security.audit": (
             {"security", "seguranca", "audit", "auditar", "hardening", "vuln", "acesso"},
             (r"\b(audit|auditar|hardening|vulnerability)\b",),
+        ),
+        "security.incident": (
+            {
+                "incident",
+                "incidente",
+                "incidentes",
+                "response",
+                "resposta",
+                "respond",
+                "responder",
+                "responda",
+                "contain",
+                "containment",
+                "conter",
+                "contencao",
+                "mitigar",
+                "mitigue",
+                "security",
+                "seguranca",
+            },
+            (
+                r"\b(incident(e)?|resposta|response|contain(ment)?|conter|mitigar)\b",
+                r"\b(responda|responder|mitigue|contenha)\b.*\b(incidente|incident|alerta|alert)\b",
+            ),
+        ),
+        "security.vigilance": (
+            {
+                "vigia",
+                "vigiar",
+                "vigie",
+                "monitor",
+                "monitore",
+                "monitorar",
+                "vigilancia",
+                "intruso",
+                "intrusos",
+                "proteger",
+                "protecao",
+                "security",
+                "seguranca",
+            },
+            (
+                r"\b(vigiar|vigie|monitor(ar|e)?|watch)\b.*\b(seguranca|sistema|intruso|intrusos|acesso)\b",
+                r"\b(intruso|intrusos)\b",
+            ),
         ),
         "network.diagnose": (
             {

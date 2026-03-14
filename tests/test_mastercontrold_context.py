@@ -3,14 +3,18 @@
 
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from mastercontrol.core.mastercontrold import MasterControlD
 
 
 class MasterControlDContextTests(unittest.TestCase):
     def setUp(self) -> None:
-        self.daemon = MasterControlD()
+        self.tmpdir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.tmpdir.cleanup)
+        self.daemon = MasterControlD(db_path=Path(self.tmpdir.name) / "mastercontrol.db")
 
     def test_runtime_context_snapshot_contains_concrete_fields(self) -> None:
         snapshot = self.daemon.runtime_context_snapshot("Irving")

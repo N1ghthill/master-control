@@ -19,6 +19,7 @@ from typing import Any
 try:
     from mastercontrol.core.mastercontrold import MasterControlD, OperatorRequest
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK
+    from mastercontrol.interface.flow_orchestrator import FlowOrchestrator
     from mastercontrol.llm.ollama_adapter import OllamaAdapter, OllamaAdapterError
 except ImportError:  # pragma: no cover
     repo_root = Path(__file__).resolve().parents[2]
@@ -26,12 +27,15 @@ except ImportError:  # pragma: no cover
         sys.path.insert(0, str(repo_root))
     from mastercontrol.core.mastercontrold import MasterControlD, OperatorRequest  # type: ignore
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK  # type: ignore
+    from mastercontrol.interface.flow_orchestrator import FlowOrchestrator  # type: ignore
     from mastercontrol.llm.ollama_adapter import OllamaAdapter, OllamaAdapterError  # type: ignore
 
 
 VALID_MODES = {"confirm", "plan", "dry-run", "execute"}
 DEFAULT_LLM_MODEL = "qwen3:4b-instruct-2507-q4_K_M"
 DEFAULT_LLM_TIMEOUT_S = 25
+ALERT_STATUS_TTL_S = 5.0
+INCIDENT_SNAPSHOT_TTL_S = 5.0
 LOCAL_OLLAMA_BIN = Path.home() / ".local/ollama-latest/bin/ollama"
 LOCAL_OLLAMA_HOST = "127.0.0.1:11435"
 IDENTITY_HINTS = (
@@ -122,6 +126,13 @@ OPERATIONAL_OBJECT_HINTS = {
     "package",
     "pacote",
     "default",
+    "security",
+    "seguranca",
+    "alerta",
+    "alertas",
+    "alerts",
+    "intruso",
+    "intrusos",
 }
 EXPLANATION_PREFIXES = (
     "o que",
@@ -167,6 +178,7 @@ OP_KIND_GROUPS: tuple[tuple[str, set[str]], ...] = (
     ("flush", {"flush", "limpar", "cache"}),
 )
 CANONICAL_TARGET_TOKEN = {"todo": "all", "tudo": "all"}
+INCIDENT_DIRECTIVE_STATUSES = {"active", "open", "contained", "resolved", "dismissed", "all"}
 LLM_WARMUP_PROMPT = "oi"
 PT_WEEKDAYS = (
     "segunda-feira",
@@ -448,6 +460,41 @@ def parse_directive(line: str) -> tuple[str, list[str]] | None:
     return (parts[0].lower(), parts[1:])
 
 
+def build_directive_intent(command: str, args: list[str]) -> str | None:
+    if command == "incidents":
+        if len(args) > 1:
+            return None
+        status = (args[0].strip().lower() if args else "active") or "active"
+        if status not in INCIDENT_DIRECTIVE_STATUSES:
+            return None
+        return f"liste os incidentes status {status}"
+    if command == "incident-show":
+        if len(args) != 1 or not args[0].strip():
+            return None
+        return f"mostre o incidente {args[0].strip()}"
+    if command == "incident-resolve":
+        if len(args) != 1 or not args[0].strip():
+            return None
+        return f"resolva o incidente {args[0].strip()}"
+    if command == "incident-dismiss":
+        if len(args) != 1 or not args[0].strip():
+            return None
+        return f"descarte o incidente {args[0].strip()}"
+    return None
+
+
+def directive_usage(command: str) -> str | None:
+    if command == "incidents":
+        return "Uso: /incidents [active|open|contained|resolved|dismissed|all]"
+    if command == "incident-show":
+        return "Uso: /incident-show <incident_id>"
+    if command == "incident-resolve":
+        return "Uso: /incident-resolve <incident_id>"
+    if command == "incident-dismiss":
+        return "Uso: /incident-dismiss <incident_id>"
+    return None
+
+
 def apply_directive(state: InterfaceState, command: str, args: list[str]) -> tuple[str, bool]:
     if command in {"quit", "exit"}:
         return ("Encerrando interface.", True)
@@ -456,7 +503,8 @@ def apply_directive(state: InterfaceState, command: str, args: list[str]) -> tup
             "Comandos: /help, /status, /risk <low|medium|high|critical>, "
             "/path <auto|fast|deep|fast_with_confirm>, /mode <confirm|plan|dry-run|execute>, "
             "/incident <on|off>, /operator <nome>, /llm <on|off|status>, /model <nome>, "
-            "/raw <comando natural>, /quit",
+            "/incidents [status], /incident-show <id>, /incident-resolve <id>, "
+            "/incident-dismiss <id>, /raw <comando natural>, /quit",
             False,
         )
     if command == "status":
@@ -533,6 +581,14 @@ class MasterControlInterface:
         self.adapter: OllamaAdapter | None = None
         self._llm_error_reported = False
         self._warmed_models: set[str] = set()
+        self._alert_status_cache_value = "alerts=n/a"
+        self._alert_status_cache_ts = 0.0
+        self._incident_snapshot_cache_value: dict[str, Any] = {
+            "incidents": [],
+            "detail": None,
+            "selected_incident_id": "",
+        }
+        self._incident_snapshot_cache_ts = 0.0
         self._sync_adapter()
 
     def _sync_adapter(self) -> None:
@@ -638,7 +694,18 @@ class MasterControlInterface:
             print(f"[ai] Intencao normalizada: {normalized}")
         return normalized
 
-    def run_intent(self, intent: str, execute: bool, dry_run: bool) -> dict[str, Any]:
+    def run_intent(
+        self,
+        intent: str,
+        execute: bool,
+        dry_run: bool,
+        *,
+        approve: bool | None = None,
+        allow_high_risk: bool | None = None,
+        request_id: str = "",
+    ) -> dict[str, Any]:
+        effective_approve = execute if approve is None else bool(approve)
+        effective_allow_high_risk = execute if allow_high_risk is None else bool(allow_high_risk)
         req = OperatorRequest(
             operator_name=self.state.operator_name,
             intent=intent,
@@ -647,12 +714,102 @@ class MasterControlInterface:
             requested_path=self.state.path_mode,
             execute=execute,
             dry_run=dry_run,
-            approve=execute,
-            allow_high_risk=execute,
-            request_id="",
+            approve=effective_approve,
+            allow_high_risk=effective_allow_high_risk,
+            request_id=request_id,
             simulate_failure=False,
         )
-        return self.daemon.handle(req)
+        out = self.daemon.handle(req)
+        self._alert_status_cache_ts = 0.0
+        self._incident_snapshot_cache_ts = 0.0
+        return out
+
+    @staticmethod
+    def _is_high_risk_action(mapped_action: dict[str, Any] | None) -> bool:
+        if not isinstance(mapped_action, dict):
+            return False
+        return str(mapped_action.get("action_risk", "unknown")) in {"high", "critical"}
+
+    def active_alert_status_line(self, force: bool = False) -> str:
+        now = time.monotonic()
+        if not force and (now - self._alert_status_cache_ts) < ALERT_STATUS_TTL_S:
+            return self._alert_status_cache_value
+        try:
+            summary = self.daemon.security_watch.active_alert_summary()
+            value = "alerts=n/a"
+            if isinstance(summary, dict):
+                value = str(summary.get("summary", "alerts=n/a"))
+            incident_summary = self.daemon.security_watch.active_incident_summary()
+            if isinstance(incident_summary, dict):
+                incident_value = str(incident_summary.get("summary", "")).strip()
+                if incident_value:
+                    value = f"{value} {incident_value}"
+        except Exception:  # noqa: BLE001
+            value = "alerts=n/a"
+        self._alert_status_cache_value = value
+        self._alert_status_cache_ts = now
+        return value
+
+    def active_incident_snapshot(
+        self,
+        *,
+        force: bool = False,
+        incident_id: str = "",
+        limit: int = 6,
+        activity_limit: int = 5,
+    ) -> dict[str, Any]:
+        now = time.monotonic()
+        incident_key = (incident_id or "").strip().lower()
+        cached = self._incident_snapshot_cache_value
+        cached_id = str(cached.get("selected_incident_id", "")).strip().lower()
+        cache_fresh = (now - self._incident_snapshot_cache_ts) < INCIDENT_SNAPSHOT_TTL_S
+
+        if not force and cache_fresh:
+            if not incident_key or incident_key == cached_id:
+                return cached
+            cached_rows = list(cached.get("incidents", []))
+            if any(str(row.get("incident_id", "")).strip().lower() == incident_key for row in cached_rows):
+                detail = self.daemon.security_watch.get_incident(
+                    incident_key,
+                    activity_limit=max(1, min(activity_limit, 10)),
+                    sync=False,
+                )
+                cached = {
+                    "incidents": cached_rows,
+                    "detail": detail,
+                    "selected_incident_id": incident_key if detail is not None else "",
+                }
+                self._incident_snapshot_cache_value = cached
+                self._incident_snapshot_cache_ts = now
+                return cached
+
+        incidents = self.daemon.security_watch.list_incidents(
+            limit=max(1, min(limit, 10)),
+            status="active",
+        )
+        selected_id = incident_key
+        if selected_id and not any(
+            str(row.get("incident_id", "")).strip().lower() == selected_id for row in incidents
+        ):
+            selected_id = ""
+        if not selected_id and incidents:
+            selected_id = str(incidents[0].get("incident_id", "")).strip().lower()
+
+        detail = None
+        if selected_id:
+            detail = self.daemon.security_watch.get_incident(
+                selected_id,
+                activity_limit=max(1, min(activity_limit, 10)),
+                sync=False,
+            )
+        value = {
+            "incidents": incidents,
+            "detail": detail,
+            "selected_incident_id": selected_id,
+        }
+        self._incident_snapshot_cache_value = value
+        self._incident_snapshot_cache_ts = now
+        return value
 
     def _confirm_execution(self, mapped_action: dict[str, Any]) -> str:
         action_id = str(mapped_action.get("action_id", "unknown"))
@@ -675,43 +832,36 @@ class MasterControlInterface:
         phrase = input("Acao de alto risco. Digite EXECUTAR para confirmar: ").strip()
         return phrase == "EXECUTAR"
 
+    def _build_flow_orchestrator(self) -> FlowOrchestrator:
+        return FlowOrchestrator(self.run_intent, self._is_high_risk_action)
+
+    @staticmethod
+    def _print_flow_results(results: list[dict[str, Any]]) -> None:
+        for result in results:
+            print(result["message"])
+            print(_format_result(result))
+
     def handle_intent(self, intent: str, use_llm: bool = True) -> None:
         prepared = self._prepare_intent(intent, use_llm=use_llm)
         if prepared is None:
             return
 
-        initial = self.run_intent(intent=prepared, execute=False, dry_run=False)
-        print(initial["message"])
-        print(_format_result(initial))
+        flow = self._build_flow_orchestrator()
+        outcome = flow.begin(prepared, mode=self.state.mode)
+        self._print_flow_results(outcome.results)
 
-        mapped = initial.get("mapped_action")
-        if not mapped:
-            return
+        if outcome.pending_choice is not None:
+            choice = self._confirm_execution(outcome.pending_choice.mapped_action)
+            outcome = flow.choose(outcome.pending_choice, choice=choice)
+            self._print_flow_results(outcome.results)
 
-        if self.state.mode == "plan":
-            return
-
-        choice = "n"
-        if self.state.mode == "dry-run":
-            choice = "d"
-        elif self.state.mode == "execute":
-            choice = "e"
-        else:
-            choice = self._confirm_execution(mapped)
-
-        if choice == "n":
-            return
-        if choice == "e" and not self._require_high_risk_confirmation(mapped):
-            print("Execucao cancelada.")
-            return
-
-        run = self.run_intent(
-            intent=prepared,
-            execute=True,
-            dry_run=(choice == "d"),
-        )
-        print(run["message"])
-        print(_format_result(run))
+        if outcome.pending_high_risk is not None:
+            confirmed = self._require_high_risk_confirmation(outcome.pending_high_risk.mapped_action)
+            if not confirmed:
+                print("Execucao cancelada.")
+                return
+            outcome = flow.confirm_high_risk(outcome.pending_high_risk, confirmed=True)
+            self._print_flow_results(outcome.results)
 
 
 def build_parser() -> argparse.ArgumentParser:
@@ -775,6 +925,14 @@ def repl(interface: MasterControlInterface) -> int:
                     print("Uso: /raw <comando natural>")
                 else:
                     interface.handle_intent(" ".join(args), use_llm=False)
+                continue
+            directive_intent = build_directive_intent(cmd, args)
+            if directive_intent is not None:
+                interface.handle_intent(directive_intent, use_llm=False)
+                continue
+            directive_help = directive_usage(cmd)
+            if directive_help is not None:
+                print(directive_help)
                 continue
             message, should_exit = apply_directive(interface.state, cmd, args)
             print(message)

@@ -8,6 +8,7 @@ import datetime as dt
 import json
 import sqlite3
 from collections import Counter, defaultdict
+from contextlib import closing
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
@@ -52,122 +53,125 @@ class OperatorProfiler:
         return conn
 
     def _init_db(self) -> None:
-        with self._conn() as conn:
-            conn.executescript(
-                """
-                CREATE TABLE IF NOT EXISTS command_events (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts_utc TEXT NOT NULL,
-                    operator_id TEXT NOT NULL,
-                    intent_text TEXT NOT NULL,
-                    intent_cluster TEXT NOT NULL,
-                    risk_level TEXT NOT NULL,
-                    selected_path TEXT NOT NULL,
-                    success INTEGER NOT NULL,
-                    latency_ms INTEGER NOT NULL,
-                    command_error TEXT NOT NULL DEFAULT '',
-                    forced_path INTEGER NOT NULL DEFAULT 0,
-                    incident INTEGER NOT NULL DEFAULT 0
-                );
+        with closing(self._conn()) as conn:
+            with conn:
+                conn.executescript(
+                    """
+                    CREATE TABLE IF NOT EXISTS command_events (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts_utc TEXT NOT NULL,
+                        operator_id TEXT NOT NULL,
+                        intent_text TEXT NOT NULL,
+                        intent_cluster TEXT NOT NULL,
+                        risk_level TEXT NOT NULL,
+                        selected_path TEXT NOT NULL,
+                        success INTEGER NOT NULL,
+                        latency_ms INTEGER NOT NULL,
+                        command_error TEXT NOT NULL DEFAULT '',
+                        forced_path INTEGER NOT NULL DEFAULT 0,
+                        incident INTEGER NOT NULL DEFAULT 0
+                    );
 
-                CREATE TABLE IF NOT EXISTS operator_patterns (
-                    operator_id TEXT PRIMARY KEY,
-                    active_hours TEXT NOT NULL,
-                    common_intents TEXT NOT NULL,
-                    error_prone_commands TEXT NOT NULL,
-                    path_preference TEXT NOT NULL,
-                    tone_sensitivity REAL NOT NULL,
-                    updated_at TEXT NOT NULL
-                );
+                    CREATE TABLE IF NOT EXISTS operator_patterns (
+                        operator_id TEXT PRIMARY KEY,
+                        active_hours TEXT NOT NULL,
+                        common_intents TEXT NOT NULL,
+                        error_prone_commands TEXT NOT NULL,
+                        path_preference TEXT NOT NULL,
+                        tone_sensitivity REAL NOT NULL,
+                        updated_at TEXT NOT NULL
+                    );
 
-                CREATE TABLE IF NOT EXISTS dream_insights (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    ts_utc TEXT NOT NULL,
-                    operator_id TEXT NOT NULL,
-                    insight_type TEXT NOT NULL,
-                    payload_json TEXT NOT NULL,
-                    status TEXT NOT NULL DEFAULT 'new'
-                );
+                    CREATE TABLE IF NOT EXISTS dream_insights (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        ts_utc TEXT NOT NULL,
+                        operator_id TEXT NOT NULL,
+                        insight_type TEXT NOT NULL,
+                        payload_json TEXT NOT NULL,
+                        status TEXT NOT NULL DEFAULT 'new'
+                    );
 
-                CREATE TABLE IF NOT EXISTS learned_rules (
-                    id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    operator_id TEXT NOT NULL,
-                    rule_key TEXT NOT NULL,
-                    intent_cluster TEXT NOT NULL,
-                    day_of_week TEXT NOT NULL DEFAULT '*',
-                    hour_start INTEGER NOT NULL DEFAULT -1,
-                    hour_end INTEGER NOT NULL DEFAULT -1,
-                    recommended_path TEXT NOT NULL,
-                    confidence_delta REAL NOT NULL DEFAULT 0.0,
-                    reason TEXT NOT NULL,
-                    source TEXT NOT NULL DEFAULT 'dream',
-                    enabled INTEGER NOT NULL DEFAULT 1,
-                    updated_at TEXT NOT NULL,
-                    UNIQUE(operator_id, rule_key)
-                );
-                """
-            )
+                    CREATE TABLE IF NOT EXISTS learned_rules (
+                        id INTEGER PRIMARY KEY AUTOINCREMENT,
+                        operator_id TEXT NOT NULL,
+                        rule_key TEXT NOT NULL,
+                        intent_cluster TEXT NOT NULL,
+                        day_of_week TEXT NOT NULL DEFAULT '*',
+                        hour_start INTEGER NOT NULL DEFAULT -1,
+                        hour_end INTEGER NOT NULL DEFAULT -1,
+                        recommended_path TEXT NOT NULL,
+                        confidence_delta REAL NOT NULL DEFAULT 0.0,
+                        reason TEXT NOT NULL,
+                        source TEXT NOT NULL DEFAULT 'dream',
+                        enabled INTEGER NOT NULL DEFAULT 1,
+                        updated_at TEXT NOT NULL,
+                        UNIQUE(operator_id, rule_key)
+                    );
+                    """
+                )
 
     def record_event(self, event: OperatorEvent) -> None:
         risk = event.risk_level if event.risk_level in VALID_RISK else "medium"
         path = event.selected_path if event.selected_path in VALID_PATH else "deep"
-        with self._conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO command_events (
-                    ts_utc, operator_id, intent_text, intent_cluster, risk_level,
-                    selected_path, success, latency_ms, command_error, forced_path, incident
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    utc_now(),
-                    event.operator_id,
-                    event.intent_text.strip(),
-                    event.intent_cluster.strip() or "unknown",
-                    risk,
-                    path,
-                    int(bool(event.success)),
-                    int(max(event.latency_ms, 0)),
-                    event.command_error.strip(),
-                    int(bool(event.forced_path)),
-                    int(bool(event.incident)),
-                ),
-            )
+        with closing(self._conn()) as conn:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO command_events (
+                        ts_utc, operator_id, intent_text, intent_cluster, risk_level,
+                        selected_path, success, latency_ms, command_error, forced_path, incident
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        utc_now(),
+                        event.operator_id,
+                        event.intent_text.strip(),
+                        event.intent_cluster.strip() or "unknown",
+                        risk,
+                        path,
+                        int(bool(event.success)),
+                        int(max(event.latency_ms, 0)),
+                        event.command_error.strip(),
+                        int(bool(event.forced_path)),
+                        int(bool(event.incident)),
+                    ),
+                )
         self.refresh_profile(event.operator_id)
 
     def refresh_profile(self, operator_id: str) -> dict[str, Any]:
         rows = self._recent_events(operator_id=operator_id, limit=500)
         profile = self._compute_profile(operator_id=operator_id, rows=rows)
 
-        with self._conn() as conn:
-            conn.execute(
-                """
-                INSERT INTO operator_patterns (
-                    operator_id, active_hours, common_intents, error_prone_commands,
-                    path_preference, tone_sensitivity, updated_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?)
-                ON CONFLICT(operator_id) DO UPDATE SET
-                    active_hours=excluded.active_hours,
-                    common_intents=excluded.common_intents,
-                    error_prone_commands=excluded.error_prone_commands,
-                    path_preference=excluded.path_preference,
-                    tone_sensitivity=excluded.tone_sensitivity,
-                    updated_at=excluded.updated_at
-                """,
-                (
-                    operator_id,
-                    profile["active_hours"],
-                    json.dumps(profile["common_intents"], ensure_ascii=True),
-                    json.dumps(profile["error_prone_commands"], ensure_ascii=True),
-                    profile["path_preference"],
-                    float(profile["tone_sensitivity"]),
-                    utc_now(),
-                ),
-            )
+        with closing(self._conn()) as conn:
+            with conn:
+                conn.execute(
+                    """
+                    INSERT INTO operator_patterns (
+                        operator_id, active_hours, common_intents, error_prone_commands,
+                        path_preference, tone_sensitivity, updated_at
+                    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+                    ON CONFLICT(operator_id) DO UPDATE SET
+                        active_hours=excluded.active_hours,
+                        common_intents=excluded.common_intents,
+                        error_prone_commands=excluded.error_prone_commands,
+                        path_preference=excluded.path_preference,
+                        tone_sensitivity=excluded.tone_sensitivity,
+                        updated_at=excluded.updated_at
+                    """,
+                    (
+                        operator_id,
+                        profile["active_hours"],
+                        json.dumps(profile["common_intents"], ensure_ascii=True),
+                        json.dumps(profile["error_prone_commands"], ensure_ascii=True),
+                        profile["path_preference"],
+                        float(profile["tone_sensitivity"]),
+                        utc_now(),
+                    ),
+                )
         return profile
 
     def get_profile(self, operator_id: str) -> dict[str, Any]:
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             row = conn.execute(
                 "SELECT * FROM operator_patterns WHERE operator_id = ?",
                 (operator_id,),
@@ -185,7 +189,7 @@ class OperatorProfiler:
         }
 
     def _recent_events(self, operator_id: str, limit: int = 500) -> list[sqlite3.Row]:
-        with self._conn() as conn:
+        with closing(self._conn()) as conn:
             rows = conn.execute(
                 """
                 SELECT * FROM command_events

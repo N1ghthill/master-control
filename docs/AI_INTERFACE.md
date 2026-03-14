@@ -65,6 +65,9 @@ Padrao atual do `mc-ai`:
 - quando chamado sem argumentos, abre a TUI por padrao
 - na TUI, warm-up/intent rodam em background com indicador de progresso (spinner), mantendo a tela responsiva
 - perguntas factuais locais (`que dia e hoje`, `dias para fim do ano`, `configuracoes do computador`) sao respondidas localmente, sem depender da resposta do modelo
+- o header da TUI mostra resumo cacheado de alertas ativos e incidentes ativos
+- a TUI tambem mostra um painel navegavel de incidentes ativos com detalhe do item selecionado
+- `Up/Down` navegam entre incidentes quando a linha de comando esta vazia
 
 Comando unico (sem entrar no REPL):
 
@@ -119,15 +122,16 @@ Perfil alternativo com fallback estavel:
    - escolhe `path` (`fast`, `deep`, `fast_with_confirm`)
    - tenta mapear para `action_id` allowlisted
    - monta plano, risco, outcome e next step
+   - REPL e TUI reaproveitam a mesma politica de fluxo via `FlowOrchestrator`
 5. Quando existe acao mapeada, o comportamento depende do modo:
    - `plan`: so analise (nao executa)
-   - `confirm`: pergunta `nao / dry-run / executar`
-   - `dry-run`: valida sem mutar sistema
-   - `execute`: executa (alto risco exige confirmar `EXECUTAR`)
+   - `confirm`: mostra o preview e pergunta `nao / dry-run / executar`
+   - `dry-run`: valida sem mutar sistema em passe direto, sem repetir preview desnecessario
+   - `execute`: tenta executar em passe direto para casos normais; se houver `step-up`, pede `EXECUTAR`
 6. Toda mutacao real passa pelos guardrails:
    - policy de risco + confirmacoes
    - execucao privilegiada via allowlist confiavel
-   - trilha de auditoria com `request_id`
+   - trilha de auditoria com `request_id` reaproveitado entre preview e execucao quando o operador confirma a mesma acao
 
 ## Comandos da interface
 
@@ -140,6 +144,10 @@ Perfil alternativo com fallback estavel:
 - `/path <auto|fast|deep|fast_with_confirm>`
 - `/mode <confirm|plan|dry-run|execute>`
 - `/incident <on|off>`
+- `/incidents [active|open|contained|resolved|dismissed|all]`
+- `/incident-show <incident_id>`
+- `/incident-resolve <incident_id>`
+- `/incident-dismiss <incident_id>`
 - `/operator <nome>`
 - `/llm <on|off|status>`
 - `/model <nome>`
@@ -155,6 +163,21 @@ Perfil alternativo com fallback estavel:
 - O LLM nao executa comandos do sistema e nao substitui as validacoes do runtime.
 - A identidade de resposta em `chat` eh ancorada no perfil local (`MasterControl`, creator `Irving`) para evitar autoidentificacao incorreta do modelo.
 - Guardrails operacionais reduzem misroute de `intent` para `chat` e evitam perda de contexto na normalizacao de comandos.
+
+## Smoke E2E
+
+Runner de fluxo real via wrapper + REPL:
+
+```bash
+/home/irving/ruas/repos/master-control/scripts/mc-flow-smoke --list
+/home/irving/ruas/repos/master-control/scripts/mc-flow-smoke
+```
+
+Cobertura atual do smoke:
+
+- `plan-route-once`: valida `--once` no wrapper real.
+- `confirm-route-execute`: valida preview + confirmacao + reuso de `request_id` em diagnostico seguro.
+- `execute-step-up-cancel`: valida bloqueio de `step-up` e cancelamento antes de qualquer mutacao final.
 
 ## Roteiro diario (5 comandos)
 

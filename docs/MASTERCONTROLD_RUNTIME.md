@@ -18,8 +18,9 @@
 - Delegates network diagnostics to `mod_network` (`ping/resolve/route default`, read-only).
 - Delegates service operations to `mod_services` (`restart/start/stop` with unit extraction + verify/rollback hints).
 - Delegates package operations to `mod_packages` (`update/install/remove` with package extraction + verify/rollback hints).
+- Delegates incident ledger operations to `mod_security` (`list/show/resolve/dismiss/plan/contain`).
 - Executes real allowlisted actions through `scripts/mc-root-action` when `--execute` is provided.
-- Produces a humanized operator response with identity awareness.
+- Produces a humanized operator response with identity awareness plus structured adaptive communication metadata.
 - Runs mandatory post-action reflection checks.
 - Records event back into operator profiler memory.
 - Appends core execution audit events in `~/.local/share/mastercontrol/mastercontrold.log`.
@@ -47,6 +48,8 @@ Fluxo detalhado e roteiro diario da interface:
 
 Padrao atual do `mc-ai`: `qwen3:4b-instruct-2507-q4_K_M` com `--llm-timeout 25`, warm-up automatico no modo interativo e autodeteccao de runtime local atualizado (`~/.local/ollama-latest/bin/ollama`).
 Na TUI (`mastercontrol`), warm-up/intent rodam em background com spinner para manter a interface responsiva; perguntas factuais locais (data, dias para fim do ano, configuracao da maquina) usam guardrail deterministico local.
+O header da interface local tambem mostra resumo cacheado de alertas ativos e incidentes ativos do ledger.
+Quando houver incidentes ativos, a TUI exibe painel navegavel com lista curta e detalhe do incidente selecionado.
 
 Interface interativa IA (preset conversacional):
 
@@ -168,6 +171,7 @@ Network diagnostic dry-run (module path):
 
 - Every response includes: intent, plan, risk, outcome, next step/rollback.
 - `name`, `creator`, and `role` are always present through soul profile.
+- Adaptive cues are first-class runtime data (`communication.style`, `communication.adaptation_notes`) and can reflect tone, frustration and learned operator preference.
 - Reflection checks are always generated and exposed.
 - Safety boundaries remain non-negotiable.
 - In `mc-ai`, local LLM routing (`intent` vs `chat`) is optional and does not bypass runtime policy.
@@ -183,6 +187,8 @@ Network diagnostic dry-run (module path):
 - If no module resolves the intent, response stays analysis-only and exposes attempted modules in plan.
 - Privileged execution only accepts trusted allowlist files under `/etc/mastercontrol` (root-owned, not group/other writable).
 - `scripts/mc-root-action` uses `/etc/mastercontrol/actions.json` for privileged execution; custom `--actions-file` is allowed only with `--dry-run`.
+- When `broker` is available, real privileged execution can require a short-lived approval token bound to `request_id/action/args`.
+- Local incident ledger actions (`security.incident.list/show/resolve/dismiss`) sao executadas sem privilegio e sem mutacao no host; apenas atualizam o banco local do MC.
 
 ## Audit trails
 
@@ -190,6 +196,8 @@ Network diagnostic dry-run (module path):
   - `~/.local/share/mastercontrol/mastercontrold.log`
 - Privileged executor log:
   - `/var/log/mastercontrol/root-exec.log` (root-owned)
+- Privilege broker log:
+  - `/var/log/mastercontrol/privilege-broker.log` (root-owned)
 
 Together these logs capture interpretation -> path decision -> action execution -> reflection outcome.
 

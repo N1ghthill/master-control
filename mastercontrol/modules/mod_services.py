@@ -39,11 +39,11 @@ class ServiceModule:
 
         if cluster in self.CAPABILITY_ACTION:
             return cluster
-        if "restart" in text or "reiniciar" in text or "reload" in text:
+        if re.search(r"\b(restart|reload|reinici[a-z]*)\b", text):
             return "service.restart"
-        if "start" in text or "iniciar" in text:
+        if re.search(r"\b(start|inici[a-z]*)\b", text):
             return "service.start"
-        if "stop" in text or "parar" in text:
+        if re.search(r"\b(stop|par[a-z]*)\b", text):
             return "service.stop"
         return None
 

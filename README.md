@@ -21,8 +21,17 @@ MasterControl deve ser:
 - Dry-run, verificacao pos-acao e rollback sempre que possivel.
 - Telemetria e trilha de auditoria como requisitos de produto.
 
-## Documentacao inicial
+## Documentacao
 
+- [Indice da documentacao](./docs/INDEX.md)
+- [Guia de contribuicao](./CONTRIBUTING.md)
+- [Fundamentos do projeto](./docs/PROJECT_FOUNDATIONS.md)
+- [Contratos centrais](./docs/CORE_CONTRACTS.md)
+- [Context Engine](./docs/CONTEXT_ENGINE.md)
+- [Continuous Security Watch](./docs/SECURITY_WATCH.md)
+- [Operacao de Incidentes](./docs/INCIDENT_OPERATIONS.md)
+- [PExec / Execucao privilegiada](./docs/PEXEC_MODEL.md)
+- [Privilege Broker](./docs/PRIVILEGE_BROKER.md)
 - [Code Map](./docs/CODE_MAP.md)
 - [Especificacao v0.1](./docs/MASTERCONTROL_V0.1_SPEC.md)
 - [Arquitetura](./docs/ARCHITECTURE.md)
@@ -46,7 +55,13 @@ Prototipo funcional `v0.1` com:
 
 - loop principal executavel (`mastercontrold`),
 - modulos DNS/service/package/network conectados ao runtime,
-- interface conversacional `mc-ai` com assistente local opcional via Ollama (`qwen2.5:7b` como padrao recomendado),
-- atalho de uso conversacional: `scripts/mc-ai-chat` (preset para `qwen2.5:7b`),
+- interface conversacional `mc-ai` com assistente local opcional via Ollama,
+- atalho de uso conversacional: `scripts/mc-ai-chat` (preset atual para `qwen3:4b-instruct-2507-q4_K_M`),
 - bootstrap de privilegios ativo via `pkexec` + allowlist,
-- testes automatizados iniciais em `tests/` (`python3 -m unittest discover -s tests -v`).
+- broker privilegiado inicial via socket Unix + approval tokens curtos,
+- ledger persistente de incidentes com `open | contained | resolved | dismissed`,
+- acoes locais explicitas para `incident list/show/resolve/dismiss`,
+- TUI com painel navegavel de incidentes ativos,
+- watcher com schema versionado e pruning local de dados historicos,
+- alvo operacional principal: `Debian Testing`,
+- testes automatizados em `tests/` (`python3 -m unittest discover -s tests -v`).

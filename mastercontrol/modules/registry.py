@@ -18,10 +18,11 @@ class ModuleRegistry:
     """Resolve operational plan by intent cluster and module priority."""
 
     CLUSTER_PRIORITY = {
-        "dns.": ("mod_dns", "mod_network", "mod_services", "mod_packages"),
-        "network.": ("mod_network", "mod_dns", "mod_services", "mod_packages"),
-        "service.": ("mod_services", "mod_packages", "mod_network", "mod_dns"),
-        "package.": ("mod_packages", "mod_services", "mod_network", "mod_dns"),
+        "dns.": ("mod_dns", "mod_network", "mod_services", "mod_packages", "mod_security"),
+        "network.": ("mod_network", "mod_security", "mod_dns", "mod_services", "mod_packages"),
+        "service.": ("mod_services", "mod_security", "mod_packages", "mod_network", "mod_dns"),
+        "package.": ("mod_packages", "mod_security", "mod_services", "mod_network", "mod_dns"),
+        "security.": ("mod_security", "mod_services", "mod_network", "mod_packages", "mod_dns"),
     }
 
     def __init__(self, modules: list[OperationalModule]) -> None:

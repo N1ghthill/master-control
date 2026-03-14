@@ -20,7 +20,9 @@ from mastercontrol.interface.mc_ai import (
     _looks_like_system_config_question,
     _looks_like_year_remaining_question,
     _should_keep_raw_intent,
+    build_directive_intent,
     build_parser,
+    directive_usage,
     _resolve_ollama_bin,
     apply_directive,
     parse_directive,
@@ -35,6 +37,18 @@ class MCAIInterfaceTests(unittest.TestCase):
     def test_parse_non_directive(self) -> None:
         parsed = parse_directive("restart nginx service")
         self.assertIsNone(parsed)
+
+    def test_build_directive_intent_for_incident_commands(self) -> None:
+        self.assertEqual(build_directive_intent("incidents", []), "liste os incidentes status active")
+        self.assertEqual(build_directive_intent("incidents", ["resolved"]), "liste os incidentes status resolved")
+        self.assertEqual(build_directive_intent("incident-show", ["inc-123"]), "mostre o incidente inc-123")
+        self.assertEqual(build_directive_intent("incident-resolve", ["inc-123"]), "resolva o incidente inc-123")
+        self.assertEqual(build_directive_intent("incident-dismiss", ["inc-123"]), "descarte o incidente inc-123")
+
+    def test_incident_directive_usage_is_reported_for_invalid_args(self) -> None:
+        self.assertIsNone(build_directive_intent("incidents", ["invalid"]))
+        self.assertEqual(directive_usage("incidents"), "Uso: /incidents [active|open|contained|resolved|dismissed|all]")
+        self.assertEqual(directive_usage("incident-show"), "Uso: /incident-show <incident_id>")
 
     def test_apply_mode_updates_state(self) -> None:
         state = InterfaceState()
@@ -202,6 +216,7 @@ class MCAIInterfaceTests(unittest.TestCase):
 
     def test_looks_like_operational_request_positive(self) -> None:
         self.assertTrue(_looks_like_operational_request("mostre a rota default"))
+        self.assertTrue(_looks_like_operational_request("mostre os alertas de seguranca"))
 
     def test_looks_like_operational_request_explanatory_question(self) -> None:
         self.assertFalse(_looks_like_operational_request("o que e apt update?"))
@@ -343,6 +358,227 @@ class MCAIInterfaceTests(unittest.TestCase):
 
             self.assertEqual(adapter_v1.interpret.call_count, 1)
             self.assertEqual(adapter_v2.interpret.call_count, 1)
+
+    def test_handle_intent_skips_confirmation_for_safe_autoexecuted_audit(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.handle.return_value = {
+                "request_id": "req-1",
+                "message": "ok",
+                "path": {"path": "fast", "source": "selector", "confidence": 0.9},
+                "tone": {"intent_cluster": "security.audit", "intent_source": "heuristic"},
+                "mapped_action": {
+                    "action_id": "security.audit.recent_events",
+                    "action_risk": "low",
+                    "requires_mutation": False,
+                },
+                "execution": {
+                    "outcome": "Local security audit summary: security=1.",
+                    "executed": True,
+                },
+            }
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState())
+            interface._prepare_intent = MagicMock(return_value="faca uma auditoria de seguranca")
+            interface._confirm_execution = MagicMock(side_effect=AssertionError("should not ask"))
+
+            interface.handle_intent("faca uma auditoria de seguranca", use_llm=False)
+
+            interface._confirm_execution.assert_not_called()
+
+    def test_handle_intent_dry_run_mode_executes_in_single_pass(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.handle.return_value = {
+                "request_id": "req-dry",
+                "message": "ok",
+                "path": {"path": "fast_with_confirm", "source": "selector", "confidence": 0.82},
+                "tone": {"intent_cluster": "service.restart", "intent_source": "heuristic"},
+                "mapped_action": {
+                    "action_id": "service.systemctl.restart",
+                    "action_risk": "high",
+                    "requires_mutation": True,
+                },
+                "execution": {
+                    "outcome": "Dry-run validated for 'service.systemctl.restart'.",
+                    "executed": True,
+                    "blocked": False,
+                },
+            }
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState(mode="dry-run"))
+            interface._prepare_intent = MagicMock(return_value="restart unbound.service")
+
+            interface.handle_intent("restart unbound.service", use_llm=False)
+
+            self.assertEqual(daemon.handle.call_count, 1)
+            req = daemon.handle.call_args.args[0]
+            self.assertTrue(req.execute)
+            self.assertTrue(req.dry_run)
+            self.assertFalse(req.approve)
+            self.assertFalse(req.allow_high_risk)
+
+    def test_handle_intent_execute_mode_uses_single_pass_for_non_step_up(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.handle.return_value = {
+                "request_id": "req-exec",
+                "message": "ok",
+                "path": {"path": "fast_with_confirm", "source": "selector", "confidence": 0.86},
+                "tone": {"intent_cluster": "package.install", "intent_source": "heuristic"},
+                "mapped_action": {
+                    "action_id": "package.apt.install",
+                    "action_risk": "medium",
+                    "requires_mutation": True,
+                },
+                "execution": {
+                    "outcome": "Action executed successfully.",
+                    "executed": True,
+                    "blocked": False,
+                },
+            }
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState(mode="execute"))
+            interface._prepare_intent = MagicMock(return_value="apt install htop")
+            interface._require_high_risk_confirmation = MagicMock(side_effect=AssertionError("should not ask"))
+
+            interface.handle_intent("apt install htop", use_llm=False)
+
+            self.assertEqual(daemon.handle.call_count, 1)
+            req = daemon.handle.call_args.args[0]
+            self.assertTrue(req.execute)
+            self.assertFalse(req.dry_run)
+            self.assertTrue(req.approve)
+            self.assertFalse(req.allow_high_risk)
+            interface._require_high_risk_confirmation.assert_not_called()
+
+    def test_handle_intent_execute_mode_retries_only_after_step_up(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.handle.side_effect = [
+                {
+                    "request_id": "req-step-up",
+                    "message": "blocked",
+                    "path": {"path": "deep", "source": "selector", "confidence": 0.91},
+                    "tone": {"intent_cluster": "service.restart", "intent_source": "heuristic"},
+                    "mapped_action": {
+                        "action_id": "service.systemctl.restart",
+                        "action_risk": "high",
+                        "requires_mutation": True,
+                    },
+                    "execution": {
+                        "outcome": "Blocked stepped-up action 'service.systemctl.restart'.",
+                        "executed": False,
+                        "blocked": True,
+                        "command_error": "step_up_required",
+                    },
+                },
+                {
+                    "request_id": "req-step-up",
+                    "message": "ok",
+                    "path": {"path": "deep", "source": "selector", "confidence": 0.91},
+                    "tone": {"intent_cluster": "service.restart", "intent_source": "heuristic"},
+                    "mapped_action": {
+                        "action_id": "service.systemctl.restart",
+                        "action_risk": "high",
+                        "requires_mutation": True,
+                    },
+                    "execution": {
+                        "outcome": "Action executed successfully.",
+                        "executed": True,
+                        "blocked": False,
+                    },
+                },
+            ]
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState(mode="execute"))
+            interface._prepare_intent = MagicMock(return_value="restart unbound.service")
+            interface._require_high_risk_confirmation = MagicMock(return_value=True)
+
+            interface.handle_intent("restart unbound.service", use_llm=False)
+
+            self.assertEqual(daemon.handle.call_count, 2)
+            first_req = daemon.handle.call_args_list[0].args[0]
+            second_req = daemon.handle.call_args_list[1].args[0]
+            self.assertTrue(first_req.execute)
+            self.assertFalse(first_req.allow_high_risk)
+            self.assertTrue(second_req.allow_high_risk)
+            self.assertEqual(second_req.request_id, "req-step-up")
+            interface._require_high_risk_confirmation.assert_called_once()
+
+    def test_active_alert_status_line_caches_and_invalidates_after_run(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.security_watch.active_alert_summary.side_effect = [
+                {"summary": "alerts=2 status=elevated severity=high"},
+                {"summary": "alerts=1 status=watch severity=medium"},
+            ]
+            daemon.security_watch.active_incident_summary.side_effect = [
+                {"summary": "incidents=1 status=elevated severity=high [open=1]"},
+                {"summary": "incidents=0 status=stable"},
+            ]
+            daemon.handle.return_value = {"message": "ok", "execution": {}, "mapped_action": None}
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState())
+
+            first = interface.active_alert_status_line()
+            second = interface.active_alert_status_line()
+            self.assertEqual(
+                first,
+                "alerts=2 status=elevated severity=high incidents=1 status=elevated severity=high [open=1]",
+            )
+            self.assertEqual(second, first)
+            self.assertEqual(daemon.security_watch.active_alert_summary.call_count, 1)
+            self.assertEqual(daemon.security_watch.active_incident_summary.call_count, 1)
+
+            interface.run_intent("mostre os alertas", execute=False, dry_run=False)
+            refreshed = interface.active_alert_status_line()
+
+            self.assertEqual(refreshed, "alerts=1 status=watch severity=medium incidents=0 status=stable")
+            self.assertEqual(daemon.security_watch.active_alert_summary.call_count, 2)
+            self.assertEqual(daemon.security_watch.active_incident_summary.call_count, 2)
+
+    def test_active_incident_snapshot_caches_and_invalidates_after_run(self) -> None:
+        with patch("mastercontrol.interface.mc_ai.MasterControlD") as daemon_cls:
+            daemon = MagicMock()
+            daemon.security_watch.list_incidents.side_effect = [
+                [
+                    {
+                        "incident_id": "inc-001",
+                        "fingerprint": "service.failure.cluster",
+                        "status": "open",
+                    }
+                ],
+                [
+                    {
+                        "incident_id": "inc-002",
+                        "fingerprint": "security.auth.anomaly",
+                        "status": "contained",
+                    }
+                ],
+            ]
+            daemon.security_watch.get_incident.side_effect = [
+                {"incident_id": "inc-001", "activity": []},
+                {"incident_id": "inc-002", "activity": []},
+            ]
+            daemon.handle.return_value = {"message": "ok", "execution": {}, "mapped_action": None}
+            daemon_cls.return_value = daemon
+            interface = MasterControlInterface(InterfaceState())
+
+            first = interface.active_incident_snapshot()
+            second = interface.active_incident_snapshot()
+
+            self.assertEqual(first["selected_incident_id"], "inc-001")
+            self.assertEqual(second["selected_incident_id"], "inc-001")
+            self.assertEqual(daemon.security_watch.list_incidents.call_count, 1)
+            self.assertEqual(daemon.security_watch.get_incident.call_count, 1)
+
+            interface.run_intent("mostre os incidentes", execute=False, dry_run=False)
+            refreshed = interface.active_incident_snapshot()
+
+            self.assertEqual(refreshed["selected_incident_id"], "inc-002")
+            self.assertEqual(daemon.security_watch.list_incidents.call_count, 2)
+            self.assertEqual(daemon.security_watch.get_incident.call_count, 2)
 
 
 if __name__ == "__main__":

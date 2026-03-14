@@ -25,8 +25,11 @@ try:
         _format_result,
         _resolve_ollama_bin,
         apply_directive,
+        build_directive_intent,
+        directive_usage,
         parse_directive,
     )
+    from mastercontrol.interface.flow_orchestrator import FlowOrchestrator, PendingChoice, PendingHighRisk
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK
 except ImportError:  # pragma: no cover
     repo_root = Path(__file__).resolve().parents[2]
@@ -40,8 +43,11 @@ except ImportError:  # pragma: no cover
         _format_result,
         _resolve_ollama_bin,
         apply_directive,
+        build_directive_intent,
+        directive_usage,
         parse_directive,
     )
+    from mastercontrol.interface.flow_orchestrator import FlowOrchestrator, PendingChoice, PendingHighRisk  # type: ignore
     from mastercontrol.core.path_selector import VALID_PATH, VALID_RISK  # type: ignore
 
 
@@ -77,12 +83,17 @@ class TerminalUI:
         self.running = True
         self.input_buffer = ""
         self.logs: list[str] = []
-        self.pending_choice: dict[str, Any] | None = None
-        self.pending_high_risk: dict[str, Any] | None = None
+        self.flow = FlowOrchestrator(self.interface.run_intent, self.interface._is_high_risk_action)
+        self.pending_choice: PendingChoice | None = None
+        self.pending_high_risk: PendingHighRisk | None = None
         self._events: queue.Queue[Any] = queue.Queue()
         self._worker: threading.Thread | None = None
         self._busy_label = ""
         self._spinner_index = 0
+        self._incident_rows: list[dict[str, Any]] = []
+        self._incident_detail: dict[str, Any] | None = None
+        self._incident_selected = 0
+        self._incident_error = ""
 
     def _log(self, text: str) -> None:
         for line in (text or "").splitlines() or [""]:
@@ -151,10 +162,190 @@ class TerminalUI:
     def _status_line(self) -> str:
         state = self.interface.state
         llm = "on" if state.llm_enabled else "off"
-        return (
+        base = (
             f"mode={state.mode} risk={state.risk_level} path={state.path_mode} "
             f"incident={state.incident} llm={llm} model={state.llm_model}"
         )
+        alert_line = ""
+        status_fn = getattr(self.interface, "active_alert_status_line", None)
+        if callable(status_fn):
+            alert_line = str(status_fn())
+        return f"{base} {alert_line}".strip()
+
+    def _selected_incident_id(self) -> str:
+        if not self._incident_rows:
+            return ""
+        index = min(max(self._incident_selected, 0), len(self._incident_rows) - 1)
+        return str(self._incident_rows[index].get("incident_id", "")).strip().lower()
+
+    def _apply_incident_snapshot(self, snapshot: dict[str, Any] | None) -> None:
+        payload = snapshot or {}
+        rows = [dict(row) for row in list(payload.get("incidents", []))]
+        detail = payload.get("detail")
+        selected_id = str(payload.get("selected_incident_id", "")).strip().lower()
+        self._incident_rows = rows
+        self._incident_detail = dict(detail) if isinstance(detail, dict) else None
+        self._incident_error = ""
+
+        if not rows:
+            self._incident_selected = 0
+            self._incident_detail = None
+            return
+
+        if selected_id:
+            for idx, row in enumerate(rows):
+                if str(row.get("incident_id", "")).strip().lower() == selected_id:
+                    self._incident_selected = idx
+                    break
+            else:
+                self._incident_selected = min(self._incident_selected, len(rows) - 1)
+        else:
+            self._incident_selected = min(self._incident_selected, len(rows) - 1)
+
+    def _load_incident_snapshot(
+        self,
+        *,
+        force: bool = False,
+        incident_id: str = "",
+    ) -> dict[str, Any]:
+        snapshot_fn = getattr(self.interface, "active_incident_snapshot", None)
+        if not callable(snapshot_fn):
+            return {"incidents": [], "detail": None, "selected_incident_id": ""}
+        return dict(snapshot_fn(force=force, incident_id=incident_id))
+
+    def _refresh_incident_snapshot(
+        self,
+        *,
+        force: bool = False,
+        incident_id: str = "",
+    ) -> None:
+        try:
+            snapshot = self._load_incident_snapshot(force=force, incident_id=incident_id)
+        except Exception as exc:  # noqa: BLE001
+            self._incident_rows = []
+            self._incident_detail = None
+            self._incident_selected = 0
+            self._incident_error = str(exc)
+            return
+        self._apply_incident_snapshot(snapshot)
+
+    def _job_refresh_incidents(
+        self,
+        *,
+        force: bool = False,
+        incident_id: str = "",
+    ) -> None:
+        try:
+            snapshot = self._load_incident_snapshot(force=force, incident_id=incident_id)
+        except Exception as exc:  # noqa: BLE001
+            self._post(lambda exc=exc: self._set_incident_error(str(exc)))
+            return
+        self._post(lambda snapshot=snapshot: self._apply_incident_snapshot(snapshot))
+
+    def _set_incident_error(self, error: str) -> None:
+        self._incident_rows = []
+        self._incident_detail = None
+        self._incident_selected = 0
+        self._incident_error = error
+
+    def _move_incident_selection(self, delta: int) -> bool:
+        if not self._incident_rows:
+            return False
+        next_index = min(max(self._incident_selected + delta, 0), len(self._incident_rows) - 1)
+        if next_index == self._incident_selected:
+            return False
+        self._incident_selected = next_index
+        self._refresh_incident_snapshot(incident_id=self._selected_incident_id())
+        return True
+
+    @staticmethod
+    def _wrap_panel_text(prefix: str, text: str, width: int) -> list[str]:
+        safe_width = max(12, width)
+        wrapped = textwrap.wrap(
+            f"{prefix}{text}".strip(),
+            width=safe_width,
+            break_long_words=True,
+            break_on_hyphens=False,
+            replace_whitespace=False,
+            drop_whitespace=False,
+        )
+        return wrapped or [prefix.strip()]
+
+    def _incident_detail_lines(self, width: int, height: int) -> list[str]:
+        if height <= 0:
+            return []
+        if self._incident_error:
+            return self._wrap_panel_text("Erro: ", self._incident_error, width)[:height]
+        detail = self._incident_detail
+        if detail is None:
+            if self._incident_rows:
+                return ["Detalhe indisponivel."][:height]
+            return ["Sem incidentes ativos."][:height]
+
+        lines = [
+            "Detalhe",
+            f"id: {detail.get('incident_id', '')}",
+            (
+                "estado: "
+                f"{detail.get('status', 'unknown')} "
+                f"sev={detail.get('severity', 'unknown')} "
+                f"cat={detail.get('category', 'unknown')}"
+            ),
+        ]
+        fingerprint = str(detail.get("fingerprint", "")).strip()
+        if fingerprint:
+            lines.extend(self._wrap_panel_text("fingerprint: ", fingerprint, width))
+        units = [str(item) for item in detail.get("correlated_units", ()) if str(item).strip()]
+        if units:
+            lines.extend(self._wrap_panel_text("unidades: ", ", ".join(units), width))
+        latest_summary = str(detail.get("latest_summary", "")).strip()
+        if latest_summary:
+            lines.extend(self._wrap_panel_text("resumo: ", latest_summary, width))
+        alerts = list(detail.get("alerts", []))
+        activity = list(detail.get("activity", []))
+        lines.append(f"alerts={len(alerts)} activity={len(activity)}")
+        if activity:
+            latest = dict(activity[0])
+            action_line = f"{latest.get('action_id', '')} {latest.get('status_from', '')}->{latest.get('status_to', '')}".strip()
+            if action_line:
+                lines.extend(self._wrap_panel_text("ultima: ", action_line, width))
+            resolution = str(latest.get("resolution_summary", "")).strip()
+            if resolution:
+                lines.extend(self._wrap_panel_text("acao: ", resolution, width))
+        return lines[:height]
+
+    def _build_incident_panel_lines(self, width: int, height: int) -> list[str]:
+        if width <= 0 or height <= 0:
+            return []
+        lines = [f"Incidentes ativos ({len(self._incident_rows)})"]
+        remaining = height - 1
+        if remaining <= 0:
+            return lines[:height]
+
+        list_height = min(max(2, min(4, remaining // 3 + 1)), remaining)
+        if not self._incident_rows:
+            lines.extend(["Sem incidentes ativos."][:list_height])
+        else:
+            for idx in range(list_height):
+                if idx >= len(self._incident_rows):
+                    lines.append("")
+                    continue
+                row = self._incident_rows[idx]
+                marker = ">" if idx == self._incident_selected else " "
+                incident_id = str(row.get("incident_id", "")).strip()
+                severity = str(row.get("severity", "")).strip() or "unknown"
+                status = str(row.get("status", "")).strip() or "unknown"
+                fingerprint = str(row.get("fingerprint", "")).strip()
+                label = f"{marker} {status}/{severity} {incident_id} {fingerprint}".strip()
+                lines.append(label[:width])
+
+        detail_height = max(0, height - len(lines))
+        if detail_height > 0:
+            detail_lines = self._incident_detail_lines(width, detail_height)
+            lines.extend(detail_lines[:detail_height])
+        if len(lines) < height:
+            lines.extend("" for _ in range(height - len(lines)))
+        return [line[:width] for line in lines[:height]]
 
     def _wrapped_logs(self, width: int) -> list[str]:
         wrapped: list[str] = []
@@ -176,6 +367,27 @@ class TerminalUI:
             )
         return wrapped
 
+    @staticmethod
+    def _layout(
+        *,
+        max_x: int,
+        body_height: int,
+    ) -> dict[str, int | str] | None:
+        if max_x >= 120 and body_height >= 10:
+            panel_width = min(48, max(34, max_x // 3))
+            return {
+                "mode": "side",
+                "panel_width": panel_width,
+                "log_width": max(1, max_x - panel_width - 1),
+            }
+        if body_height >= 12:
+            panel_height = min(9, max(6, body_height // 3))
+            return {
+                "mode": "bottom",
+                "panel_height": panel_height,
+            }
+        return None
+
     def _render(self, stdscr: Any) -> None:
         stdscr.erase()
         max_y, max_x = stdscr.getmaxyx()
@@ -187,14 +399,45 @@ class TerminalUI:
             body_top = 4
         body_bottom = max_y - 2
         body_height = max(1, body_bottom - body_top)
+        layout = self._layout(max_x=max_x, body_height=body_height)
 
         _add_clipped(stdscr, 0, 0, "MasterControl Terminal UI", curses.A_BOLD)
         _add_clipped(stdscr, 1, 0, self._status_line(), curses.A_DIM)
-        _add_clipped(stdscr, 2, 0, "Commands: /help /status /mode /risk /llm /model /raw /quit", curses.A_DIM)
+        _add_clipped(
+            stdscr,
+            2,
+            0,
+            "Commands: /help /status /mode /risk /incidents /incident-show /raw /quit | Up/Down: incidentes",
+            curses.A_DIM,
+        )
 
-        visible = self._wrapped_logs(max_x - 1)[-body_height:]
-        for idx, line in enumerate(visible):
-            _add_clipped(stdscr, body_top + idx, 0, line)
+        if layout is not None and layout["mode"] == "side":
+            log_width = int(layout["log_width"])
+            panel_width = int(layout["panel_width"])
+            panel_x = log_width + 1
+            visible = self._wrapped_logs(log_width - 1)[-body_height:]
+            for idx, line in enumerate(visible):
+                _add_clipped(stdscr, body_top + idx, 0, line)
+            for y in range(body_top, body_bottom):
+                _add_clipped(stdscr, y, log_width, "|", curses.A_DIM)
+            panel_lines = self._build_incident_panel_lines(panel_width - 1, body_height)
+            for idx, line in enumerate(panel_lines):
+                _add_clipped(stdscr, body_top + idx, panel_x, line)
+        elif layout is not None and layout["mode"] == "bottom":
+            panel_height = int(layout["panel_height"])
+            log_height = max(1, body_height - panel_height - 1)
+            visible = self._wrapped_logs(max_x - 1)[-log_height:]
+            for idx, line in enumerate(visible):
+                _add_clipped(stdscr, body_top + idx, 0, line)
+            separator_y = body_top + log_height
+            _add_clipped(stdscr, separator_y, 0, "-" * max(1, max_x - 1), curses.A_DIM)
+            panel_lines = self._build_incident_panel_lines(max_x - 1, max(1, body_bottom - separator_y - 1))
+            for idx, line in enumerate(panel_lines):
+                _add_clipped(stdscr, separator_y + 1 + idx, 0, line)
+        else:
+            visible = self._wrapped_logs(max_x - 1)[-body_height:]
+            for idx, line in enumerate(visible):
+                _add_clipped(stdscr, body_top + idx, 0, line)
 
         _add_clipped(stdscr, max_y - 2, 0, "-" * max(1, max_x - 1), curses.A_DIM)
         prompt = "mc> "
@@ -218,10 +461,29 @@ class TerminalUI:
         _out, lines = self._capture_stdout(self.interface.warmup_llm, announce=True, force=force)
         if lines:
             self._post(lambda lines=lines: self._log_captured(lines))
+        self._job_refresh_incidents(force=True, incident_id=self._selected_incident_id())
 
-    def _job_execute(self, prepared: str, *, dry_run: bool) -> None:
-        out = self.interface.run_intent(prepared, execute=True, dry_run=dry_run)
-        self._post(lambda out=out: self._log_result(out))
+    def _apply_flow_outcome(self, *, results: list[dict[str, Any]], pending_choice: PendingChoice | None, pending_high_risk: PendingHighRisk | None) -> None:
+        for result in results:
+            self._log_result(result)
+        self.pending_choice = pending_choice
+        self.pending_high_risk = pending_high_risk
+        if pending_choice is not None:
+            action_id = str(pending_choice.mapped_action.get("action_id", "unknown"))
+            action_risk = str(pending_choice.mapped_action.get("action_risk", "unknown"))
+            self._log(f"[sys] Acao '{action_id}' (risk={action_risk}). Escolha n/d/e.")
+        if pending_high_risk is not None:
+            self._log("[sys] Acao de alto risco. Digite EXECUTAR para confirmar.")
+
+    def _job_apply_outcome(self, outcome: Any) -> None:
+        self._post(
+            lambda outcome=outcome: self._apply_flow_outcome(
+                results=list(outcome.results),
+                pending_choice=outcome.pending_choice,
+                pending_high_risk=outcome.pending_high_risk,
+            )
+        )
+        self._job_refresh_incidents(force=True, incident_id=self._selected_incident_id())
 
     def _job_handle_intent(self, line: str, *, use_llm: bool = True) -> None:
         prepared, captured = self._capture_stdout(self.interface._prepare_intent, line, use_llm)
@@ -230,57 +492,8 @@ class TerminalUI:
         if prepared is None:
             return
 
-        initial = self.interface.run_intent(prepared, execute=False, dry_run=False)
-        self._post(lambda initial=initial: self._log_result(initial))
-
-        mapped = initial.get("mapped_action")
-        if not mapped:
-            return
-        mapped = dict(mapped)
-        mode = self.interface.state.mode
-
-        if mode == "plan":
-            return
-        if mode == "dry-run":
-            execute_out = self.interface.run_intent(prepared, execute=True, dry_run=True)
-            self._post(lambda execute_out=execute_out: self._log_result(execute_out))
-            return
-        if mode == "execute":
-            risk = str(mapped.get("action_risk", "unknown"))
-            if risk in {"high", "critical"}:
-                self._post(
-                    lambda prepared=prepared: self._set_pending_high_risk(prepared)
-                )
-                return
-            execute_out = self.interface.run_intent(prepared, execute=True, dry_run=False)
-            self._post(lambda execute_out=execute_out: self._log_result(execute_out))
-            return
-
-        action_id = str(mapped.get("action_id", "unknown"))
-        action_risk = str(mapped.get("action_risk", "unknown"))
-        self._post(
-            lambda prepared=prepared, mapped=mapped, action_id=action_id, action_risk=action_risk: self._set_pending_choice(
-                prepared=prepared,
-                mapped=mapped,
-                action_id=action_id,
-                action_risk=action_risk,
-            )
-        )
-
-    def _set_pending_choice(
-        self,
-        *,
-        prepared: str,
-        mapped: dict[str, Any],
-        action_id: str,
-        action_risk: str,
-    ) -> None:
-        self.pending_choice = {"prepared": prepared, "mapped": dict(mapped)}
-        self._log(f"[sys] Acao '{action_id}' (risk={action_risk}). Escolha n/d/e.")
-
-    def _set_pending_high_risk(self, prepared: str) -> None:
-        self.pending_high_risk = {"prepared": prepared}
-        self._log("[sys] Acao de alto risco. Digite EXECUTAR para confirmar.")
+        outcome = self.flow.begin(prepared, mode=self.interface.state.mode)
+        self._job_apply_outcome(outcome)
 
     def _handle_pending_choice(self, line: str) -> bool:
         pending = self.pending_choice
@@ -291,21 +504,26 @@ class TerminalUI:
             self._log("[sys] Confirmacao invalida. Use n, d ou e.")
             return True
 
-        prepared = str(pending["prepared"])
-        mapped = dict(pending["mapped"])
         self.pending_choice = None
         if choice == "n":
             self._log("[sys] Execucao cancelada.")
             return True
-        if choice == "d":
-            self._start_job("execucao dry-run", lambda prepared=prepared: self._job_execute(prepared, dry_run=True))
+        if choice == "e" and self.interface._is_high_risk_action(pending.mapped_action):
+            outcome = self.flow.choose(pending, choice=choice)
+            self._apply_flow_outcome(
+                results=list(outcome.results),
+                pending_choice=outcome.pending_choice,
+                pending_high_risk=outcome.pending_high_risk,
+            )
             return True
 
-        risk = str(mapped.get("action_risk", "unknown"))
-        if risk in {"high", "critical"}:
-            self._set_pending_high_risk(prepared)
-            return True
-        self._start_job("execucao", lambda prepared=prepared: self._job_execute(prepared, dry_run=False))
+        label = "execucao dry-run" if choice == "d" else "execucao"
+        self._start_job(
+            label,
+            lambda pending=pending, choice=choice: self._job_apply_outcome(
+                self.flow.choose(pending, choice=choice)
+            ),
+        )
         return True
 
     def _handle_pending_high_risk(self, line: str) -> bool:
@@ -313,11 +531,16 @@ class TerminalUI:
         if pending is None:
             return False
         self.pending_high_risk = None
-        if line.strip() != "EXECUTAR":
+        confirmed = line.strip() == "EXECUTAR"
+        if not confirmed:
             self._log("[sys] Execucao de alto risco cancelada.")
             return True
-        prepared = str(pending["prepared"])
-        self._start_job("execucao alto risco", lambda prepared=prepared: self._job_execute(prepared, dry_run=False))
+        self._start_job(
+            "execucao alto risco",
+            lambda pending=pending: self._job_apply_outcome(
+                self.flow.confirm_high_risk(pending, confirmed=True)
+            ),
+        )
         return True
 
     def _handle_directive(self, line: str) -> bool:
@@ -332,6 +555,17 @@ class TerminalUI:
                 return True
             line_raw = " ".join(args)
             self._start_job("intent(raw)", lambda line_raw=line_raw: self._job_handle_intent(line_raw, use_llm=False))
+            return True
+        directive_intent = build_directive_intent(command, args)
+        if directive_intent is not None:
+            self._start_job(
+                f"intent({command})",
+                lambda directive_intent=directive_intent: self._job_handle_intent(directive_intent, use_llm=False),
+            )
+            return True
+        directive_help = directive_usage(command)
+        if directive_help is not None:
+            self._log(f"[sys] {directive_help}")
             return True
 
         message, should_exit = apply_directive(self.interface.state, command, args)
@@ -373,6 +607,7 @@ class TerminalUI:
         _safe_curs_set(1)
 
         self._log("[sys] MasterControl UI iniciada. Digite /help para comandos.")
+        self._refresh_incident_snapshot(force=True)
         if self.warmup_on_start and self.interface.state.llm_enabled:
             self._log("[sys] Iniciando warm-up do modelo...")
             self._start_job("warm-up inicial", self._job_warmup)
@@ -399,6 +634,12 @@ class TerminalUI:
                 if key.isprintable():
                     self.input_buffer += key
                     continue
+            if key == curses.KEY_UP and not self.input_buffer:
+                self._move_incident_selection(-1)
+                continue
+            if key == curses.KEY_DOWN and not self.input_buffer:
+                self._move_incident_selection(1)
+                continue
             if key in {curses.KEY_BACKSPACE, curses.KEY_DC}:
                 self.input_buffer = self.input_buffer[:-1]
                 continue

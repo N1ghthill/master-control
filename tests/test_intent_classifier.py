@@ -37,6 +37,18 @@ class IntentClassifierPrecedenceTests(unittest.TestCase):
         self.assertEqual(pred.intent_cluster, "service.restart")
         self.assertEqual(pred.source, "history")
 
+    def test_security_vigilance_is_detected_heuristically(self) -> None:
+        pred = self.classifier.classify("vigie o sistema contra intrusos")
+
+        self.assertEqual(pred.intent_cluster, "security.vigilance")
+        self.assertEqual(pred.source, "heuristic")
+
+    def test_security_incident_is_detected_heuristically(self) -> None:
+        pred = self.classifier.classify("responda ao incidente reiniciando nginx.service")
+
+        self.assertEqual(pred.intent_cluster, "security.incident")
+        self.assertEqual(pred.source, "heuristic")
+
 
 if __name__ == "__main__":
     unittest.main()

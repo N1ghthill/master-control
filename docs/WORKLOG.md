@@ -1,5 +1,237 @@
 # MasterControl - Diario de Acoes e Resultados
 
+## 2026-03-14 - Fix de auto-observacao do watcher e limpeza do host
+
+### Objetivo do ciclo
+
+Corrigir a regressao descoberta durante a validacao no host: o watcher estava relendo o proprio JSON no `journald` e reabrindo incidente de auth com artefatos do proprio sistema.
+
+### Acoes executadas
+
+1. Ajustado `SystemEventMonitor` para ignorar eventos emitidos por unidades/identificadores do proprio MasterControl.
+2. Ajustado o detector `security.auth.anomaly` para nao tratar qualquer ocorrencia de `root` ou `session opened for user` como anomalia por si so.
+3. Adicionada cobertura automatizada:
+   - evento self-log do watcher ignorado;
+   - sessao `pkexec` bem-sucedida nao gera `security.auth.anomaly`.
+4. Revalidado em host real com dois sweeps do `mastercontrol-security-watch.service` separados pelo `min_interval` do monitor.
+5. Confirmado no SQLite que nenhum novo `system_events.source='mc-security-watch'` entrou apos o patch.
+6. Limpas 5 linhas antigas de `system_events` geradas pelo proprio watcher e descartado o incidente de auth auto-gerado que elas deixaram aberto.
+7. Reaplicada a configuracao do watcher no host com retencao:
+   - `system_events=7d`
+   - `security_alerts=21d`
+   - `incidents=60d`
+   - `incident_activity=90d`
+   - `security_silences=14d`
+
+### Resultado
+
+- O watcher deixou de entrar em loop com o proprio `journald`.
+- O incidente de auth artificial foi removido do host.
+- O host permaneceu com apenas incidentes reais/ruidosos de `service.failure.cluster` e `network.instability`, sem reabertura espuria de auth.
+- Revalidada a suite completa apos o patch operacional:
+  - `python3 -m unittest discover -s tests -v`
+  - `153` testes verdes.
+
+## 2026-03-14 - Instaladores operacionais, playbook do operador e validacao local de units
+
+### Objetivo do ciclo
+
+Transformar o que ainda estava como orientacao de proximo passo em fluxo operacional concreto: retencao configuravel no watcher, validacao nao-destrutiva de units e semantica fechada para o operador.
+
+### Acoes executadas
+
+1. Expandido `install-security-watch-timer.sh`:
+   - flags de pruning/retencao por tipo de dado,
+   - `--no-prune`,
+   - `--output-dir`,
+   - `--no-enable`.
+2. Expandido `install-privilege-broker.sh`:
+   - `--output-dir`,
+   - `--no-enable`.
+3. Fechado playbook do operador em `docs/INCIDENT_OPERATIONS.md`:
+   - diferenca entre `ack`, `silence`, `resolve`, `dismiss` e `contain`,
+   - fluxos recomendados,
+   - comandos da TUI/REPL,
+   - roteiro de validacao no host.
+4. Adicionada cobertura automatizada para os instaladores em modo `--output-dir`.
+5. Validado operacionalmente fora do `unittest`:
+   - geracao real dos units em diretorio temporario,
+   - `systemd-analyze verify` para watcher e broker,
+   - `mc-security-watch --prune-only` retornando `schema_version=3`,
+   - roundtrip do broker com restart entre `approve` e `exec` usando transporte real por socket.
+6. Sincronizados `README.md`, `docs/INDEX.md`, `docs/SECURITY_WATCH.md`, `docs/PRIVILEGE_BROKER.md`, `docs/NEXT_SESSION.md` e `docs/ROADMAP.md`.
+7. Revalidada a suite completa:
+   - `python3 -m unittest discover -s tests -v`
+   - `151` testes verdes.
+
+### Resultado
+
+- Pruning do watcher deixou de ser apenas capacidade interna e virou configuracao de instalacao.
+- Watcher e broker agora podem ser validados com units gerados sem tocar em `/etc/systemd/system`.
+- A semantica operacional do operador deixou de ficar implícita no codigo e passou a ter playbook dedicado.
+
+## 2026-03-14 - TUI navegavel de incidentes, schema versionado e recovery coberto
+
+### Objetivo do ciclo
+
+Executar integralmente o sprint seguinte do ledger: fechar a UX da TUI, controlar lifecycle de dados do watcher e validar recovery persistido.
+
+### Acoes executadas
+
+1. Expandida a interface local/TUI:
+   - painel navegavel de incidentes ativos,
+   - detalhe do incidente selecionado,
+   - selecao por `Up/Down`,
+   - refresh automatico apos intents e execucoes.
+2. Expandida a interface IA:
+   - cache de snapshot de incidente ativo,
+   - carregamento de detalhe por `incident_id` selecionado.
+3. Versionado o schema do watcher:
+   - tabela `security_watch_meta`,
+   - migracoes idempotentes ate a versao `3`,
+   - indices adicionais para consulta e pruning.
+4. Implementado lifecycle de dados do watcher:
+   - `prune_data(...)`,
+   - pruning de `system_events`,
+   - pruning de `security_alerts`,
+   - pruning de `security_silences`,
+   - pruning de `incidents`,
+   - pruning de `incident_activity`,
+   - preservacao de incidentes ativos e referencias ligadas.
+5. Exposta operacao de pruning no CLI do watcher:
+   - `--prune`
+   - `--prune-only`
+   - flags de retencao por tipo de dado.
+6. Validados cenarios de recovery persistido:
+   - reinicio do watcher mantendo ledger e transicao posterior de incidente,
+   - reinicio do broker mantendo approval token `time_window`.
+7. Revalidada a suite completa:
+   - `python3 -m unittest discover -s tests -v`
+   - `149` testes verdes.
+
+### Resultado
+
+- O ledger de incidente agora tem UX local utilizavel sem depender de texto corrido.
+- O watcher passou a ter contrato explicito de schema e limpeza controlada de historico.
+- Recovery persistido de watcher e broker deixou de ser hipotese e passou a ter cobertura automatizada.
+
+## 2026-03-14 - Incident ledger operacional, comandos explicitos e docs sincronizadas
+
+### Objetivo do ciclo
+
+Fechar a lacuna entre a infraestrutura ja pronta de incidente e a superficie operacional real do produto, expondo o ledger ao operador e alinhando a documentacao com o estado verdadeiro do codigo.
+
+### Acoes executadas
+
+1. Consolidado o ledger persistente de incidente como superficie explicita do sistema:
+   - `incidents`
+   - `incident_activity`
+   - contrato `IncidentRecord`
+2. Expostas acoes locais explicitas no `mod_security`:
+   - `security.incident.list`
+   - `security.incident.show`
+   - `security.incident.resolve`
+   - `security.incident.dismiss`
+3. Integrado o core para executar essas acoes localmente sem privilegio:
+   - listagem do ledger,
+   - detalhe por `incident_id`,
+   - fechamento explicito de incidente,
+   - descarte explicito de incidente.
+4. Ajustado o watcher para:
+   - retornar detalhe com evidencias e activity trail,
+   - fechar alertas locais ligados ao incidente ao executar `resolve/dismiss`,
+   - evitar reabertura imediata do mesmo incidente por evidencias antigas.
+5. Expostas diretivas explicitas na interface:
+   - `/incidents [status]`
+   - `/incident-show <incident_id>`
+   - `/incident-resolve <incident_id>`
+   - `/incident-dismiss <incident_id>`
+6. Sincronizada a documentacao operacional:
+   - `README.md`
+   - `docs/NEXT_SESSION.md`
+   - `docs/ROADMAP.md`
+   - `docs/SECURITY_WATCH.md`
+   - `docs/MASTERCONTROLD_RUNTIME.md`
+   - `docs/AI_INTERFACE.md`
+   - `docs/CODE_MAP.md`
+7. Revalidada a suite completa:
+   - `python3 -m unittest discover -s tests -v`
+   - `142` testes verdes naquele checkpoint.
+
+### Resultado
+
+- O ledger de incidente deixou de ser apenas infraestrutura interna e virou capacidade explicita do operador.
+- O estado real do repositório e o handoff agora voltam a estar alinhados.
+- O proximo bloco deixa de ser "criar o ledger" e passa a ser consolidar UX, retencao de dados e recovery no host.
+
+## 2026-03-14 - Broker root, vigilancia continua e resposta a incidente limitada
+
+### Objetivo do ciclo
+
+Levar o MC de prototipo de orquestracao para uma base operacional mais madura em Debian Testing, com privilegio controlado, vigilancia do host e resposta a incidente limitada por policy.
+
+### Acoes executadas
+
+1. Consolidada a base documental do projeto:
+   - `docs/PROJECT_FOUNDATIONS.md`
+   - `docs/CORE_CONTRACTS.md`
+   - `docs/CONTEXT_ENGINE.md`
+   - `docs/PEXEC_MODEL.md`
+   - `docs/PRIVILEGE_BROKER.md`
+   - `CONTRIBUTING.md`
+2. Formalizados contratos centrais e infraestrutura tecnica:
+   - `mastercontrol/contracts.py`
+   - `mastercontrol/context/contextd.py`
+   - `mastercontrol/policy/engine.py`
+   - `mastercontrol/privilege/pexec.py`
+3. Integrado contexto real ao core:
+   - coletores `hot/warm/deep`,
+   - store SQLite persistente,
+   - invalidacao por `TTL` e por evento.
+4. Implementado monitor incremental do host:
+   - `journald` com cursor persistido,
+   - baseline `udevadm`,
+   - sessoes via `dbus/login1`.
+5. Entregue vigilancia local continua:
+   - `mastercontrol/security/watcher.py`,
+   - `scripts/mc-security-watch`,
+   - `scripts/install-security-watch-timer.sh`,
+   - alertas persistidos em `security_alerts`,
+   - `ack` e `silence`,
+   - resumo de alertas na interface/TUI.
+6. Entregue runtime privilegiado mais maduro:
+   - broker root via socket Unix,
+   - approval tokens curtos,
+   - instalador `systemd`,
+   - fallback `pkexec_bootstrap`.
+7. Validado E2E no host Debian Testing:
+   - bloqueio sem token,
+   - approval -> exec via broker,
+   - `dry-run` de alto risco,
+   - restart real e auditado de `unbound.service`.
+8. Adicionada resposta a incidente em modo local:
+   - `security.incident.plan`,
+   - playbooks baseados em alertas ativos.
+9. Adicionada contenção automatizada estreita, sempre reaproveitando acoes allowlisted:
+   - `service`: servicos afetados com correlacao explicita,
+   - `security/auth`: `ssh.service`,
+   - `network`: servicos da stack de rede.
+
+### Resultado
+
+- O MC ja opera com:
+  - contexto proporcional,
+  - policy real,
+  - broker root funcional,
+  - vigilancia local continua,
+  - resposta a incidente com guardrails.
+- A suite de testes foi expandida e fechou verde no ultimo checkpoint com `126` testes.
+
+### Proximo bloco recomendado
+
+- Criar `incident ledger` persistente com estado, correlacao e resolucao.
+- Handoff tecnico consolidado em `docs/NEXT_SESSION.md`.
+
 ## 2026-03-06 - Correcoes de UX na TUI e respostas factuais locais
 
 ### Objetivo do ciclo

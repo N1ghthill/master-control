@@ -13,6 +13,7 @@
 3. `mc-contextd` (state collectors)
 - Coletores assincronos para compor consciencia situacional.
 - Atualiza store com snapshots incrementais.
+- Faz sweep incremental de `journald` para invalidar contexto afetado por eventos reais do host.
 
 4. `mc-policyd`
 - Motor de regras por risco, modulo e alvo.
@@ -71,6 +72,7 @@ Para evitar latencia alta por comando:
 - Coletores rodam em background e atualizam estado continuamente.
 - Core consulta snapshots versionados (O(1) para leitura basica).
 - Deep context e carregado apenas quando necessario.
+- Eventos do sistema sao ingeridos de forma incremental, com cursor persistido e `min_interval`, em vez de polling caro por mensagem.
 
 Coletores iniciais:
 
@@ -79,6 +81,7 @@ Coletores iniciais:
 - Rede/DNS (`ip`, `nmcli`, unbound health).
 - Servicos (`systemctl`).
 - Seguranca basica (falhas auth recentes, portas expostas).
+- Sweep de eventos recentes do `journald` para manter invalidacao de snapshots coerente com mudancas reais.
 
 ## 5) Contrato de modulo
 
@@ -115,6 +118,11 @@ Para acoes privilegiadas, policy deve retornar tambem:
 - `privilege_mode`: `none | broker | pkexec_bootstrap`
 - `approval_scope`: `single_action | time_window`
 
+Estado atual:
+
+- `pkexec_bootstrap` continua como fallback operacional do host.
+- `broker` ja existe em forma inicial via socket Unix local e reusa o executor allowlisted.
+
 ## 8) Persistencia e auditoria
 
 Tabelas iniciais (SQLite):
@@ -124,6 +132,36 @@ Tabelas iniciais (SQLite):
 - `approvals`: aprovacoes, nivel de confianca, expiracao.
 - `preferences`: escolhas do operador.
 - `incidents`: problema, causa, fix aplicado.
+
+Estado atual implementado:
+
+- `context_snapshots`
+- `command_events`
+- `operator_patterns`
+- `dream_insights`
+- `learned_rules`
+- `event_monitor_state`
+- `event_source_state`
+- `system_events`
+- `security_alerts`
+
+Eventos incrementais atuais:
+
+- `journald` com cursor persistido para servicos, pacotes, rede e auth.
+- `udevadm info --export-db` para topologia de dispositivos.
+- `dbus/login1` via `busctl` para mudancas de sessoes locais.
+
+Alerting local atual:
+
+- `mc-security-watch` consolida `system_events` em alertas priorizados.
+- alertas persistem em `security_alerts`.
+- o fluxo conversacional pode consultar o mesmo estado por `security.vigilance.status`.
+- o fluxo local tambem pode montar `security.incident.plan` a partir desses alertas.
+- contenção automatizada continua limitada: hoje o `mod_security` so permite remediação correlacionada em tres dominios estreitos:
+  - servicos afetados diretamente,
+  - `ssh.service` para incidentes de autenticacao,
+  - servicos da stack de rede para incidentes de conectividade,
+  sempre reaproveitando acoes allowlisted ja existentes e ainda dependente de approval/policy.
 
 ## 9) Observabilidade
 
@@ -144,6 +182,7 @@ Tabelas iniciais (SQLite):
 - Modulos: Python wrappers para CLIs do sistema.
 - LLM local: adapter pluggable (Ollama/llama.cpp/vLLM local).
 - Elevacao bootstrap: polkit + pkexec com policy dedicada.
+- Broker inicial: socket Unix local em `mastercontrol/privilege/broker.py`.
 
 ## 11) Estrutura de repositorio sugerida
 

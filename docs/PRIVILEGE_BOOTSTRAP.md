@@ -65,8 +65,19 @@ Reiniciar servico:
 
 ## Integracao futura
 
-Este bootstrap e etapa inicial. O caminho alvo e:
+Este bootstrap continua como fallback e etapa inicial. O caminho atual mais forte e:
 
-- `mc-privilege-broker` em service root dedicado (systemd),
+- `mc-privilege-broker` via socket Unix local,
+- tokens de aprovacao curtos,
+- policy engine integrado ao core.
+
+Instalacao do broker:
+
+```bash
+pkexec bash /home/irving/ruas/repos/master-control/scripts/install-privilege-broker.sh
+```
+
+O caminho ainda desejado de maturidade e:
+
 - aprovacoes temporais por lote,
 - policy engine integrado ao core.

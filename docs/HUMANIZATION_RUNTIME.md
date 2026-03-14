@@ -9,7 +9,8 @@ Make humanized behavior enforceable in runtime, not only in documentation.
 - `mastercontrol/core/humanized_kernel.py`
   - Loads soul profile.
   - Validates communication contract fields.
-  - Adapts communication mode by risk and incident.
+  - Builds structured communication metadata (`style`, `adaptation_notes`, profile/tone signals).
+  - Adapts communication mode by risk, tone, frustration and operator profile.
   - Generates post-action reflection checks.
 - `scripts/mc-humanized`
   - Convenience entrypoint to execute the kernel.
@@ -53,6 +54,6 @@ Run reflection after execution:
 
 - Humanized response is identity-aware (`name`, `creator`, `role`).
 - Response always includes intent, plan, risk, outcome, next step/rollback.
+- Runtime can expose why communication was adapted (`tone`, `frustration`, learned preference, low-confidence intent).
 - Reflection always checks accuracy, path quality, safety and usefulness.
 - Safety boundaries remain non-negotiable.
-
