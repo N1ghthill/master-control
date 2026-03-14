@@ -1,0 +1,17 @@
+# Canonical product and engineering documents
+/README.md @N1ghthill
+/CONTRIBUTING.md @N1ghthill
+/docs/PROJECT_FOUNDATIONS.md @N1ghthill
+/docs/MC_ENGINEERING_FLOW.md @N1ghthill
+/docs/CORE_CONTRACTS.md @N1ghthill
+/docs/ARCHITECTURE.md @N1ghthill
+/docs/ROADMAP.md @N1ghthill
+
+# MC core and control layers
+/mastercontrol/contracts.py @N1ghthill
+/mastercontrol/core/ @N1ghthill
+/mastercontrol/context/ @N1ghthill
+/mastercontrol/policy/ @N1ghthill
+/mastercontrol/privilege/ @N1ghthill
+/mastercontrol/interface/ @N1ghthill
+/mastercontrol/security/ @N1ghthill

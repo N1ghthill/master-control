@@ -18,13 +18,15 @@ Leia nesta ordem:
 1. `README.md`
 2. `CONTRIBUTING.md`
 3. `docs/PROJECT_FOUNDATIONS.md`
-4. `docs/ARCHITECTURE.md`
-5. `docs/ROADMAP.md`
-6. `docs/CODE_MAP.md`
+4. `docs/MC_ENGINEERING_FLOW.md`
+5. `docs/ARCHITECTURE.md`
+6. `docs/ROADMAP.md`
+7. `docs/CODE_MAP.md`
 
 ### 2) Arquitetura, contexto e operacao
 
 - `docs/PROJECT_FOUNDATIONS.md`
+- `docs/MC_ENGINEERING_FLOW.md`
 - `docs/CORE_CONTRACTS.md`
 - `docs/CONTEXT_ENGINE.md`
 - `docs/SECURITY_WATCH.md`
@@ -63,6 +65,7 @@ Leia nesta ordem:
 Os documentos abaixo devem ser tratados como referencia principal de produto e direcao:
 
 - `docs/PROJECT_FOUNDATIONS.md`
+- `docs/MC_ENGINEERING_FLOW.md`
 - `docs/CORE_CONTRACTS.md`
 - `docs/ARCHITECTURE.md`
 - `docs/ROADMAP.md`

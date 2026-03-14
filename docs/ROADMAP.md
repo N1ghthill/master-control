@@ -22,6 +22,13 @@ Este roadmap organiza o projeto para cumprir os compromissos definidos em `docs/
 - defesa do host,
 - evolucao modular continua.
 
+Hierarquia de execucao do roadmap:
+
+- `operator-first`;
+- `MC-first`;
+- `modules-as-extensions`;
+- `AI-as-adaptive-cognition`.
+
 ## Fase 0 - Base documental e contratos
 
 Objetivo:
@@ -152,10 +159,12 @@ Objetivo:
 
 Entregas:
 - identidade do `MC` consistente em todas as interfaces;
+- memoria operacional e protocolo do operador influenciando o comportamento do agente;
 - explicacoes claras de risco, impacto, rollback e estado atual;
 - planner local melhor integrado ao contexto e a policy;
 - orientacao embutida sobre como usar o proprio sistema;
-- uso de LLM local de forma auxiliar e controlada.
+- uso de LLM local de forma auxiliar e controlada;
+- humanizacao tratada como comportamento do `MC`, nao como camada cosmetica de UI.
 
 Criterio de saida:
 - o operador entende o que o MC sabe, vai fazer, ja fez e por que.

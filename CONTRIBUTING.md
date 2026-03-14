@@ -9,9 +9,10 @@ Leia nesta ordem:
 1. `README.md`
 2. `docs/INDEX.md`
 3. `docs/PROJECT_FOUNDATIONS.md`
-4. `docs/ARCHITECTURE.md`
-5. `docs/ROADMAP.md`
-6. `docs/CODE_MAP.md`
+4. `docs/MC_ENGINEERING_FLOW.md`
+5. `docs/ARCHITECTURE.md`
+6. `docs/ROADMAP.md`
+7. `docs/CODE_MAP.md`
 
 ## Regras que nao podem ser quebradas
 
@@ -20,6 +21,8 @@ Leia nesta ordem:
 - Nao transformar cada interacao em uma bateria fixa de verificacoes do host.
 - Nao sacrificar auditoria para ganhar conveniencia.
 - Nao otimizar para multiplas distros antes de estabilizar `Debian Testing`.
+- Nao inverter a hierarquia `operador -> MC -> modulos -> host`.
+- Nao tratar humanizacao e inteligencia como acessorios de interface.
 
 ## Stack e alvo atual
 
@@ -43,15 +46,40 @@ python3 -m unittest discover -s tests -v
 
 O CI executa exatamente essa sequencia: primeiro smoke do fluxo real da interface, depois a suite completa.
 
+## Templates de trabalho
+
+Use os templates do repositorio para manter o eixo `operator-first` e `MC-first`:
+
+- `.github/ISSUE_TEMPLATE/mc_capability.md`
+- `.github/ISSUE_TEMPLATE/mc_regression.md`
+- `.github/PULL_REQUEST_TEMPLATE.md`
+
+Eles existem para forcar o mesmo fluxo de engenharia definido em `docs/MC_ENGINEERING_FLOW.md`.
+
 ## Como pensar mudancas
 
 Ao propor ou implementar qualquer mudanca, responda internamente a estas perguntas:
 
-1. Isso melhora ou piora a seguranca operacional?
-2. Isso aumenta ou reduz a integracao real com Linux?
-3. Isso respeita o principio de `contexto minimo suficiente`?
-4. Isso cria uma API ou contrato que outros modulos conseguirao manter?
-5. Isso esta documentado no lugar certo?
+1. Isso serve melhor o operador ou so adiciona complexidade tecnica?
+2. Isso fortalece o `MC` como agente central ou espalha logica por modulos/ferramentas?
+3. Isso melhora ou piora a seguranca operacional?
+4. Isso aumenta ou reduz a integracao real com Linux?
+5. Isso respeita o principio de `contexto minimo suficiente`?
+6. Isso cria uma API ou contrato que outros modulos conseguirao manter?
+7. Isso esta documentado no lugar certo?
+
+## Fluxo de engenharia obrigatorio
+
+Projete mudancas nesta ordem:
+
+1. necessidade do operador;
+2. capacidade do `MC`;
+3. contrato;
+4. policy e seguranca;
+5. integracao de modulo;
+6. humanizacao e inteligencia;
+7. testes e smoke;
+8. documentacao.
 
 ## Quando alterar documentacao
 
@@ -81,5 +109,11 @@ Prefira mudancas pequenas e verificaveis:
 - depois implementacao,
 - depois testes,
 - depois docs complementares.
+
+Em termos de centro de gravidade:
+
+- primeiro o `MC`,
+- depois os modulos,
+- nunca o contrario.
 
 Se a mudanca tocar privilegios, contexto, seguranca ou autonomia, trate a revisao como mudanca critica.

@@ -6,6 +6,23 @@ MasterControl (`MC`) deve ser um orquestrador Linux local, profundamente integra
 
 O alvo principal inicial e `Debian Testing`. Portabilidade para outras distribuicoes vem depois de contratos, policy e modulos estarem maduros.
 
+## Hierarquia fundadora do projeto
+
+O projeto precisa preservar esta ordem:
+
+1. operador;
+2. instrucoes, protocolos e limites definidos pelo operador;
+3. `MC` como agente central;
+4. modulos como extensoes do `MC`;
+5. host Linux real como ambiente operado.
+
+Regra de produto:
+
+- o `MC` serve ao operador;
+- a I.A fortalece o `MC`;
+- os modulos estendem o `MC`;
+- o Linux real ancora a verdade operacional.
+
 ## Compromissos fixos do projeto
 
 ### 1) Documentacao e parte do produto
@@ -41,6 +58,18 @@ O operador continua no centro da autoridade. O MC pode automatizar, sugerir e pl
 
 Regra fixa: sem `root` livre para LLM, sem shell privilegiado arbitrario, sem auto-aprovacao de acoes de alto risco.
 
+### 3.1) O protocolo do operador governa a engenharia
+
+Toda nova capacidade deve nascer de um contrato claro com o operador:
+
+- o que ele quer delegar;
+- o que ele quer apenas observar;
+- o que exige confirmacao;
+- o que deve ser bloqueado;
+- qual estilo de comunicacao reduz desgaste no uso real.
+
+Se uma feature nao melhora a capacidade do `MC` de servir o operador dentro desse contrato, ela esta partindo do centro errado.
+
 ### 4) Consciencia situacional inteligente e proporcional
 
 O MC precisa entender operador, host, hardware, servicos e estado do ambiente sem pagar custo alto em toda interacao.
@@ -61,6 +90,25 @@ O sistema deve saber que e `MasterControl` ou `MC`, manter identidade estavel e 
 - qual e seu papel,
 - como opera,
 - o que pode e nao pode fazer.
+
+### 5.1) Humanizacao como requisito de arquitetura
+
+Humanizacao nao e camada cosmetica.
+
+No `MC`, ela precisa aparecer como comportamento do agente:
+
+- memoria operacional do operador;
+- tom proporcional ao risco, urgencia e friccao;
+- explicacao clara do que entendeu, vai fazer e fez;
+- postura de servico sem perder rigor;
+- reducao de desgaste desnecessario.
+
+Inteligencia tambem nao e apenas linguagem natural:
+
+- escolher melhor contexto;
+- selecionar melhor path;
+- decidir melhor quando confirmar, executar ou bloquear;
+- reaproveitar aprendizado sem romper previsibilidade.
 
 ### 6) Obediencia com protecao do operador
 
@@ -160,6 +208,13 @@ Para cumprir estes fundamentos, o projeto precisa ter pelo menos estes planos se
 - `Privilege Plane`: broker privilegiado estrito por `action_id`.
 - `Knowledge Plane`: base de conhecimento Linux e Debian com uso controlado.
 - `Module Plane`: contratos, registro, ciclo de vida e atualizacao de modulos.
+
+Fluxo de engenharia canonico:
+
+- `Operator Plane`: instrucoes, protocolos e preferencias do operador.
+- `MC Core`: identidade, contexto, planejamento, policy, memoria e comunicacao.
+- `Module Plane`: ferramentas operacionais acionadas pelo core.
+- `Host Plane`: Linux real como alvo e fonte de verdade.
 
 ## Nao objetivos imediatos
 

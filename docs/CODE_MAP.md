@@ -137,6 +137,7 @@ Mapa atualizado dos arquivos de codigo do MasterControl, organizado por dominio.
 
 - `docs/INDEX.md`
 - `docs/PROJECT_FOUNDATIONS.md`
+- `docs/MC_ENGINEERING_FLOW.md`
 - `docs/CORE_CONTRACTS.md`
 - `docs/CONTEXT_ENGINE.md`
 - `docs/PEXEC_MODEL.md`

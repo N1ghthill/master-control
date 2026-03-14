@@ -1,5 +1,22 @@
 # MasterControl - Arquitetura de referencia
 
+## 0) Hierarquia de controle
+
+Antes dos componentes, a arquitetura precisa preservar a hierarquia correta:
+
+1. operador;
+2. protocolos e instrucoes definidos pelo operador;
+3. `MasterControl` como agente central;
+4. modulos como extensoes do `MC`;
+5. host Linux como ambiente real operado.
+
+Consequencia pratica:
+
+- a identidade do sistema vive no `MC`, nao nos modulos;
+- a decisao de contexto, path, policy e comunicacao vive no `MC`;
+- os modulos entram como ferramentas do agente;
+- a I.A serve ao `MC` como camada adaptativa e humanizada.
+
 ## 1) Componentes principais
 
 1. `mastercontrold` (core daemon)
@@ -54,16 +71,31 @@ Regra: runtime nao executa shell root arbitrario; apenas `action_id` permitida.
 ## 3) Pipeline de comando
 
 1. Receber comando do usuario.
-2. Resolver identidade/contexto rapido no store.
-3. Converter para intent estruturada.
-4. `Path Selector` decide fast/deep path.
-5. Planejar acoes candidatas.
-6. Avaliar politica e risco.
-7. Executar via modulo.
-8. Se precisar root: chamar `Privilege Broker` com `action_id` validada.
-9. Verificar resultado e registrar auditoria.
-10. Se falha por falta de contexto: replanejar em deep path.
-11. Responder ao operador.
+2. Aplicar contrato do operador: protocolo, preferencia, limite e contexto relacional.
+3. Resolver identidade/contexto rapido no store.
+4. Converter para intent estruturada.
+5. `Path Selector` decide fast/deep path.
+6. Planejar acoes candidatas.
+7. Avaliar politica e risco.
+8. Executar via modulo.
+9. Se precisar root: chamar `Privilege Broker` com `action_id` validada.
+10. Verificar resultado e registrar auditoria.
+11. Se falha por falta de contexto: replanejar em deep path.
+12. Responder ao operador com comunicacao humanizada e proporcional.
+13. Registrar aprendizado operacional reaproveitavel pelo `MC`.
+
+## 3.1) Fluxo canonico de engenharia
+
+Toda feature nova deve nascer nesta ordem:
+
+1. necessidade do operador;
+2. capacidade nova do `MC`;
+3. contrato de contexto/plan/policy/result;
+4. integracao de modulo ou ferramenta;
+5. verificacao, auditoria e rollback;
+6. adaptacao de inteligencia e humanizacao.
+
+Se a implementacao comeca pelo modulo ou pelo LLM antes do contrato do `MC`, a arquitetura sai do eixo.
 
 ## 4) Consciencia situacional sem custo linear
 
@@ -95,6 +127,13 @@ apply(action, policy) -> ActionResult
 verify(expected) -> VerificationResult
 rollback(checkpoint) -> RollbackResult
 ```
+
+Interpretacao correta:
+
+- modulo nao decide identidade;
+- modulo nao fala em nome do sistema;
+- modulo nao contorna `policy` nem privilegio;
+- modulo responde ao core como extensao operacional do `MC`.
 
 ## 6) Modulos v0.1
 
