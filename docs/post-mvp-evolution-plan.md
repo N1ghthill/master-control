@@ -550,14 +550,16 @@ Completed implementation slices:
 3. turn `failed_services` observations into explicit service-detail follow-up recommendations instead of a dead-end list
 4. preserve config target, validation, and backup metadata in session summary/context so rollback remains available after the initial write
 5. support natural-language config rollback requests such as `desfaça a última mudança`
-6. add deterministic regression coverage and a dedicated operator workflow guide in `docs/operator-workflows.md`
+6. add explicit service-log follow-up recommendations after unhealthy `service_status` evidence when matching logs are missing or stale
+7. add explicit post-change verification recommendations after `write_config_file` and `restore_config_backup`
+8. add deterministic regression coverage and a dedicated operator workflow guide in `docs/operator-workflows.md`
 
 Observed result:
 
 - slow-host diagnosis now presents a cleaner process lead and can step from typed correlation into service detail more naturally
-- failed-service triage now produces an actionable `service_status` next step instead of stopping at the unit list
-- the managed-config path now keeps rollback context visible and usable in a later follow-up turn
-- the checked local baseline is green with 115 automated tests
+- failed-service triage now produces an actionable `service_status` next step instead of stopping at the unit list, and then pushes the operator toward fresh logs before mutating service state
+- the managed-config path now keeps rollback context visible and usable in a later follow-up turn, and it explicitly suggests post-change verification after writes and restores
+- the checked local baseline is green with 120 automated tests
 - the three selected workflows now have one shared smoke-and-guidance document
 
 Phase-level exit criteria:

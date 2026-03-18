@@ -159,6 +159,13 @@ def collect_session_insights_from_context(
                         action_arguments=action_arguments,
                     )
                 )
+                logs_follow_up = _build_service_logs_follow_up_insight(
+                    service_context,
+                    session_context.logs,
+                    freshness_by_key.get("logs"),
+                )
+                if logs_follow_up is not None:
+                    insights.append(logs_follow_up)
 
     failed_services_context = session_context.failed_services
     if failed_services_context is not None:
@@ -279,6 +286,9 @@ def collect_session_insights_from_context(
 
     config_context = session_context.config
     if config_context is not None:
+        verification_insight = _build_config_verification_insight(config_context)
+        if verification_insight is not None:
+            insights.append(verification_insight)
         backup_insight = _build_config_backup_insight(config_context)
         if backup_insight is not None:
             insights.append(backup_insight)
@@ -467,6 +477,94 @@ def _build_service_follow_up_arguments(
         if scope not in {"system", "user"} or service_context.scope in {None, scope}:
             return {}
     return _with_scope_argument({"name": unit}, scope)
+
+
+def _build_service_logs_follow_up_insight(
+    service: ServiceContext,
+    logs_context: object,
+    freshness: ObservationFreshness | None,
+) -> SessionInsight | None:
+    if _has_fresh_matching_logs(service, logs_context, freshness):
+        return None
+
+    lines = "40"
+    if _has_matching_logs_context(service, logs_context) and freshness is not None and freshness.stale:
+        return SessionInsight(
+            key="service_logs_follow_up",
+            severity="warning",
+            target=service.name,
+            message=(
+                f"Os logs recentes de `{service.name}` estão desatualizados. "
+                "Vale atualizá-los antes de decidir por reinício ou reload."
+            ),
+            action_tool_name="read_journal",
+            action_title=f"Atualizar os logs recentes de `{service.name}`.",
+            action_arguments={"unit": service.name, "lines": lines},
+        )
+
+    return SessionInsight(
+        key="service_logs_follow_up",
+        severity="warning",
+        target=service.name,
+        message=(
+            f"Vale revisar logs recentes de `{service.name}` antes de qualquer ação mutável."
+        ),
+        action_tool_name="read_journal",
+        action_title=f"Ler logs recentes de `{service.name}` antes de intervir.",
+        action_arguments={"unit": service.name, "lines": lines},
+    )
+
+
+def _has_matching_logs_context(service: ServiceContext, logs_context: object) -> bool:
+    if logs_context is None or not hasattr(logs_context, "unit"):
+        return False
+    unit = getattr(logs_context, "unit")
+    return isinstance(unit, str) and unit == service.name
+
+
+def _has_fresh_matching_logs(
+    service: ServiceContext,
+    logs_context: object,
+    freshness: ObservationFreshness | None,
+) -> bool:
+    if freshness is None or freshness.stale or not _has_matching_logs_context(service, logs_context):
+        return False
+    observed_unit = freshness.value.get("unit")
+    return isinstance(observed_unit, str) and observed_unit == service.name
+
+
+def _build_config_verification_insight(config: ConfigContext) -> SessionInsight | None:
+    if (
+        config.stale
+        or not config.path
+        or config.source not in {"write_config_file", "restore_config_backup"}
+    ):
+        return None
+    if config.source == "restore_config_backup":
+        return SessionInsight(
+            key="config_verification_available",
+            severity="warning",
+            target=config.path,
+            message=(
+                f"O arquivo `{config.path}` foi restaurado nesta sessão. "
+                "Vale reler o conteúdo efetivo antes de seguir com outras ações."
+            ),
+            action_tool_name="read_config_file",
+            action_title=f"Reler `{config.path}` para verificar o conteúdo restaurado.",
+            action_arguments={"path": config.path},
+        )
+    return SessionInsight(
+        key="config_verification_available",
+        severity="warning",
+        target=config.path,
+        message=(
+            f"O arquivo `{config.path}` foi alterado nesta sessão. "
+            "Vale reler o conteúdo persistido antes de decidir por reload ou rollback."
+        ),
+        action_tool_name="read_config_file",
+        action_title=f"Reler `{config.path}` para verificar a mudança aplicada.",
+        action_arguments={"path": config.path},
+    )
 
 
 def _build_config_backup_insight(config: ConfigContext) -> SessionInsight | None:

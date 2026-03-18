@@ -248,10 +248,31 @@ class SessionContextTest(unittest.TestCase):
         self.assertEqual(context.failed_services.items[0].unit, "nginx.service")
         self.assertEqual(context.failed_services.items[1].unit, "postgresql.service")
         self.assertIsNotNone(context.config)
+        self.assertEqual(context.config.source, "restore_config_backup")
         self.assertEqual(context.config.path, "/etc/app.ini")
         self.assertEqual(context.config.target, "managed_ini")
         self.assertEqual(context.config.validation_kind, "ini_parse")
         self.assertEqual(context.config.backup_path, "/tmp/rollback.bak")
+
+    def test_build_session_context_extracts_config_source_from_summary(self) -> None:
+        context = build_session_context(
+            "\n".join(
+                [
+                    "tracked_path: /etc/app.ini",
+                    "config: write_config_file: /etc/app.ini",
+                    "config_target: managed_ini",
+                    "config_validation: ini_parse",
+                    "last_backup_path: /tmp/app.bak",
+                ]
+            )
+        )
+
+        self.assertIsNotNone(context.config)
+        self.assertEqual(context.config.source, "write_config_file")
+        self.assertEqual(context.config.path, "/etc/app.ini")
+        self.assertEqual(context.config.target, "managed_ini")
+        self.assertEqual(context.config.validation_kind, "ini_parse")
+        self.assertEqual(context.config.backup_path, "/tmp/app.bak")
 
     def test_previous_response_id_is_reused_when_session_is_resumed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -397,6 +418,7 @@ class SessionContextTest(unittest.TestCase):
                 session_context=SessionContext(
                     tracked=TrackedEntities(path="/etc/app.ini"),
                     config=ConfigContext(
+                        source="write_config_file",
                         path="/etc/app.ini",
                         target="managed_ini",
                         validation_kind="ini_parse",

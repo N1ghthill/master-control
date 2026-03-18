@@ -26,10 +26,12 @@ SOURCE_KEY_TO_OBSERVATION_KEY = {
     "memory_pressure_refresh": "memory",
     "service_state": "service",
     "service_state_refresh": "service",
+    "service_logs_follow_up": "logs",
     "failed_service_detected": "failed_services",
     "failed_services_refresh": "failed_services",
     "hot_process": "processes",
     "hot_process_refresh": "processes",
+    "config_verification_available": "config",
     "config_backup_available": "config",
 }
 

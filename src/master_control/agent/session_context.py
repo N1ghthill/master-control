@@ -195,6 +195,7 @@ class FailedServicesContext:
 
 @dataclass(frozen=True, slots=True)
 class ConfigContext:
+    source: str | None = None
     path: str | None = None
     target: str | None = None
     validation_kind: str | None = None
@@ -203,6 +204,8 @@ class ConfigContext:
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {}
+        if self.source:
+            payload["source"] = self.source
         if self.path:
             payload["path"] = self.path
         if self.target:
@@ -498,6 +501,7 @@ def _build_config_context(
     summary: dict[str, str],
     freshness: ObservationFreshness | None,
 ) -> ConfigContext | None:
+    summary_source = _extract_config_source(summary.get("config"))
     if freshness is not None:
         path = _non_empty(freshness.value.get("path"))
         target = _non_empty(freshness.value.get("target"))
@@ -516,6 +520,7 @@ def _build_config_context(
             or resolved_backup_path is not None
         ):
             return ConfigContext(
+                source=freshness.source,
                 path=path,
                 target=target,
                 validation_kind=validation_kind,
@@ -530,6 +535,7 @@ def _build_config_context(
     if path is None and target is None and validation_kind is None and backup_path is None:
         return None
     return ConfigContext(
+        source=summary_source,
         path=path,
         target=target,
         validation_kind=validation_kind,
@@ -599,6 +605,16 @@ def _extract_process_items(value: object) -> tuple[ProcessEntryContext, ...]:
         if existing_cpu is None or (next_cpu is not None and next_cpu > existing_cpu):
             items_by_command[command] = next_entry
     return tuple(items_by_command.values())
+
+
+def _extract_config_source(value: object) -> str | None:
+    if not isinstance(value, str) or ":" not in value:
+        return None
+    prefix, _ = value.split(":", maxsplit=1)
+    candidate = prefix.strip()
+    if candidate in {"read_config_file", "write_config_file", "restore_config_backup"}:
+        return candidate
+    return None
 
 
 def _extract_path_from_freshness(freshness: ObservationFreshness | None) -> str | None:

@@ -83,7 +83,9 @@ Snapshot date: 2026-03-18
 - recommendation views expose evidence summaries, confidence, and next-step commands directly to the operator
 - process-correlation no-match state is now preserved in session context so hot-process recommendations do not repeat failed correlation attempts
 - failed-service observations can now drive a direct `service_status` follow-up recommendation
+- unhealthy-service recommendations now request `read_journal` when matching log evidence is missing or stale
 - recent managed config backups now stay visible in session context so rollback can be planned from natural-language follow-ups
+- recent managed config writes and restores now surface a `read_config_file` verification follow-up
 
 ### Safe mutations started
 
@@ -154,4 +156,4 @@ At this snapshot, the project is validated by:
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
 - clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
-- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 115 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`
+- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 120 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`

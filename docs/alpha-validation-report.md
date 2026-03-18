@@ -24,7 +24,7 @@ Validated successfully:
 
 Current automated suite size at this snapshot:
 
-- 115 tests
+- 120 tests
 
 Additional trust-boundary regressions now covered in the automated suite:
 
@@ -40,7 +40,9 @@ Additional trust-boundary regressions now covered in the automated suite:
 - hot-process recommendations do not repeat process-correlation actions once a no-match state is already known
 - non-service `systemd` scope correlations do not trigger a `service_status` lookup
 - failed-service listings can generate a direct `service_status` follow-up recommendation
+- unhealthy services now generate a `read_journal` follow-up when matching logs are missing or stale
 - recent managed config backups can generate rollback recommendations and natural-language rollback planning
+- recent managed config writes and restores now generate a `read_config_file` verification follow-up
 - operator-facing top-process rendering collapses repeated commands so the slow-host lead is less noisy
 
 ## Provider validation
