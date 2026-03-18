@@ -13,6 +13,7 @@ Snapshot date: 2026-03-18
 - MVP closeout backlog record: `docs/mvp-closeout-backlog.md`
 - Active post-MVP planning record: `docs/post-mvp-evolution-plan.md`
 - Active operator workflow guide: `docs/operator-workflows.md`
+- Active host-profile validation guide: `docs/host-profile-validation.md`
 - Active beta gate: `docs/beta-readiness-gate.md`
 - Milestone note: service recommendation trust hardening completed on 2026-03-18
 - Milestone note: structured session state and orchestration refactor completed on 2026-03-18
@@ -157,6 +158,7 @@ At this snapshot, the project is validated by:
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
 - real-host validation of `reconcile-timer install|remove` on `systemd --user`
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
+- repeatable host-profile validation harness available through `python3 scripts/validate_host_profile.py`
 - clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
 - current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 123 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`

@@ -6,6 +6,7 @@
 
 - structured `SessionContext` for the core high-risk planner and recommendation paths
 - extracted session-analysis seam for summary -> context -> insight assembly outside the central app orchestrator
+- repeatable host-profile validation harness and guide for collecting multi-host workflow evidence
 - `process_to_unit` as a typed read-only process -> `systemd` correlation tool
 - `failed_services` as a typed read-only failed-unit listing tool
 - extracted turn-planning, turn-rendering, and recommendation-view helpers from the central app layer

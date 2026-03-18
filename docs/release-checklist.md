@@ -35,6 +35,14 @@ PYTHONPATH=src python3 -m master_control --json doctor
 
 ## Real-host smoke tests
 
+Preferred execution path for each additional host profile:
+
+```bash
+python3 scripts/validate_host_profile.py --output-dir ./artifacts/host-validation
+```
+
+Use the generated JSON report as the release evidence artifact for that host.
+
 ### Provider resolution
 
 - if using `MC_PROVIDER=auto`, run `mc doctor` and confirm the selected backend matches the host setup

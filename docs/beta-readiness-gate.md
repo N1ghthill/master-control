@@ -37,6 +37,7 @@ Minimum exit bar:
 Primary reference:
 
 - `docs/operator-workflows.md`
+- `docs/host-profile-validation.md`
 
 ## Gate 2: Trust And Recommendation Quality
 
@@ -117,5 +118,4 @@ Current assessment on 2026-03-18:
 Main remaining blockers:
 
 1. workflow validation is still concentrated on one primary host profile
-2. workflow usefulness is materially better, but still needs broader real-host confirmation
-3. orchestration hotspots still need further reduction before faster iteration is comfortable
+2. the repository now has a repeatable host-profile validation harness, but it still needs reports from additional real hosts
