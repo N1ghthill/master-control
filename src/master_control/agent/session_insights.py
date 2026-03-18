@@ -6,7 +6,6 @@ from dataclasses import dataclass, field
 from master_control.agent.observations import ObservationFreshness, format_duration
 from master_control.agent.session_summary import parse_session_summary
 
-
 DISK_USAGE_RE = re.compile(r"^(?P<path>.+?) is (?P<percent>\d+(?:\.\d+)?)% used$")
 MEMORY_RE = re.compile(
     r"^memory (?P<memory>\d+(?:\.\d+)?)% used, swap (?P<swap>\d+(?:\.\d+)?)% used$"

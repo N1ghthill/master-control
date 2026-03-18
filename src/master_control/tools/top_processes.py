@@ -67,4 +67,3 @@ class TopProcessesTool(Tool):
             "limit": limit,
             "processes": processes,
         }
-

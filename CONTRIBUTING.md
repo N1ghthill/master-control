@@ -13,7 +13,8 @@ This project is still in an early local-first stage. Contributions should preser
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
-pip install -e .
+pip install -e .[dev]
+pre-commit install
 ```
 
 ## Baseline checks
@@ -21,12 +22,21 @@ pip install -e .
 Run these before considering a change complete:
 
 ```bash
+python3 -m ruff check .
+python3 -m mypy src
 PYTHONPATH=src python3 -m unittest discover -s tests
 python3 -m compileall src
 PYTHONPATH=src python3 -m master_control doctor
 ```
 
 The repository also has a matching GitHub Actions baseline in `.github/workflows/ci.yml`. Keep local checks and CI checks aligned.
+
+If you use `pre-commit`, the repository will run:
+
+- basic whitespace and merge-conflict hooks
+- `ruff check --fix`
+- `ruff format`
+- `mypy src`
 
 ## Engineering guardrails
 
@@ -61,6 +71,7 @@ The repository also has a matching GitHub Actions baseline in `.github/workflows
 - add policy tests when risk handling changes
 - prefer deterministic tests over environment-dependent host behavior
 - when touching config editing, prefer tests under `MC_STATE_DIR/managed-configs` over host paths
+- keep lint and typecheck green for `src/`
 
 ## Commit conventions
 
@@ -89,4 +100,5 @@ Before closing a change, verify:
 - code path follows policy and audit rules
 - docs match the user-visible behavior
 - tests cover the intended contract
+- lint and typecheck stay green
 - the change can be described in one focused commit

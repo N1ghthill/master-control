@@ -40,4 +40,3 @@ class PolicyEngine:
             needs_confirmation=True,
             reason="Privileged tool requires confirmation and preflight validation.",
         )
-

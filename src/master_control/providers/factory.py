@@ -1,7 +1,10 @@
 from __future__ import annotations
 
 from master_control.config import Settings
-from master_control.providers.availability import collect_provider_checks, resolve_auto_provider_backend
+from master_control.providers.availability import (
+    collect_provider_checks,
+    resolve_auto_provider_backend,
+)
 from master_control.providers.heuristic import HeuristicProvider
 from master_control.providers.noop import NoopProvider
 from master_control.providers.ollama_chat import OllamaChatProvider

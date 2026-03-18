@@ -116,3 +116,4 @@ At this snapshot, the project is validated by:
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
 - real-host validation of `reconcile-timer install|remove` on `systemd --user`
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
+- repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates

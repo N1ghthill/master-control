@@ -1,10 +1,8 @@
 from __future__ import annotations
 
 from collections import OrderedDict
-from typing import Any
 
 from master_control.agent.planner import ExecutionPlan
-
 
 SUMMARY_ORDER = (
     "current_focus",
@@ -145,7 +143,9 @@ def _apply_execution_summary(
         if isinstance(unit, str) and unit:
             summary["tracked_unit"] = _truncate(unit)
         if returned_lines is not None:
-            summary["logs"] = _truncate(f"{unit}: last journal read returned {returned_lines} lines")
+            summary["logs"] = _truncate(
+                f"{unit}: last journal read returned {returned_lines} lines"
+            )
         return
 
     if tool_name == "top_processes":
@@ -183,9 +183,7 @@ def _apply_execution_summary(
             active_state = post_state.get("activestate")
             sub_state = post_state.get("substate")
             if active_state and sub_state:
-                summary["service"] = _truncate(
-                    f"{service}: active={active_state}, sub={sub_state}"
-                )
+                summary["service"] = _truncate(f"{service}: active={active_state}, sub={sub_state}")
 
 
 def _extract_tracked_unit(arguments: dict[str, object]) -> str | None:

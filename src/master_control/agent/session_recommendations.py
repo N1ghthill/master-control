@@ -1,10 +1,9 @@
 from __future__ import annotations
 
-from dataclasses import dataclass
 import re
+from dataclasses import dataclass
 
 from master_control.agent.session_insights import SessionInsight
-
 
 RECOMMENDATION_STATUS_OPEN = "open"
 RECOMMENDATION_STATUS_ACCEPTED = "accepted"

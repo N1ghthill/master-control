@@ -4,7 +4,7 @@ import json
 import shlex
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from master_control.agent.observations import (
     ObservationFreshness,
@@ -12,12 +12,12 @@ from master_control.agent.observations import (
     build_observation_freshness,
     observation_key_for_tool,
 )
+from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.agent.recommendation_sync import RecommendationSyncResult
 from master_control.agent.session_insights import (
     SessionInsight,
     collect_session_insights_with_freshness,
 )
-from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
     RECOMMENDATION_STATUSES,
@@ -47,7 +47,6 @@ from master_control.systemd_timer import (
 from master_control.tools.base import ToolError
 from master_control.tools.registry import ToolRegistry, build_default_registry
 
-
 PROVIDER_HISTORY_LIMIT = 8
 MAX_PLANNING_ITERATIONS = 4
 MULTI_STEP_PLANNING_INTENTS = {"diagnose_performance"}
@@ -67,6 +66,20 @@ class FinalChatResponse:
     message: str
     response_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+def _coerce_int(value: object, label: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    raise TypeError(f"Expected integer-compatible value for {label}, got {type(value).__name__}.")
+
+
+def _coerce_mapping(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return cast(dict[str, object], value)
+    return {}
 
 
 class MasterControlApp:
@@ -103,8 +116,7 @@ class MasterControlApp:
         )
         doctor_ok = bool(active_provider_check.get("available", False))
         llm_provider_available = any(
-            bool(provider_checks[name].get("available", False))
-            for name in ("ollama", "openai")
+            bool(provider_checks[name].get("available", False)) for name in ("ollama", "openai")
         )
         return {
             "ok": doctor_ok,
@@ -135,17 +147,20 @@ class MasterControlApp:
         enriched: list[dict[str, object]] = []
         for session in sessions:
             summary_text = session.get("summary_text")
-            observation_freshness = self._load_observation_freshness(int(session["session_id"]))
+            session_id = _coerce_int(session["session_id"], "session_id")
+            observation_freshness = self._load_observation_freshness(session_id)
             insights = collect_session_insights_with_freshness(
                 str(summary_text) if isinstance(summary_text, str) else None,
                 observation_freshness,
             )
             active_recommendations = self.store.list_session_recommendations(
-                int(session["session_id"]),
+                session_id,
                 limit=200,
             )
             active_count = sum(
-                1 for item in active_recommendations if item["status"] in ACTIVE_RECOMMENDATION_STATUSES
+                1
+                for item in active_recommendations
+                if item["status"] in ACTIVE_RECOMMENDATION_STATUSES
             )
             enriched.append(
                 {
@@ -226,7 +241,10 @@ class MasterControlApp:
             raise ValueError("Cannot use session_id and all_sessions at the same time.")
 
         if all_sessions:
-            session_ids = [int(item["session_id"]) for item in self.store.list_sessions(limit=10_000)]
+            session_ids = [
+                _coerce_int(item["session_id"], "session_id")
+                for item in self.store.list_sessions(limit=10_000)
+            ]
         else:
             session_ids = [self._resolve_session_id(session_id)]
 
@@ -601,7 +619,9 @@ class MasterControlApp:
         new_session: bool = False,
     ) -> dict[str, object]:
         self.bootstrap()
-        active_session_id = self._prepare_chat_session(session_id=session_id, new_session=new_session)
+        active_session_id = self._prepare_chat_session(
+            session_id=session_id, new_session=new_session
+        )
         conversation_history = self._load_conversation_history(active_session_id)
         session_summary = self._load_session_summary(active_session_id)
         observation_freshness = self._load_observation_freshness(active_session_id)
@@ -940,8 +960,7 @@ class MasterControlApp:
             )
 
         observation_lines = [
-            self._summarize_execution_for_planner(execution)
-            for execution in executions
+            self._summarize_execution_for_planner(execution) for execution in executions
         ]
         rendered_observations = "\n".join(f"- {line}" for line in observation_lines)
         return "\n".join(
@@ -1105,7 +1124,9 @@ class MasterControlApp:
         if decision.state == "needs_tools" and not has_steps:
             raise ProviderError("Provider declared needs_tools without returning executable steps.")
         if decision.state != "needs_tools" and has_steps:
-            raise ProviderError("Provider returned executable steps for a non-needs_tools decision.")
+            raise ProviderError(
+                "Provider returned executable steps for a non-needs_tools decision."
+            )
         return decision
 
     def _should_continue_planning(
@@ -1143,7 +1164,9 @@ class MasterControlApp:
                 kind="evidence_sufficient",
                 reason="Current-turn evidence is sufficient for the final response.",
             )
-        if plan_decision.state == "needs_tools" and self._collect_planned_refresh_keys(provider_response.plan):
+        if plan_decision.state == "needs_tools" and self._collect_planned_refresh_keys(
+            provider_response.plan
+        ):
             return PlanningDecision(
                 state="needs_tools",
                 kind="refresh_required",
@@ -1231,11 +1254,7 @@ class MasterControlApp:
     ) -> str:
         if turn_decision.state == "blocked" and turn_decision.kind == "awaiting_confirmation":
             pending_execution = next(
-                (
-                    execution
-                    for execution in executions
-                    if execution.get("pending_confirmation")
-                ),
+                (execution for execution in executions if execution.get("pending_confirmation")),
                 None,
             )
             if isinstance(pending_execution, dict):
@@ -1244,13 +1263,9 @@ class MasterControlApp:
                     cli_command = approval.get("cli_command")
                     chat_command = approval.get("chat_command")
                     if (
-                        isinstance(cli_command, str)
-                        and cli_command
-                        and cli_command in message
+                        isinstance(cli_command, str) and cli_command and cli_command in message
                     ) or (
-                        isinstance(chat_command, str)
-                        and chat_command
-                        and chat_command in message
+                        isinstance(chat_command, str) and chat_command and chat_command in message
                     ):
                         return f"{message}\n\nAção pendente de confirmação explícita."
                     command_parts: list[str] = []
@@ -1259,9 +1274,8 @@ class MasterControlApp:
                     if isinstance(chat_command, str) and chat_command.strip():
                         command_parts.append(f"Chat: `{chat_command}`")
                     if command_parts:
-                        return (
-                            f"{message}\n\nAção pendente de confirmação explícita. "
-                            + " ".join(command_parts)
+                        return f"{message}\n\nAção pendente de confirmação explícita. " + " ".join(
+                            command_parts
                         )
             return f"{message}\n\nAção pendente de confirmação explícita."
 
@@ -1272,9 +1286,7 @@ class MasterControlApp:
             )
 
         if turn_decision.state == "blocked" and turn_decision.kind == "execution_failed":
-            return (
-                f"{message}\n\nO turno foi interrompido porque uma execução falhou antes da conclusão."
-            )
+            return f"{message}\n\nO turno foi interrompido porque uma execução falhou antes da conclusão."
 
         if turn_decision.state == "needs_tools" and turn_decision.kind == "refresh_required":
             return (
@@ -1387,6 +1399,7 @@ class MasterControlApp:
         return enriched
 
     def _render_execution_summary(self, execution: dict[str, object]) -> str:
+        arguments = _coerce_mapping(execution.get("arguments"))
         if not execution.get("ok"):
             if execution.get("pending_confirmation"):
                 approval = execution.get("approval")
@@ -1397,9 +1410,7 @@ class MasterControlApp:
                         f"A execução de `{execution['tool']}` exige confirmação explícita antes de prosseguir. "
                         f"CLI: `{cli_command}`. Chat: `{chat_command}`."
                     )
-                return (
-                    f"A execução de `{execution['tool']}` exige confirmação explícita antes de prosseguir."
-                )
+                return f"A execução de `{execution['tool']}` exige confirmação explícita antes de prosseguir."
             return f"Falha em `{execution['tool']}`: {execution.get('error', 'erro desconhecido')}."
 
         tool_name = str(execution["tool"])
@@ -1418,8 +1429,7 @@ class MasterControlApp:
 
         if tool_name == "disk_usage":
             return (
-                "Disco em {path}: {used_percent}% usado "
-                "({used} usados de {total}, {free} livres)."
+                "Disco em {path}: {used_percent}% usado ({used} usados de {total}, {free} livres)."
             ).format(
                 path=result["path"],
                 used_percent=result["used_percent"],
@@ -1459,7 +1469,7 @@ class MasterControlApp:
 
         if tool_name == "service_status":
             if result.get("status") != "ok":
-                service = result.get("service", execution["arguments"].get("name", "serviço"))
+                service = result.get("service", arguments.get("name", "serviço"))
                 scope = result.get("scope")
                 scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
                 return (
@@ -1469,12 +1479,10 @@ class MasterControlApp:
             active = result.get("activestate", "desconhecido")
             sub = result.get("substate", "desconhecido")
             unit_file_state = result.get("unitfilestate", "desconhecido")
-            service = result.get("service", execution["arguments"].get("name", "serviço"))
+            service = result.get("service", arguments.get("name", "serviço"))
             scope = result.get("scope")
             scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
-            return (
-                f"Serviço{scope_text} `{service}`: active={active}, sub={sub}, unit_file_state={unit_file_state}."
-            )
+            return f"Serviço{scope_text} `{service}`: active={active}, sub={sub}, unit_file_state={unit_file_state}."
 
         if tool_name == "read_journal":
             if result.get("status") != "ok":
@@ -1491,12 +1499,12 @@ class MasterControlApp:
             return f"Entradas recentes do journal:\n{rendered_entries}"
 
         if tool_name == "read_config_file":
-            path = result.get("path", execution["arguments"].get("path", "arquivo"))
+            path = result.get("path", arguments.get("path", "arquivo"))
             line_count = result.get("line_count", 0)
             return f"Arquivo `{path}` lido com sucesso ({line_count} linhas)."
 
         if tool_name == "write_config_file":
-            path = result.get("path", execution["arguments"].get("path", "arquivo"))
+            path = result.get("path", arguments.get("path", "arquivo"))
             backup_path = result.get("backup_path")
             changed = result.get("changed", False)
             if not changed:
@@ -1506,12 +1514,12 @@ class MasterControlApp:
             return f"Arquivo `{path}` criado e validado."
 
         if tool_name == "restore_config_backup":
-            path = result.get("path", execution["arguments"].get("path", "arquivo"))
+            path = result.get("path", arguments.get("path", "arquivo"))
             restored_from = result.get("restored_from")
             return f"Arquivo `{path}` restaurado a partir de `{restored_from}`."
 
         if tool_name == "restart_service":
-            service = result.get("service", execution["arguments"].get("name", "serviço"))
+            service = result.get("service", arguments.get("name", "serviço"))
             scope = result.get("scope")
             scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
             post_restart = result.get("post_restart")
@@ -1519,12 +1527,10 @@ class MasterControlApp:
                 return f"Serviço{scope_text} `{service}` reiniciado."
             active = post_restart.get("activestate", "desconhecido")
             sub = post_restart.get("substate", "desconhecido")
-            return (
-                f"Serviço{scope_text} `{service}` reiniciado. Estado atual: active={active}, sub={sub}."
-            )
+            return f"Serviço{scope_text} `{service}` reiniciado. Estado atual: active={active}, sub={sub}."
 
         if tool_name == "reload_service":
-            service = result.get("service", execution["arguments"].get("name", "serviço"))
+            service = result.get("service", arguments.get("name", "serviço"))
             scope = result.get("scope")
             scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
             post_reload = result.get("post_reload")
@@ -1532,9 +1538,7 @@ class MasterControlApp:
                 return f"Serviço{scope_text} `{service}` recarregado."
             active = post_reload.get("activestate", "desconhecido")
             sub = post_reload.get("substate", "desconhecido")
-            return (
-                f"Serviço{scope_text} `{service}` recarregado. Estado atual: active={active}, sub={sub}."
-            )
+            return f"Serviço{scope_text} `{service}` recarregado. Estado atual: active={active}, sub={sub}."
 
         return json.dumps(result, indent=2, sort_keys=True)
 
@@ -1573,24 +1577,24 @@ class MasterControlApp:
 
         if lowered == "/insights":
             try:
-                payload = self.get_session_insights()
+                insights_payload = self.get_session_insights()
             except ValueError as exc:
                 return str(exc)
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return json.dumps(insights_payload, indent=2, sort_keys=True)
 
         if lowered == "/recommendations":
             try:
-                payload = self.list_session_recommendations()
+                recommendations_payload = self.list_session_recommendations()
             except ValueError as exc:
                 return str(exc)
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return json.dumps(recommendations_payload, indent=2, sort_keys=True)
 
         if lowered == "/reconcile":
             try:
-                payload = self.reconcile_recommendations()
+                reconcile_payload = self.reconcile_recommendations()
             except ValueError as exc:
                 return str(exc)
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return json.dumps(reconcile_payload, indent=2, sort_keys=True)
 
         if lowered.startswith("/recommendation "):
             try:
@@ -1605,10 +1609,13 @@ class MasterControlApp:
             except ValueError:
                 return "Recommendation id must be an integer."
             try:
-                payload = self.update_recommendation_status(recommendation_id, tokens[2])
+                recommendation_payload = self.update_recommendation_status(
+                    recommendation_id,
+                    tokens[2],
+                )
             except ValueError as exc:
                 return str(exc)
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return json.dumps(recommendation_payload, indent=2, sort_keys=True)
 
         if lowered.startswith("/recommendation-run "):
             try:
@@ -1626,13 +1633,13 @@ class MasterControlApp:
             if len(tokens) == 3 and not confirmed:
                 return "Usage: /recommendation-run <id> [confirm]"
             try:
-                payload = self.run_recommendation_action(
+                recommendation_run_payload = self.run_recommendation_action(
                     recommendation_id,
                     confirmed=confirmed,
                 )
             except ValueError as exc:
                 return str(exc)
-            return json.dumps(payload, indent=2, sort_keys=True)
+            return json.dumps(recommendation_run_payload, indent=2, sort_keys=True)
 
         if lowered.startswith("/tool "):
             try:
@@ -1660,4 +1667,6 @@ class MasterControlApp:
                 sort_keys=True,
             )
 
-        return self.chat(normalized)["message"]
+        chat_payload = self.chat(normalized)
+        message = chat_payload.get("message")
+        return message if isinstance(message, str) else json.dumps(chat_payload, indent=2)

@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 from collections.abc import Sequence
+from typing import Any, cast
 
 from master_control.app import MasterControlApp
 from master_control.config import Settings
@@ -39,7 +40,9 @@ def build_parser() -> argparse.ArgumentParser:
         help="Maximum number of sessions to return.",
     )
 
-    insights_parser = subparsers.add_parser("insights", help="Show proactive insights for a session.")
+    insights_parser = subparsers.add_parser(
+        "insights", help="Show proactive insights for a session."
+    )
     insights_parser.add_argument(
         "--session-id",
         type=int,
@@ -150,9 +153,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     timer_subparsers = timer_parser.add_subparsers(dest="timer_command", required=True)
 
-    timer_render = timer_subparsers.add_parser("render", help="Render unit files without installing.")
-    timer_install = timer_subparsers.add_parser("install", help="Install and enable the reconcile timer.")
-    timer_remove = timer_subparsers.add_parser("remove", help="Disable and remove the reconcile timer.")
+    timer_render = timer_subparsers.add_parser(
+        "render", help="Render unit files without installing."
+    )
+    timer_install = timer_subparsers.add_parser(
+        "install", help="Install and enable the reconcile timer."
+    )
+    timer_remove = timer_subparsers.add_parser(
+        "remove", help="Disable and remove the reconcile timer."
+    )
 
     for subparser in (timer_render, timer_install, timer_remove):
         subparser.add_argument(
@@ -199,8 +208,8 @@ def _print_json(payload: object) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
 
 
-def _parse_kv_arguments(items: list[str]) -> dict[str, str]:
-    arguments: dict[str, str] = {}
+def _parse_kv_arguments(items: list[str]) -> dict[str, object]:
+    arguments: dict[str, object] = {}
     for item in items:
         if "=" not in item:
             raise ValueError(f"Invalid --arg value: {item!r}. Expected key=value.")
@@ -224,7 +233,7 @@ def _format_observation_duration(seconds: object) -> str:
     return f"{hours}h{minutes:02d}m"
 
 
-def _render_observation_target(item: dict[str, object]) -> str | None:
+def _render_observation_target(item: dict[str, Any]) -> str | None:
     value = item.get("value")
     if not isinstance(value, dict):
         return None
@@ -235,7 +244,7 @@ def _render_observation_target(item: dict[str, object]) -> str | None:
     return None
 
 
-def _format_recommendation_action(item: dict[str, object]) -> str | None:
+def _format_recommendation_action(item: dict[str, Any]) -> str | None:
     action = item.get("action")
     if not isinstance(action, dict):
         return None
@@ -249,7 +258,7 @@ def _format_recommendation_action(item: dict[str, object]) -> str | None:
     return tool_name
 
 
-def _render_timer_payload(payload: dict[str, object]) -> None:
+def _render_timer_payload(payload: dict[str, Any]) -> None:
     print(f"scope={payload['scope']}")
     service = payload.get("service")
     timer = payload.get("timer")
@@ -267,14 +276,16 @@ def _render_timer_payload(payload: dict[str, object]) -> None:
         print(f"schedule: {payload['on_calendar']} randomized={payload['randomized_delay']}")
 
 
-def _render_timer_units(payload: dict[str, object]) -> None:
+def _render_timer_units(payload: dict[str, Any]) -> None:
     _render_timer_payload(payload)
     print()
-    print(f"# {payload['service']['name']}")
-    print(payload["service"]["content"], end="")
+    service = cast(dict[str, Any], payload["service"])
+    timer = cast(dict[str, Any], payload["timer"])
+    print(f"# {service['name']}")
+    print(service["content"], end="")
     print()
-    print(f"# {payload['timer']['name']}")
-    print(payload["timer"]["content"], end="")
+    print(f"# {timer['name']}")
+    print(timer["content"], end="")
 
 
 def _run_chat(
@@ -288,14 +299,18 @@ def _run_chat(
     if once is not None:
         if once.startswith("/"):
             app.start_chat_session(session_id=session_id, new_session=new_session)
-            payload = app.handle_message(once)
-            print(payload)
+            command_output = app.handle_message(once)
+            print(command_output)
         else:
-            payload = app.chat(once, session_id=session_id, new_session=new_session)
+            chat_payload: dict[str, Any] = app.chat(
+                once,
+                session_id=session_id,
+                new_session=new_session,
+            )
             if as_json:
-                _print_json(payload)
+                _print_json(chat_payload)
             else:
-                print(payload["message"])
+                print(chat_payload["message"])
         return 0
 
     active_session_id = app.start_chat_session(session_id=session_id, new_session=new_session)
@@ -326,61 +341,63 @@ def main(argv: Sequence[str] | None = None) -> int:
     app = MasterControlApp(settings)
 
     if args.command == "doctor":
-        payload = app.doctor()
+        doctor_payload: dict[str, Any] = app.doctor()
         if args.json:
-            _print_json(payload)
+            _print_json(doctor_payload)
         else:
             print("Master Control doctor")
-            print(f"state_dir: {payload['state_dir']}")
-            print(f"db_path:   {payload['db_path']}")
-            print(f"provider:  {payload['provider']} -> {payload['provider_backend']}")
-            print(f"planner:   {payload['planner_mode']}")
-            print(f"llm_ready: {'yes' if payload['llm_provider_available'] else 'no'}")
-            active_check = payload["active_provider_check"]
+            print(f"state_dir: {doctor_payload['state_dir']}")
+            print(f"db_path:   {doctor_payload['db_path']}")
+            print(
+                f"provider:  {doctor_payload['provider']} -> {doctor_payload['provider_backend']}"
+            )
+            print(f"planner:   {doctor_payload['planner_mode']}")
+            print(f"llm_ready: {'yes' if doctor_payload['llm_provider_available'] else 'no'}")
+            active_check = cast(dict[str, Any], doctor_payload["active_provider_check"])
             print(f"active:    {active_check['summary']}")
+            provider_checks = cast(dict[str, Any], doctor_payload["provider_checks"])
             for name in ("ollama", "openai"):
-                check = payload["provider_checks"][name]
+                check = cast(dict[str, Any], provider_checks[name])
                 print(f"{name}:    {check['summary']}")
-            print(f"audit:     {payload['audit_event_count']}")
-            print(f"sessions:  {payload['session_count']}")
-            print(f"tools:     {', '.join(payload['tools'])}")
-        return 0 if payload["ok"] else 1
+            print(f"audit:     {doctor_payload['audit_event_count']}")
+            print(f"sessions:  {doctor_payload['session_count']}")
+            tools = cast(list[str], doctor_payload["tools"])
+            print(f"tools:     {', '.join(tools)}")
+        return 0 if doctor_payload["ok"] else 1
 
     if args.command == "tools":
         app.bootstrap()
-        payload = [spec.as_dict() for spec in app.list_tools()]
+        tools_payload: list[dict[str, Any]] = [spec.as_dict() for spec in app.list_tools()]
         if args.json:
-            _print_json(payload)
+            _print_json(tools_payload)
         else:
-            for spec in payload:
-                arguments = ", ".join(spec["arguments"]) or "-"
-                print(
-                    f"{spec['name']}({arguments}): {spec['risk']} - {spec['description']}"
-                )
+            for spec in tools_payload:
+                arguments = ", ".join(cast(list[str], spec["arguments"])) or "-"
+                print(f"{spec['name']}({arguments}): {spec['risk']} - {spec['description']}")
         return 0
 
     if args.command == "audit":
-        payload = app.list_audit_events(limit=args.limit)
-        _print_json(payload)
+        audit_payload = app.list_audit_events(limit=args.limit)
+        _print_json(audit_payload)
         return 0
 
     if args.command == "sessions":
-        payload = app.list_sessions(limit=args.limit)
-        _print_json(payload)
+        sessions_payload = app.list_sessions(limit=args.limit)
+        _print_json(sessions_payload)
         return 0
 
     if args.command == "insights":
         try:
-            payload = app.get_session_insights(session_id=args.session_id)
+            insights_payload = app.get_session_insights(session_id=args.session_id)
         except ValueError as exc:
             parser.error(str(exc))
             return 2
-        _print_json(payload)
+        _print_json(insights_payload)
         return 0
 
     if args.command == "observations":
         try:
-            payload = app.list_session_observations(
+            observations_payload: dict[str, Any] = app.list_session_observations(
                 session_id=args.session_id,
                 stale_only=args.stale_only,
             )
@@ -388,19 +405,23 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(str(exc))
             return 2
         if args.json:
-            _print_json(payload)
+            _print_json(observations_payload)
         else:
-            print(f"Session {payload['session_id']} observations")
+            print(f"Session {observations_payload['session_id']} observations")
             print(
-                f"total={payload['total_count']} fresh={payload['fresh_count']} stale={payload['stale_count']}"
+                "total="
+                f"{observations_payload['total_count']} "
+                f"fresh={observations_payload['fresh_count']} "
+                f"stale={observations_payload['stale_count']}"
             )
-            if not payload["observations"]:
-                if payload["stale_only"]:
+            if not observations_payload["observations"]:
+                if observations_payload["stale_only"]:
                     print("No stale observations matched this session.")
                 else:
                     print("No stored observations for this session yet.")
                 return 0
-            for item in payload["observations"]:
+            observations = cast(list[dict[str, Any]], observations_payload["observations"])
+            for item in observations:
                 status = "stale" if item["stale"] else "fresh"
                 target = _render_observation_target(item)
                 target_text = f" target={target}" if target else ""
@@ -413,7 +434,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "recommendations":
         try:
-            payload = app.list_session_recommendations(
+            recommendations_payload: dict[str, Any] = app.list_session_recommendations(
                 session_id=args.session_id,
                 status=args.status,
             )
@@ -421,15 +442,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(str(exc))
             return 2
         if args.json:
-            _print_json(payload)
+            _print_json(recommendations_payload)
         else:
-            print(f"Session {payload['session_id']} recommendations")
-            if payload["status_filter"]:
-                print(f"filter={payload['status_filter']}")
-            if not payload["recommendations"]:
+            print(f"Session {recommendations_payload['session_id']} recommendations")
+            if recommendations_payload["status_filter"]:
+                print(f"filter={recommendations_payload['status_filter']}")
+            if not recommendations_payload["recommendations"]:
                 print("No recommendations matched this session.")
                 return 0
-            for item in payload["recommendations"]:
+            recommendations = cast(
+                list[dict[str, Any]],
+                recommendations_payload["recommendations"],
+            )
+            for item in recommendations:
                 print(
                     f"#{item['id']} [{item['status']} {item['severity']}] "
                     f"{item['source_key']} confidence={item.get('confidence', 'unknown')}"
@@ -451,7 +476,7 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "reconcile":
         try:
-            payload = app.reconcile_recommendations(
+            reconcile_payload: dict[str, Any] = app.reconcile_recommendations(
                 session_id=args.session_id,
                 all_sessions=args.all,
             )
@@ -459,10 +484,14 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(str(exc))
             return 2
         if args.json:
-            _print_json(payload)
+            _print_json(reconcile_payload)
         else:
-            print(f"Reconcile mode={payload['mode']} sessions={payload['session_count']}")
-            for item in payload["sessions"]:
+            print(
+                f"Reconcile mode={reconcile_payload['mode']} "
+                f"sessions={reconcile_payload['session_count']}"
+            )
+            sessions = cast(list[dict[str, Any]], reconcile_payload["sessions"])
+            for item in sessions:
                 print(
                     f"session={item['session_id']} "
                     f"insights={item['insight_count']} "
@@ -477,28 +506,31 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "recommendation":
         try:
-            payload = app.update_recommendation_status(args.id, args.status)
+            recommendation_payload: dict[str, Any] = app.update_recommendation_status(
+                args.id,
+                args.status,
+            )
         except ValueError as exc:
             parser.error(str(exc))
             return 2
-        _print_json(payload)
+        _print_json(recommendation_payload)
         return 0
 
     if args.command == "recommendation-run":
         try:
-            payload = app.run_recommendation_action(
+            recommendation_run_payload: dict[str, Any] = app.run_recommendation_action(
                 args.id,
                 confirmed=args.confirm,
             )
         except ValueError as exc:
             parser.error(str(exc))
             return 2
-        _print_json(payload)
+        _print_json(recommendation_run_payload)
         return 0
 
     if args.command == "tool":
         try:
-            payload = app.run_tool(
+            tool_payload: dict[str, Any] = app.run_tool(
                 args.name,
                 _parse_kv_arguments(args.arg),
                 confirmed=args.confirm,
@@ -508,7 +540,7 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(str(exc))
             return 2
 
-        _print_json(payload)
+        _print_json(tool_payload)
         return 0
 
     if args.command == "chat":
@@ -527,8 +559,9 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     if args.command == "reconcile-timer":
         try:
+            timer_payload: dict[str, Any]
             if args.timer_command == "render":
-                payload = app.render_reconcile_timer(
+                timer_payload = app.render_reconcile_timer(
                     scope=args.scope,
                     on_calendar=args.on_calendar,
                     randomized_delay=args.randomized_delay,
@@ -536,7 +569,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     python_executable=args.python,
                 )
             elif args.timer_command == "install":
-                payload = app.install_reconcile_timer(
+                timer_payload = app.install_reconcile_timer(
                     scope=args.scope,
                     on_calendar=args.on_calendar,
                     randomized_delay=args.randomized_delay,
@@ -545,7 +578,7 @@ def main(argv: Sequence[str] | None = None) -> int:
                     run_systemctl=not args.skip_systemctl,
                 )
             elif args.timer_command == "remove":
-                payload = app.remove_reconcile_timer(
+                timer_payload = app.remove_reconcile_timer(
                     scope=args.scope,
                     target_dir=args.target_dir,
                     run_systemctl=not args.skip_systemctl,
@@ -558,13 +591,15 @@ def main(argv: Sequence[str] | None = None) -> int:
             return 2
 
         if args.json:
-            _print_json(payload)
+            _print_json(timer_payload)
         elif args.timer_command == "render":
-            _render_timer_units(payload)
+            _render_timer_units(timer_payload)
         else:
-            _render_timer_payload(payload)
+            _render_timer_payload(timer_payload)
             if args.timer_command == "remove":
-                removed = payload.get("removed_paths", [])
+                removed = timer_payload.get("removed_paths", [])
+                if not isinstance(removed, list):
+                    removed = []
                 print(f"removed={len(removed)}")
         return 0
 

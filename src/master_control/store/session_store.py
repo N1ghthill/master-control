@@ -12,7 +12,6 @@ from master_control.agent.observations import (
     serialize_observation_value,
 )
 
-
 SCHEMA = """
 CREATE TABLE IF NOT EXISTS sessions (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -132,9 +131,7 @@ class SessionStore:
         for column_name, column_type in columns.items():
             if column_name in existing_columns:
                 continue
-            connection.execute(
-                f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}"
-            )
+            connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
 
     def record_audit_event(self, event_type: str, payload: dict[str, object]) -> None:
         serialized_payload = json.dumps(payload, sort_keys=True)
@@ -179,7 +176,10 @@ class SessionStore:
         with closing(sqlite3.connect(self.path)) as connection:
             cursor = connection.execute("INSERT INTO sessions DEFAULT VALUES")
             connection.commit()
-            return int(cursor.lastrowid)
+            session_id = cursor.lastrowid
+            if session_id is None:
+                raise RuntimeError("SQLite did not return a session id.")
+            return session_id
 
     def append_conversation_message(self, session_id: int, role: str, content: str) -> None:
         with closing(sqlite3.connect(self.path)) as connection:
@@ -457,10 +457,7 @@ class SessionStore:
                 (session_id,),
             )
             existing_rows = cursor.fetchall()
-            existing_by_key = {
-                row[2]: self._row_to_recommendation(row)
-                for row in existing_rows
-            }
+            existing_by_key = {row[2]: self._row_to_recommendation(row) for row in existing_rows}
 
             new_ids: list[int] = []
             reopened_ids: list[int] = []
@@ -519,13 +516,16 @@ class SessionStore:
                             action_arguments_json,
                         ),
                     )
-                    new_ids.append(int(cursor.lastrowid))
+                    recommendation_id = cursor.lastrowid
+                    if recommendation_id is None:
+                        raise RuntimeError("SQLite did not return a recommendation id.")
+                    new_ids.append(recommendation_id)
                     continue
 
                 next_status = existing["status"]
                 if next_status in {"dismissed", "resolved"}:
                     next_status = "open"
-                    reopened_ids.append(int(existing["id"]))
+                    reopened_ids.append(_coerce_int(existing["id"], "recommendation id"))
 
                 connection.execute(
                     """
@@ -606,12 +606,8 @@ class SessionStore:
             connection.commit()
 
         all_items = self.list_session_recommendations(session_id, limit=200)
-        by_id = {int(item["id"]): item for item in all_items}
-        active_items = [
-            item
-            for item in all_items
-            if item["status"] in {"open", "accepted"}
-        ]
+        by_id = {_coerce_int(item["id"], "recommendation id"): item for item in all_items}
+        active_items = [item for item in all_items if item["status"] in {"open", "accepted"}]
         return {
             "active": active_items,
             "new": [by_id[item_id] for item_id in new_ids if item_id in by_id],
@@ -774,3 +770,11 @@ class SessionStore:
             "updated_at": row[12],
             "last_seen_at": row[13],
         }
+
+
+def _coerce_int(value: object, label: str) -> int:
+    if isinstance(value, int) and not isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        return int(value)
+    raise TypeError(f"Expected integer-compatible value for {label}, got {type(value).__name__}.")

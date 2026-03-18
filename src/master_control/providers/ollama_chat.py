@@ -4,16 +4,16 @@ import json
 import urllib.error
 import urllib.request
 from dataclasses import dataclass
-from typing import Any, Callable
+from typing import Callable
 
+from master_control.agent.observations import format_observation_freshness
 from master_control.agent.planner import (
-    ExecutionPlan,
-    PlanStep,
     PLANNING_DECISION_KINDS_BY_STATE,
     PLANNING_DECISION_STATES,
+    ExecutionPlan,
     PlanningDecision,
+    PlanStep,
 )
-from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import (
     ProviderError,
@@ -22,7 +22,6 @@ from master_control.providers.base import (
     SynthesisRequest,
 )
 from master_control.tools.base import ToolSpec
-
 
 OLLAMA_USER_AGENT = "master-control/0.1.0a1"
 DEFAULT_OLLAMA_OPTIONS = {
@@ -98,8 +97,10 @@ class OllamaChatProvider:
         intent = parsed.get("intent")
         steps_payload = parsed.get("steps")
         decision_payload = parsed.get("decision")
-        if not isinstance(message, str) or not isinstance(intent, str) or not isinstance(
-            steps_payload, list
+        if (
+            not isinstance(message, str)
+            or not isinstance(intent, str)
+            or not isinstance(steps_payload, list)
         ):
             raise ProviderError("Ollama provider returned a malformed plan payload.")
         decision = self._build_decision(decision_payload, steps_payload)
@@ -396,8 +397,10 @@ class OllamaChatProvider:
             tool_name = raw_step.get("tool_name")
             rationale = raw_step.get("rationale")
             arguments = raw_step.get("arguments")
-            if not isinstance(tool_name, str) or not isinstance(rationale, str) or not isinstance(
-                arguments, dict
+            if (
+                not isinstance(tool_name, str)
+                or not isinstance(rationale, str)
+                or not isinstance(arguments, dict)
             ):
                 raise ProviderError("Ollama provider returned an invalid step shape.")
             steps.append(

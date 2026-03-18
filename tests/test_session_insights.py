@@ -168,9 +168,7 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].severity, "critical")
 
     def test_collect_session_insights_proposes_restart_for_unhealthy_service(self) -> None:
-        insights = collect_session_insights(
-            "service: nginx.service: active=failed, sub=failed"
-        )
+        insights = collect_session_insights("service: nginx.service: active=failed, sub=failed")
 
         self.assertEqual(len(insights), 1)
         self.assertEqual(insights[0].key, "service_state")

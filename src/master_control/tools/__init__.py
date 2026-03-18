@@ -1,2 +1,1 @@
 """Tool registry and implementations."""
-

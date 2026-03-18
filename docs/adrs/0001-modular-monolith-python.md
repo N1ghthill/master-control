@@ -30,4 +30,3 @@ Negative:
 
 - fewer isolation boundaries than a distributed design
 - future extraction of services will require deliberate interface cleanup
-

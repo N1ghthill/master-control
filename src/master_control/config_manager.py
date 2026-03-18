@@ -13,7 +13,6 @@ from typing import Any
 from master_control.executor.command_runner import CommandExecutionError, CommandRunner
 from master_control.tools.base import ToolError
 
-
 MAX_CONFIG_FILE_BYTES = 128 * 1024
 
 
@@ -148,9 +147,7 @@ class ConfigManager:
             if target.matches(resolved_path):
                 return ConfigResolution(path=resolved_path, target=target)
 
-        raise ToolError(
-            f"Path `{resolved_path}` is not managed by the config policy."
-        )
+        raise ToolError(f"Path `{resolved_path}` is not managed by the config policy.")
 
     def validate_content(self, resolution: ConfigResolution, content: str) -> dict[str, Any]:
         temp_path = self._write_temp_file(resolution.path, content)
@@ -186,10 +183,7 @@ class ConfigManager:
         if target.validator_kind == "command":
             if not target.validator_command:
                 raise ToolError(f"Target `{target.name}` is missing a validator command.")
-            command = [
-                part.format(path=str(candidate_path))
-                for part in target.validator_command
-            ]
+            command = [part.format(path=str(candidate_path)) for part in target.validator_command]
             try:
                 result = self.runner.run(command, timeout_s=10.0)
             except CommandExecutionError as exc:

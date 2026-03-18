@@ -118,7 +118,12 @@ class ObservationFreshnessTest(unittest.TestCase):
                 session_id,
                 "service_status",
                 "service",
-                {"service": "nginx", "scope": "system", "activestate": "active", "substate": "running"},
+                {
+                    "service": "nginx",
+                    "scope": "system",
+                    "activestate": "active",
+                    "substate": "running",
+                },
                 observed_at=now,
                 ttl_seconds=180,
             )
@@ -151,7 +156,9 @@ class ObservationFreshnessTest(unittest.TestCase):
                     ]
                 ),
             )
-            old_time = (datetime.now(UTC) - timedelta(minutes=15)).isoformat().replace("+00:00", "Z")
+            old_time = (
+                (datetime.now(UTC) - timedelta(minutes=15)).isoformat().replace("+00:00", "Z")
+            )
             app.store.record_observation(
                 session_id,
                 "memory_usage",
@@ -172,7 +179,12 @@ class ObservationFreshnessTest(unittest.TestCase):
                 session_id,
                 "service_status",
                 "service",
-                {"service": "nginx", "scope": "system", "activestate": "active", "substate": "running"},
+                {
+                    "service": "nginx",
+                    "scope": "system",
+                    "activestate": "active",
+                    "substate": "running",
+                },
                 observed_at=old_time,
                 ttl_seconds=180,
             )

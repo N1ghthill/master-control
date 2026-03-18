@@ -33,4 +33,3 @@ Negative:
 
 - less friendly for remote and multi-user scenarios at first
 - later interface work will still need to be built
-

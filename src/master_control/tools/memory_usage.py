@@ -6,7 +6,6 @@ from typing import Any
 
 from master_control.tools.base import RiskLevel, Tool, ToolSpec
 
-
 MEMINFO_PATH = Path("/proc/meminfo")
 
 
@@ -52,4 +51,3 @@ class MemoryUsageTool(Tool):
                 value = int(raw_value.strip().split()[0])
                 fields[key] = value
         return fields
-

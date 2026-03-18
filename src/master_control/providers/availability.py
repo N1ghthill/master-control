@@ -9,7 +9,6 @@ from typing import Callable
 
 from master_control.config import Settings
 
-
 PROBE_USER_AGENT = "master-control/0.1.0a1"
 
 
@@ -103,7 +102,9 @@ def probe_ollama(
         check["available"] = True
         check["summary"] = f"endpoint reachable and model `{settings.ollama_model}` is installed"
     else:
-        check["summary"] = f"endpoint reachable but model `{settings.ollama_model}` is not installed"
+        check["summary"] = (
+            f"endpoint reachable but model `{settings.ollama_model}` is not installed"
+        )
     return check
 
 

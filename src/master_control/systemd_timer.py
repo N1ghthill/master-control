@@ -7,7 +7,6 @@ from pathlib import Path
 
 from master_control.config import Settings
 
-
 RECONCILE_SERVICE_NAME = "master-control-reconcile.service"
 RECONCILE_TIMER_NAME = "master-control-reconcile.timer"
 DEFAULT_RECONCILE_ON_CALENDAR = "hourly"

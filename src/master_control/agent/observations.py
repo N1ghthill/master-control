@@ -3,8 +3,7 @@ from __future__ import annotations
 import json
 from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
-from typing import Any, Iterable
-
+from typing import Iterable
 
 OBSERVATION_TTLS_S = {
     "system_info": 3600,
@@ -94,7 +93,11 @@ def build_observation_freshness(
         key = row.get("key")
         source = row.get("source")
         observed_at = row.get("observed_at")
-        if not isinstance(key, str) or not isinstance(source, str) or not isinstance(observed_at, str):
+        if (
+            not isinstance(key, str)
+            or not isinstance(source, str)
+            or not isinstance(observed_at, str)
+        ):
             continue
 
         value = row.get("value")

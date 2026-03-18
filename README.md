@@ -203,6 +203,8 @@ OLLAMA_HOST=127.0.0.1:11434 OLLAMA_MODELS=$HOME/.local/share/ollama/models \
 Useful local checks:
 
 ```bash
+python3 -m ruff check .
+python3 -m mypy src
 PYTHONPATH=src python3 -m unittest discover -s tests
 python3 -m compileall src
 mc doctor
@@ -210,7 +212,13 @@ mc doctor
 
 GitHub Actions baseline:
 
-- `.github/workflows/ci.yml` runs editable install, unit tests, `compileall`, and an offline-safe `mc doctor` smoke on Python 3.13
+- `.github/workflows/ci.yml` runs editable install, `ruff`, `mypy`, unit tests, `compileall`, and an offline-safe `mc doctor` smoke on Python 3.13
+
+Repository hygiene:
+
+- `.pre-commit-config.yaml` provides local hooks for `ruff`, `mypy`, and basic file hygiene
+- `.github/PULL_REQUEST_TEMPLATE.md` and `.github/ISSUE_TEMPLATE/` define the default contribution surface
+- `.github/CODEOWNERS` sets the current repository owner
 
 Observation inspection:
 

@@ -8,7 +8,6 @@ from typing import Any
 from master_control.executor.command_runner import CommandExecutionError, CommandRunner
 from master_control.tools.base import ToolArgumentError, ToolError
 
-
 SERVICE_NAME_RE = re.compile(r"^[A-Za-z0-9@_.:-]+(?:\.service)?$")
 SERVICE_SCOPES = {"system", "user"}
 USER_SCOPE_ENV_KEYS = ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")

@@ -7,11 +7,11 @@ from master_control.executor.command_runner import CommandRunner
 from master_control.tools.base import Tool
 from master_control.tools.disk_usage import DiskUsageTool
 from master_control.tools.memory_usage import MemoryUsageTool
-from master_control.tools.read_journal import ReadJournalTool
 from master_control.tools.read_config_file import ReadConfigFileTool
+from master_control.tools.read_journal import ReadJournalTool
 from master_control.tools.reload_service import ReloadServiceTool
-from master_control.tools.restore_config_backup import RestoreConfigBackupTool
 from master_control.tools.restart_service import RestartServiceTool
+from master_control.tools.restore_config_backup import RestoreConfigBackupTool
 from master_control.tools.service_status import ServiceStatusTool
 from master_control.tools.system_info import SystemInfoTool
 from master_control.tools.top_processes import TopProcessesTool

@@ -26,6 +26,7 @@
 - explicit planning decisions for provider turns: `needs_tools`, `complete`, `blocked`
 - typed planning decision kinds plus final turn classification
 - deterministic final-message guidance keyed off turn classification
+- repository hardening with `ruff`, `mypy`, `pre-commit`, and GitHub templates
 
 ### Changed
 
@@ -47,6 +48,7 @@
 - planning no longer relies only on empty/non-empty step arrays; decision state is now explicit in provider output and audit
 - chat payloads and audit now distinguish planner intent from final turn outcome, including missing safe tools and confirmation waits
 - blocked or partial turns now return clearer operator guidance instead of relying only on provider prose
+- CI now enforces lint and typecheck in addition to tests and smoke validation
 
 ### Notes
 

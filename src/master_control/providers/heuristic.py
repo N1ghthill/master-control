@@ -3,11 +3,10 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from master_control.agent.planner import ExecutionPlan, PlanStep, PlanningDecision
 from master_control.agent.observations import ObservationFreshness
+from master_control.agent.planner import ExecutionPlan, PlanningDecision, PlanStep
 from master_control.agent.session_summary import parse_session_summary
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
-
 
 SERVICE_NAME_RE = re.compile(
     r"(?:servi(?:co|ço)|service|unit|status)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_.@-]+)",
@@ -37,7 +36,9 @@ class HeuristicProvider:
             if "memory_usage" in available_tools and _needs_refresh(freshness_map, "memory"):
                 message_text = "Vou começar verificando a memória do sistema."
                 if "memory" in freshness_map and freshness_map["memory"].stale:
-                    message_text = "Vou atualizar os dados de memória antes de continuar o diagnóstico."
+                    message_text = (
+                        "Vou atualizar os dados de memória antes de continuar o diagnóstico."
+                    )
                 return _needs_tools_response(
                     message_text,
                     "Refreshing memory data is the next safe diagnostic step.",
@@ -54,7 +55,9 @@ class HeuristicProvider:
             if "top_processes" in available_tools and _needs_refresh(freshness_map, "processes"):
                 message_text = "Agora vou verificar os processos com maior uso de CPU."
                 if "processes" in freshness_map and freshness_map["processes"].stale:
-                    message_text = "Vou atualizar a lista de processos antes de seguir com o diagnóstico."
+                    message_text = (
+                        "Vou atualizar a lista de processos antes de seguir com o diagnóstico."
+                    )
                 return _needs_tools_response(
                     message_text,
                     "Refreshing process activity is the next safe diagnostic step.",
@@ -64,7 +67,9 @@ class HeuristicProvider:
                         PlanStep(
                             tool_name="top_processes",
                             rationale="Inspect the highest CPU consumers.",
-                            arguments={"limit": _extract_int(message, default=5, min_value=1, max_value=10)},
+                            arguments={
+                                "limit": _extract_int(message, default=5, min_value=1, max_value=10)
+                            },
                         ),
                     ),
                 )
@@ -75,11 +80,11 @@ class HeuristicProvider:
                 and candidate_service
                 and _needs_refresh(freshness_map, "service")
             ):
-                message_text = f"Vou correlacionar isso com o estado do serviço `{candidate_service}`."
+                message_text = (
+                    f"Vou correlacionar isso com o estado do serviço `{candidate_service}`."
+                )
                 if "service" in freshness_map and freshness_map["service"].stale:
-                    message_text = (
-                        f"Vou atualizar o estado do serviço `{candidate_service}` antes de concluir."
-                    )
+                    message_text = f"Vou atualizar o estado do serviço `{candidate_service}` antes de concluir."
                 return _needs_tools_response(
                     message_text,
                     "Refreshing the related service state is the next safe diagnostic step.",
@@ -89,7 +94,9 @@ class HeuristicProvider:
                         PlanStep(
                             tool_name="service_status",
                             rationale="Inspect the service related to the hottest process.",
-                            arguments=_with_service_scope({"name": candidate_service}, service_scope),
+                            arguments=_with_service_scope(
+                                {"name": candidate_service}, service_scope
+                            ),
                         ),
                     ),
                 )
@@ -137,7 +144,10 @@ class HeuristicProvider:
                 kind="missing_safe_tool",
             )
 
-        if _contains_any(normalized, ("log", "logs", "journal")) and "read_journal" in available_tools:
+        if (
+            _contains_any(normalized, ("log", "logs", "journal"))
+            and "read_journal" in available_tools
+        ):
             unit = _extract_journal_unit(message) or last_context.get("unit")
             lines = _extract_int(message, default=20, min_value=1, max_value=200)
             return _needs_tools_response(
@@ -300,10 +310,10 @@ class HeuristicProvider:
         if _contains_any(normalized, ("arquivo", "config", "configuracao", "configuração")) and (
             "read_config_file" in available_tools
         ):
-            path = _extract_path(message) or last_context.get("path")
-            if path:
+            config_path = _extract_path(message) or _string_or_none(last_context.get("path"))
+            if config_path:
                 return _needs_tools_response(
-                    f"Vou ler o arquivo gerenciado `{path}`.",
+                    f"Vou ler o arquivo gerenciado `{config_path}`.",
                     "Reading the requested managed file requires a typed tool step.",
                     kind="inspection_request",
                     intent="read_config_file",
@@ -311,7 +321,7 @@ class HeuristicProvider:
                         PlanStep(
                             tool_name="read_config_file",
                             rationale="Read the requested managed configuration file.",
-                            arguments={"path": path},
+                            arguments={"path": config_path},
                         ),
                     ),
                 )
@@ -517,6 +527,10 @@ def _extract_context(
         **summary_context,
         **history_context,
     }
+
+
+def _string_or_none(value: object) -> str | None:
+    return value if isinstance(value, str) and value else None
 
 
 def _looks_like_log_follow_up(normalized: str) -> bool:

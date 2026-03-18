@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from master_control.config import Settings
 from master_control.agent.observations import build_observation_freshness
+from master_control.config import Settings
 from master_control.providers.base import ConversationMessage, ProviderRequest, SynthesisRequest
 from master_control.providers.ollama_chat import OllamaChatProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
@@ -76,7 +76,9 @@ class OllamaChatProviderTest(unittest.TestCase):
                 ),
                 conversation_history=(
                     ConversationMessage(role="user", content="como esta o host?"),
-                    ConversationMessage(role="assistant", content="Posso verificar memória ou disco."),
+                    ConversationMessage(
+                        role="assistant", content="Posso verificar memória ou disco."
+                    ),
                 ),
                 session_summary="tracked_unit: ssh\nlast_intent: inspect_logs",
                 observation_freshness=build_observation_freshness(
@@ -106,7 +108,9 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
             self.assertIn("service", captured_payload["messages"][0]["content"])
             self.assertIn("Always set decision.state", captured_payload["messages"][0]["content"])
-            self.assertIn("do not answer from memory alone", captured_payload["messages"][0]["content"])
+            self.assertIn(
+                "do not answer from memory alone", captured_payload["messages"][0]["content"]
+            )
             self.assertIn("decision", captured_payload["format"]["required"])
 
     def test_provider_can_synthesize_final_response(self) -> None:

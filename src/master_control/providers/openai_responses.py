@@ -6,14 +6,14 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
+from master_control.agent.observations import format_observation_freshness
 from master_control.agent.planner import (
-    ExecutionPlan,
-    PlanStep,
     PLANNING_DECISION_KINDS_BY_STATE,
     PLANNING_DECISION_STATES,
+    ExecutionPlan,
     PlanningDecision,
+    PlanStep,
 )
-from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import (
     ProviderError,
@@ -22,7 +22,6 @@ from master_control.providers.base import (
     SynthesisRequest,
 )
 from master_control.tools.base import ToolSpec
-
 
 OPENAI_PLAN_FUNCTION_NAME = "submit_plan"
 OPENAI_USER_AGENT = "master-control/0.1.0a1"
@@ -99,8 +98,10 @@ class OpenAIResponsesProvider:
         intent = arguments.get("intent")
         steps_payload = arguments.get("steps")
         decision_payload = arguments.get("decision")
-        if not isinstance(message, str) or not isinstance(intent, str) or not isinstance(
-            steps_payload, list
+        if (
+            not isinstance(message, str)
+            or not isinstance(intent, str)
+            or not isinstance(steps_payload, list)
         ):
             raise ProviderError("OpenAI provider returned a malformed plan payload.")
         decision = self._build_decision(decision_payload, steps_payload)
@@ -318,7 +319,9 @@ class OpenAIResponsesProvider:
             ]
         )
 
-    def _build_plan_function_schema(self, available_tools: tuple[ToolSpec, ...]) -> dict[str, object]:
+    def _build_plan_function_schema(
+        self, available_tools: tuple[ToolSpec, ...]
+    ) -> dict[str, object]:
         return {
             "type": "function",
             "name": OPENAI_PLAN_FUNCTION_NAME,
@@ -403,7 +406,10 @@ class OpenAIResponsesProvider:
         for item in output:
             if not isinstance(item, dict):
                 continue
-            if item.get("type") == "function_call" and item.get("name") == OPENAI_PLAN_FUNCTION_NAME:
+            if (
+                item.get("type") == "function_call"
+                and item.get("name") == OPENAI_PLAN_FUNCTION_NAME
+            ):
                 return item
 
         raise ProviderError("OpenAI provider did not return the submit_plan function call.")
@@ -448,8 +454,10 @@ class OpenAIResponsesProvider:
             tool_name = raw_step.get("tool_name")
             rationale = raw_step.get("rationale")
             arguments = raw_step.get("arguments")
-            if not isinstance(tool_name, str) or not isinstance(rationale, str) or not isinstance(
-                arguments, dict
+            if (
+                not isinstance(tool_name, str)
+                or not isinstance(rationale, str)
+                or not isinstance(arguments, dict)
             ):
                 raise ProviderError("OpenAI provider returned an invalid step shape.")
             steps.append(

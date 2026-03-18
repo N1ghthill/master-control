@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.agent.observations import ObservationFreshness
+from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.tools.base import ToolSpec
 
 

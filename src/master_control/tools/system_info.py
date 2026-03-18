@@ -28,4 +28,3 @@ class SystemInfoTool(Tool):
             "user": getpass.getuser(),
             "cwd": str(Path.cwd()),
         }
-

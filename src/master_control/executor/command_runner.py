@@ -5,7 +5,6 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-
 MAX_OUTPUT_CHARS = 16_000
 
 

@@ -180,7 +180,9 @@ class ChatFlowTest(unittest.TestCase):
             first_payload = first_app.chat("me mostre os logs do ssh 5 linhas", new_session=True)
 
             second_app = MasterControlApp(settings)
-            follow_up_payload = second_app.chat("agora 2 linhas", session_id=first_payload["session_id"])
+            follow_up_payload = second_app.chat(
+                "agora 2 linhas", session_id=first_payload["session_id"]
+            )
 
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["tool_name"], "read_journal")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")

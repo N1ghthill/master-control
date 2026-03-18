@@ -38,4 +38,3 @@ class DiskUsageTool(Tool):
             "free_bytes": usage.free,
             "used_percent": round(used_percent, 2),
         }
-

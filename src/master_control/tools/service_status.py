@@ -7,8 +7,8 @@ from master_control.executor.command_runner import CommandRunner
 from master_control.tools.base import (
     RiskLevel,
     Tool,
-    ToolSpec,
     ToolError,
+    ToolSpec,
     get_string_argument,
 )
 from master_control.tools.service_actions import read_service_state, validate_service_scope

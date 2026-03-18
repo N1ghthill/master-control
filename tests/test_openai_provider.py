@@ -5,8 +5,8 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from master_control.config import Settings
 from master_control.agent.observations import build_observation_freshness
+from master_control.config import Settings
 from master_control.providers.base import (
     ConversationMessage,
     ProviderError,
@@ -89,7 +89,9 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                 ),
                 conversation_history=(
                     ConversationMessage(role="user", content="como esta o host?"),
-                    ConversationMessage(role="assistant", content="Posso verificar memória ou disco."),
+                    ConversationMessage(
+                        role="assistant", content="Posso verificar memória ou disco."
+                    ),
                 ),
                 session_summary="tracked_unit: ssh\nlast_intent: inspect_logs",
                 observation_freshness=build_observation_freshness(
@@ -275,7 +277,9 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                 )
             )
 
-            self.assertEqual(response.message, "A memória está sob pressão e o serviço segue ativo.")
+            self.assertEqual(
+                response.message, "A memória está sob pressão e o serviço segue ativo."
+            )
             self.assertEqual(response.response_id, "resp_syn_1")
             self.assertEqual(response.metadata["purpose"], "response_synthesis")
             self.assertEqual(captured_payload["previous_response_id"], "resp_prev")

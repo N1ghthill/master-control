@@ -163,7 +163,12 @@ class MasterControlAppTest(unittest.TestCase):
                 session_id,
                 "service_status",
                 "service",
-                {"service": "nginx", "scope": "system", "activestate": "active", "substate": "running"},
+                {
+                    "service": "nginx",
+                    "scope": "system",
+                    "activestate": "active",
+                    "substate": "running",
+                },
                 observed_at=old_time,
                 ttl_seconds=180,
             )
@@ -359,8 +364,12 @@ class MasterControlAppTest(unittest.TestCase):
             app.bootstrap()
             first_session = app.store.create_session()
             second_session = app.store.create_session()
-            app.store.upsert_session_summary(first_session, "memory: memory 95.0% used, swap 20.0% used")
-            app.store.upsert_session_summary(second_session, "service: nginx.service: active=failed, sub=failed")
+            app.store.upsert_session_summary(
+                first_session, "memory: memory 95.0% used, swap 20.0% used"
+            )
+            app.store.upsert_session_summary(
+                second_session, "service: nginx.service: active=failed, sub=failed"
+            )
 
             payload = app.reconcile_recommendations(all_sessions=True)
 
@@ -388,8 +397,13 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertFalse(target_dir.exists())
             self.assertFalse(settings.db_path.exists())
             self.assertEqual(payload["scope"], "user")
-            self.assertEqual(payload["service"]["path"], str(target_dir / "master-control-reconcile.service"))
-            self.assertIn("ExecStart=/usr/bin/python3 -m master_control reconcile --all", payload["service"]["content"])
+            self.assertEqual(
+                payload["service"]["path"], str(target_dir / "master-control-reconcile.service")
+            )
+            self.assertIn(
+                "ExecStart=/usr/bin/python3 -m master_control reconcile --all",
+                payload["service"]["content"],
+            )
             self.assertIn("Environment=MC_PROVIDER=noop", payload["service"]["content"])
             self.assertIn("OnCalendar=hourly", payload["timer"]["content"])
 
