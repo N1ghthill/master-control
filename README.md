@@ -194,6 +194,10 @@ python3 -m compileall src
 mc doctor
 ```
 
+GitHub Actions baseline:
+
+- `.github/workflows/ci.yml` runs editable install, unit tests, `compileall`, and an offline-safe `mc doctor` smoke on Python 3.13
+
 Provider-specific optional knobs:
 
 - `MC_PROVIDER_PROBE_TIMEOUT_S` defaults to `0.75`

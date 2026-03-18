@@ -26,6 +26,8 @@ python3 -m compileall src
 PYTHONPATH=src python3 -m master_control doctor
 ```
 
+The repository also has a matching GitHub Actions baseline in `.github/workflows/ci.yml`. Keep local checks and CI checks aligned.
+
 ## Engineering guardrails
 
 ### Architecture
@@ -62,7 +64,7 @@ PYTHONPATH=src python3 -m master_control doctor
 
 ## Commit conventions
 
-This directory is not currently initialized as a git repository. Once git is enabled, use small commits with one primary purpose each.
+This repository should use small commits with one primary purpose each.
 
 Recommended commit prefixes:
 

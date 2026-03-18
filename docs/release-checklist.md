@@ -9,7 +9,8 @@ Before calling the narrow local CLI MVP ready for an alpha tag:
 3. run a real-host smoke test for service actions
 4. run a real-host smoke test for managed config editing
 5. confirm documentation matches the operator-visible commands
-6. capture release notes in `CHANGELOG.md`
+6. confirm GitHub Actions CI is green on `main`
+7. capture release notes in `CHANGELOG.md`
 
 ## Automated baseline
 
