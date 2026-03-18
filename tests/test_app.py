@@ -468,7 +468,9 @@ class MasterControlAppTest(unittest.TestCase):
                 tools,
                 {
                     "disk_usage",
+                    "failed_services",
                     "memory_usage",
+                    "process_to_unit",
                     "read_journal",
                     "read_config_file",
                     "reload_service",

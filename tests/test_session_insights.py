@@ -6,8 +6,17 @@ from pathlib import Path
 
 from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.session_context import (
+    ProcessEntryContext,
+    ProcessesContext,
+    ProcessUnitContext,
+    ServiceContext,
+    SessionContext,
+    TrackedEntities,
+)
 from master_control.agent.session_insights import (
     collect_session_insights,
+    collect_session_insights_from_context,
     collect_session_insights_with_freshness,
 )
 from master_control.app import MasterControlApp
@@ -167,14 +176,136 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].key, "disk_pressure")
         self.assertEqual(insights[0].severity, "critical")
 
-    def test_collect_session_insights_proposes_restart_for_unhealthy_service(self) -> None:
+    def test_collect_session_insights_hot_process_proposes_process_correlation(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(),
+                processes=ProcessesContext(
+                    items=(ProcessEntryContext(command="python3", cpu_percent=91.2),),
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "hot_process")
+        self.assertEqual(insights[0].action_tool_name, "process_to_unit")
+        self.assertEqual(insights[0].action_arguments, {"name": "python3", "limit": "3"})
+
+    def test_collect_session_insights_hot_process_does_not_repeat_known_correlation(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(unit="ollama-local.service", scope="user"),
+                processes=ProcessesContext(
+                    items=(ProcessEntryContext(command="python3", cpu_percent=91.2),),
+                    stale=False,
+                ),
+                process_unit=ProcessUnitContext(
+                    query_name="python3",
+                    unit="ollama-local.service",
+                    scope="user",
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "hot_process")
+        self.assertIsNone(insights[0].action_tool_name)
+        self.assertIn("ollama-local.service", insights[0].message)
+
+    def test_collect_session_insights_without_service_evidence_does_not_propose_restart(self) -> None:
         insights = collect_session_insights("service: nginx.service: active=failed, sub=failed")
 
         self.assertEqual(len(insights), 1)
         self.assertEqual(insights[0].key, "service_state")
         self.assertEqual(insights[0].target, "nginx.service")
+        self.assertIsNone(insights[0].action_tool_name)
+        self.assertEqual(insights[0].action_arguments, {})
+
+    def test_collect_session_insights_preserves_scope_for_unhealthy_service(self) -> None:
+        insights = collect_session_insights(
+            "\n".join(
+                [
+                    "tracked_unit: ollama-local.service",
+                    "tracked_scope: user",
+                    "service: ollama-local.service: active=failed, sub=failed",
+                ]
+            )
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "service_state")
+        self.assertIsNone(insights[0].action_tool_name)
+        self.assertEqual(insights[0].action_arguments, {})
+
+    def test_collect_session_insights_with_fresh_service_evidence_proposes_restart(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {"service": "ollama-local.service", "scope": "user"},
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_with_freshness(
+            "\n".join(
+                [
+                    "tracked_unit: ollama-local.service",
+                    "tracked_scope: user",
+                    "service: ollama-local.service: active=failed, sub=failed",
+                ]
+            ),
+            freshness,
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "service_state")
         self.assertEqual(insights[0].action_tool_name, "restart_service")
-        self.assertEqual(insights[0].action_arguments, {"name": "nginx.service"})
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "ollama-local.service", "scope": "user"},
+        )
+
+    def test_collect_session_insights_from_context_proposes_restart_without_summary(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {"service": "ollama-local.service", "scope": "user"},
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(unit="ollama-local.service", scope="user"),
+                service=ServiceContext(
+                    name="ollama-local.service",
+                    scope="user",
+                    active_state="failed",
+                    sub_state="failed",
+                ),
+            ),
+            freshness,
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "service_state")
+        self.assertEqual(insights[0].action_tool_name, "restart_service")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "ollama-local.service", "scope": "user"},
+        )
 
     def test_collect_session_insights_requests_refresh_when_service_signal_is_stale(self) -> None:
         freshness = build_observation_freshness(
@@ -335,6 +466,108 @@ class SessionInsightsTest(unittest.TestCase):
             recommendation = payload["recommendations"]["active"][0]
             self.assertEqual(recommendation["source_key"], "service_state_refresh")
             self.assertEqual(recommendation["action"]["tool_name"], "service_status")
+
+    def test_chat_recommendation_without_service_evidence_has_no_restart_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings, provider_override=StaticNoPlanProvider())
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "service: nginx.service: active=failed, sub=failed",
+            )
+
+            payload = app.chat("o que devo fazer agora?", session_id=session_id)
+
+            self.assertIn("Recomendações da sessão:", payload["message"])
+            recommendation = payload["recommendations"]["active"][0]
+            self.assertEqual(recommendation["source_key"], "service_state")
+            self.assertIsNone(recommendation["action"])
+
+    def test_chat_recommendation_with_fresh_system_service_evidence_proposes_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings, provider_override=StaticNoPlanProvider())
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "service: nginx.service: active=failed, sub=failed",
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2100-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+
+            payload = app.chat("o que devo fazer agora?", session_id=session_id)
+
+            self.assertIn("Recomendações da sessão:", payload["message"])
+            recommendation = payload["recommendations"]["active"][0]
+            self.assertEqual(recommendation["source_key"], "service_state")
+            self.assertEqual(recommendation["action"]["tool_name"], "restart_service")
+            self.assertEqual(
+                recommendation["action"]["arguments"],
+                {"name": "nginx.service", "scope": "system"},
+            )
+
+    def test_chat_recommendation_with_fresh_user_service_evidence_proposes_restart(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings, provider_override=StaticNoPlanProvider())
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "\n".join(
+                    [
+                        "tracked_unit: ollama-local.service",
+                        "tracked_scope: user",
+                        "service: ollama-local.service: active=failed, sub=failed",
+                    ]
+                ),
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "ollama-local.service", "scope": "user"},
+                observed_at="2100-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+
+            payload = app.chat("o que devo fazer agora?", session_id=session_id)
+
+            self.assertIn("Recomendações da sessão:", payload["message"])
+            recommendation = payload["recommendations"]["active"][0]
+            self.assertEqual(recommendation["source_key"], "service_state")
+            self.assertEqual(recommendation["action"]["tool_name"], "restart_service")
+            self.assertEqual(
+                recommendation["action"]["arguments"],
+                {"name": "ollama-local.service", "scope": "user"},
+            )
 
 
 if __name__ == "__main__":

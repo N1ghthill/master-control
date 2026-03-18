@@ -7,6 +7,33 @@ from pathlib import Path
 
 from master_control.app import MasterControlApp
 from master_control.config import Settings
+from master_control.tools.base import RiskLevel, Tool, ToolSpec
+
+
+class FailedServicesListTool(Tool):
+    spec = ToolSpec(
+        name="failed_services",
+        description="Fake failed-service listing tool for tests.",
+        risk=RiskLevel.READ_ONLY,
+        arguments=("scope", "limit"),
+    )
+
+    def invoke(self, arguments):
+        return {
+            "status": "ok",
+            "scope": arguments.get("scope", "system"),
+            "limit": arguments.get("limit", 10),
+            "unit_count": 1,
+            "units": [
+                {
+                    "unit": "nginx.service",
+                    "load_state": "loaded",
+                    "active_state": "failed",
+                    "sub_state": "failed",
+                    "description": "Nginx service",
+                }
+            ],
+        }
 
 
 class ChatFlowTest(unittest.TestCase):
@@ -127,6 +154,7 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["turn_decision"]["state"], "blocked")
             self.assertEqual(payload["turn_decision"]["kind"], "awaiting_confirmation")
             self.assertIn("Ação pendente de confirmação explícita.", payload["message"])
+            self.assertIn("Confirme a execução de `restart_service` no serviço `nginx`.", payload["message"])
             self.assertIn("mc tool restart_service", payload["message"])
             self.assertIn("/tool restart_service", payload["message"])
 
@@ -187,6 +215,28 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["tool_name"], "read_journal")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["lines"], 2)
+
+    def test_chat_preserves_user_scope_for_service_restart_follow_up(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            first_app = MasterControlApp(settings)
+            first_payload = first_app.chat("restart user service ollama-local", new_session=True)
+
+            second_app = MasterControlApp(settings)
+            follow_up_payload = second_app.chat(
+                "reinicie novamente", session_id=first_payload["session_id"]
+            )
+
+            self.assertEqual(follow_up_payload["plan"]["steps"][0]["tool_name"], "restart_service")
+            self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["name"], "ollama-local")
+            self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["scope"], "user")
 
     def test_chat_reports_missing_safe_tool_when_runtime_lacks_memory_tool(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -259,6 +309,96 @@ class ChatFlowTest(unittest.TestCase):
 
             self.assertEqual(parsed["mode"], "single")
             self.assertEqual(parsed["sessions"][0]["session_id"], payload["session_id"])
+
+    def test_heuristic_provider_reuses_log_observation_context_without_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.record_observation(
+                session_id,
+                "read_journal",
+                "logs",
+                {"unit": "ssh", "returned_lines": 5},
+                ttl_seconds=90,
+            )
+
+            payload = app.chat("agora 2 linhas", session_id=session_id)
+
+            self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "read_journal")
+            self.assertEqual(payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
+            self.assertEqual(payload["plan"]["steps"][0]["arguments"]["lines"], 2)
+
+    def test_heuristic_provider_prefers_structured_service_context_over_old_history(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.append_conversation_message(
+                session_id,
+                "user",
+                "reinicie o servico ssh",
+            )
+            app.store.append_conversation_message(
+                session_id,
+                "assistant",
+                "Posso reiniciar o serviço `ssh` com confirmação explícita.",
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {
+                    "service": "ollama-local.service",
+                    "scope": "user",
+                    "activestate": "failed",
+                    "substate": "failed",
+                },
+                ttl_seconds=180,
+            )
+
+            payload = app.chat("reinicie novamente", session_id=session_id)
+
+            self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "restart_service")
+            self.assertEqual(
+                payload["plan"]["steps"][0]["arguments"],
+                {"name": "ollama-local.service", "scope": "user"},
+            )
+
+    def test_chat_maps_failed_service_queries_to_failed_services_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.registry.register(FailedServicesListTool())
+
+            payload = app.chat("quais servicos com falha eu tenho?", new_session=True)
+
+            self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "failed_services")
+            self.assertEqual(payload["executions"][0]["tool"], "failed_services")
+            self.assertIn("nginx.service", payload["message"])
 
 
 if __name__ == "__main__":

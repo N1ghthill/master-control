@@ -44,7 +44,7 @@ def read_service_state(
     normalized_scope = validate_service_scope(scope)
     try:
         result = runner.run(
-            _build_systemctl_command(
+            build_systemctl_command(
                 normalized_scope,
                 [
                     "show",
@@ -54,7 +54,7 @@ def read_service_state(
                 ],
             ),
             timeout_s=3.0,
-            env=_build_systemctl_env(normalized_scope),
+            env=build_systemctl_env(normalized_scope),
         )
     except CommandExecutionError as exc:
         raise ToolError(str(exc)) from exc
@@ -94,17 +94,17 @@ def run_service_action(
 
     try:
         result = runner.run(
-            _build_systemctl_command(
+            build_systemctl_command(
                 normalized_scope,
                 [
                     action,
                     service_name,
                     "--no-pager",
-                    *(_build_action_flags(normalized_scope)),
+                    *(build_systemctl_action_flags(normalized_scope)),
                 ],
             ),
             timeout_s=10.0,
-            env=_build_systemctl_env(normalized_scope),
+            env=build_systemctl_env(normalized_scope),
         )
     except CommandExecutionError as exc:
         raise ToolError(str(exc)) from exc
@@ -124,7 +124,7 @@ def run_service_action(
     }
 
 
-def _build_systemctl_command(scope: str, parts: list[str]) -> list[str]:
+def build_systemctl_command(scope: str, parts: list[str]) -> list[str]:
     command = ["systemctl"]
     if scope == "user":
         command.append("--user")
@@ -132,7 +132,7 @@ def _build_systemctl_command(scope: str, parts: list[str]) -> list[str]:
     return command
 
 
-def _build_systemctl_env(scope: str) -> dict[str, str] | None:
+def build_systemctl_env(scope: str) -> dict[str, str] | None:
     if scope != "user":
         return None
 
@@ -157,7 +157,7 @@ def _build_systemctl_env(scope: str) -> dict[str, str] | None:
     return env
 
 
-def _build_action_flags(scope: str) -> tuple[str, ...]:
+def build_systemctl_action_flags(scope: str) -> tuple[str, ...]:
     if scope == "system":
         return ("--no-ask-password",)
     return ()

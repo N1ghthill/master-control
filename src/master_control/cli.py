@@ -460,6 +460,12 @@ def main(argv: Sequence[str] | None = None) -> int:
                     f"{item['source_key']} confidence={item.get('confidence', 'unknown')}"
                 )
                 print(item["message"])
+                evidence = item.get("evidence_summary")
+                if isinstance(evidence, str) and evidence.strip():
+                    print(f"evidence: {evidence}")
+                target_summary = item.get("target_summary")
+                if isinstance(target_summary, str) and target_summary.strip():
+                    print(f"target: {target_summary}")
                 freshness = item.get("signal_freshness")
                 if isinstance(freshness, dict):
                     print(
@@ -472,6 +478,14 @@ def main(argv: Sequence[str] | None = None) -> int:
                 action_text = _format_recommendation_action(item)
                 if action_text:
                     print(f"action: {action_text}")
+                next_step = item.get("next_step")
+                if isinstance(next_step, dict):
+                    summary = next_step.get("summary")
+                    cli_command = next_step.get("cli_command")
+                    if isinstance(summary, str) and summary.strip():
+                        print(f"next: {summary}")
+                    if isinstance(cli_command, str) and cli_command.strip():
+                        print(f"next_cli: {cli_command}")
         return 0
 
     if args.command == "reconcile":

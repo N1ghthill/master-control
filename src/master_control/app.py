@@ -10,10 +10,15 @@ from master_control.agent.observations import (
     ObservationFreshness,
     build_observation_envelopes,
     build_observation_freshness,
-    observation_key_for_tool,
 )
-from master_control.agent.planner import ExecutionPlan, PlanningDecision
+from master_control.agent.planner import ExecutionPlan
 from master_control.agent.recommendation_sync import RecommendationSyncResult
+from master_control.agent.recommendation_view import (
+    build_recommendation_sync_result,
+    enrich_recommendations_with_freshness,
+    enrich_recommendations_with_operator_guidance,
+)
+from master_control.agent.session_context import SessionContext, build_session_context
 from master_control.agent.session_insights import (
     SessionInsight,
     collect_session_insights_with_freshness,
@@ -22,10 +27,24 @@ from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
     RECOMMENDATION_STATUSES,
     build_recommendation_candidates,
-    observation_key_for_recommendation,
     sort_recommendations,
 )
 from master_control.agent.session_summary import update_session_summary
+from master_control.agent.turn_planning import (
+    build_turn_planning_prompt,
+    classify_turn_decision,
+    collect_planned_refresh_keys,
+    collect_stale_observation_keys,
+    should_continue_planning,
+    summarize_execution_for_planner,
+    validate_provider_response_for_loop,
+)
+from master_control.agent.turn_rendering import (
+    append_recommendations_to_message,
+    apply_turn_decision_guidance,
+    collect_rendered_execution_summaries,
+    render_chat_response,
+)
 from master_control.config import Settings
 from master_control.policy.engine import PolicyEngine
 from master_control.providers.availability import collect_provider_checks
@@ -48,7 +67,7 @@ from master_control.tools.base import ToolError
 from master_control.tools.registry import ToolRegistry, build_default_registry
 
 PROVIDER_HISTORY_LIMIT = 8
-MAX_PLANNING_ITERATIONS = 4
+MAX_PLANNING_ITERATIONS = 6
 MULTI_STEP_PLANNING_INTENTS = {"diagnose_performance"}
 
 
@@ -57,6 +76,7 @@ class PlanningLoopResult:
     provider_response: ProviderResponse
     executions: list[dict[str, object]]
     working_summary: str | None
+    working_session_context: SessionContext
     working_freshness: tuple[ObservationFreshness, ...]
     response_id: str | None
 
@@ -66,6 +86,33 @@ class FinalChatResponse:
     message: str
     response_id: str | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+
+def _describe_tool_target(tool_name: str, arguments: dict[str, object]) -> str:
+    if tool_name in {"service_status", "restart_service", "reload_service"}:
+        name = arguments.get("name")
+        scope = arguments.get("scope")
+        if isinstance(name, str) and name:
+            if isinstance(scope, str) and scope:
+                return f"`{tool_name}` no serviço `{name}` ({scope})"
+            return f"`{tool_name}` no serviço `{name}`"
+    if tool_name == "failed_services":
+        scope = arguments.get("scope")
+        if isinstance(scope, str) and scope:
+            return f"`{tool_name}` no escopo `{scope}`"
+        return f"`{tool_name}`"
+    if tool_name == "process_to_unit":
+        process_name = arguments.get("name")
+        pid = arguments.get("pid")
+        if isinstance(process_name, str) and process_name:
+            return f"`{tool_name}` para o processo `{process_name}`"
+        if isinstance(pid, int):
+            return f"`{tool_name}` para `pid={pid}`"
+    if tool_name in {"disk_usage", "read_config_file", "write_config_file", "restore_config_backup"}:
+        path = arguments.get("path")
+        if isinstance(path, str) and path:
+            return f"`{tool_name}` em `{path}`"
+    return f"`{tool_name}`"
 
 
 def _coerce_int(value: object, label: str) -> int:
@@ -149,9 +196,14 @@ class MasterControlApp:
             summary_text = session.get("summary_text")
             session_id = _coerce_int(session["session_id"], "session_id")
             observation_freshness = self._load_observation_freshness(session_id)
+            session_context = self._build_session_context(
+                str(summary_text) if isinstance(summary_text, str) else None,
+                observation_freshness,
+            )
             insights = collect_session_insights_with_freshness(
                 str(summary_text) if isinstance(summary_text, str) else None,
                 observation_freshness,
+                session_context=session_context,
             )
             active_recommendations = self.store.list_session_recommendations(
                 session_id,
@@ -165,6 +217,7 @@ class MasterControlApp:
             enriched.append(
                 {
                     **session,
+                    "session_context": session_context.as_dict(),
                     "insight_count": len(insights),
                     "active_recommendation_count": active_count,
                 }
@@ -176,10 +229,16 @@ class MasterControlApp:
         resolved_session_id = self._resolve_session_id(session_id)
         summary_text = self._load_session_summary(resolved_session_id)
         observation_freshness = self._load_observation_freshness(resolved_session_id)
-        insights = collect_session_insights_with_freshness(summary_text, observation_freshness)
+        session_context = self._build_session_context(summary_text, observation_freshness)
+        insights = collect_session_insights_with_freshness(
+            summary_text,
+            observation_freshness,
+            session_context=session_context,
+        )
         return {
             "session_id": resolved_session_id,
             "summary_text": summary_text,
+            "session_context": session_context.as_dict(),
             "observation_freshness": [item.as_dict() for item in observation_freshness],
             "insights": [insight.as_dict() for insight in insights],
         }
@@ -219,9 +278,13 @@ class MasterControlApp:
             status=status,
             limit=200,
         )
-        recommendations = self._enrich_recommendations_with_freshness(
+        recommendations = enrich_recommendations_with_freshness(
             recommendations,
             observation_freshness,
+        )
+        recommendations = enrich_recommendations_with_operator_guidance(
+            recommendations,
+            command_builder=self._build_recommendation_commands,
         )
         recommendations = sort_recommendations(recommendations)
         return {
@@ -252,7 +315,12 @@ class MasterControlApp:
         for resolved_session_id in session_ids:
             summary_text = self._load_session_summary(resolved_session_id)
             observation_freshness = self._load_observation_freshness(resolved_session_id)
-            insights = collect_session_insights_with_freshness(summary_text, observation_freshness)
+            session_context = self._build_session_context(summary_text, observation_freshness)
+            insights = collect_session_insights_with_freshness(
+                summary_text,
+                observation_freshness,
+                session_context=session_context,
+            )
             sync = self._sync_session_recommendations(
                 resolved_session_id,
                 insights,
@@ -556,18 +624,29 @@ class MasterControlApp:
         recommendation_id = context_payload.get("recommendation_id")
         if isinstance(recommendation_id, int):
             commands = self._build_recommendation_commands(recommendation_id)
+            recommendation = self.store.get_recommendation(recommendation_id)
+            summary = "Execute a ação da recomendação com confirmação explícita."
+            if isinstance(recommendation, dict):
+                action = recommendation.get("action")
+                if isinstance(action, dict):
+                    title = action.get("title")
+                    if isinstance(title, str) and title.strip():
+                        summary = title.strip()
+                message = recommendation.get("message")
+                if isinstance(message, str) and message.strip():
+                    summary = f"{summary} Evidência: {message.strip()}"
             return {
                 "required": True,
                 "cli_command": commands["cli_confirm_command"],
                 "chat_command": commands["chat_confirm_command"],
-                "summary": "Execute a ação da recomendação com confirmação explícita.",
+                "summary": summary,
             }
 
         return {
             "required": True,
             "cli_command": self._format_cli_tool_command(tool_name, arguments, confirmed=True),
             "chat_command": self._format_chat_tool_command(tool_name, arguments, confirmed=True),
-            "summary": "Reexecute a tool com confirmação explícita.",
+            "summary": f"Confirme a execução de {_describe_tool_target(tool_name, arguments)}.",
         }
 
     def _build_recommendation_commands(self, recommendation_id: int) -> dict[str, str]:
@@ -660,9 +739,10 @@ class MasterControlApp:
             else None
         )
         plan_decision = planning_result.provider_response.resolved_decision().as_dict()
-        resolved_turn_decision = self._classify_turn_decision(
+        resolved_turn_decision = classify_turn_decision(
             planning_result.provider_response,
             planning_result.executions,
+            multi_step_intents=MULTI_STEP_PLANNING_INTENTS,
         )
         turn_decision = resolved_turn_decision.as_dict()
         final_response = self._build_final_chat_response(
@@ -693,18 +773,23 @@ class MasterControlApp:
         )
         self.store.upsert_session_summary(active_session_id, updated_summary)
         observation_freshness = planning_result.working_freshness
-        insights = collect_session_insights_with_freshness(updated_summary, observation_freshness)
+        updated_session_context = self._build_session_context(updated_summary, observation_freshness)
+        insights = collect_session_insights_with_freshness(
+            updated_summary,
+            observation_freshness,
+            session_context=updated_session_context,
+        )
         recommendation_sync = self._sync_session_recommendations(
             active_session_id,
             insights,
             observation_freshness,
         )
-        message_with_turn_guidance = self._apply_turn_decision_guidance(
+        message_with_turn_guidance = apply_turn_decision_guidance(
             final_response.message,
             planning_result.executions,
             resolved_turn_decision,
         )
-        final_message_with_recommendations = self._append_recommendations_to_message(
+        final_message_with_recommendations = append_recommendations_to_message(
             message_with_turn_guidance,
             recommendation_sync,
         )
@@ -736,6 +821,7 @@ class MasterControlApp:
             "turn_decision": turn_decision,
             "provider_metadata": provider_metadata,
             "session_summary": updated_summary,
+            "session_context": updated_session_context.as_dict(),
             "observation_freshness": [item.as_dict() for item in observation_freshness],
             "insights": [insight.as_dict() for insight in insights],
             "recommendations": recommendation_sync.as_dict(),
@@ -754,6 +840,7 @@ class MasterControlApp:
         available_tools = tuple(self.list_tools())
         working_summary = session_summary
         working_freshness = observation_freshness
+        working_session_context = self._build_session_context(working_summary, working_freshness)
         accumulated_executions: list[dict[str, object]] = []
         executed_signatures: set[str] = set()
         previous_response_id = self.previous_provider_response_id
@@ -767,9 +854,10 @@ class MasterControlApp:
                 available_tools=available_tools,
                 conversation_history=tuple(conversation_history),
                 session_summary=working_summary,
+                session_context=working_session_context,
                 observation_freshness=working_freshness,
                 previous_response_id=previous_response_id,
-                system_prompt=self._build_turn_planning_prompt(
+                system_prompt=build_turn_planning_prompt(
                     user_input=user_input,
                     iteration=iteration,
                     executions=accumulated_executions,
@@ -778,7 +866,7 @@ class MasterControlApp:
             provider_response = self.provider.plan(provider_request)
             last_provider_response = provider_response
             previous_response_id = provider_response.response_id or previous_response_id
-            decision = self._validate_provider_response_for_loop(provider_response)
+            decision = validate_provider_response_for_loop(provider_response)
 
             plan_payload = provider_response.plan.as_dict() if provider_response.plan else None
             self._record_plan_generated(
@@ -813,16 +901,24 @@ class MasterControlApp:
                 assistant_message=provider_response.message,
             )
             working_freshness = self._load_observation_freshness(session_id)
+            working_session_context = self._build_session_context(
+                working_summary,
+                working_freshness,
+            )
 
             if any(not execution.get("ok") for execution in new_executions):
                 break
-            if not self._should_continue_planning(provider_response.plan):
+            if not should_continue_planning(
+                provider_response.plan,
+                multi_step_intents=MULTI_STEP_PLANNING_INTENTS,
+            ):
                 break
 
         return PlanningLoopResult(
             provider_response=last_provider_response,
             executions=accumulated_executions,
             working_summary=working_summary,
+            working_session_context=working_session_context,
             working_freshness=working_freshness,
             response_id=previous_response_id,
         )
@@ -850,6 +946,13 @@ class MasterControlApp:
     def _load_observation_freshness(self, session_id: int) -> tuple[ObservationFreshness, ...]:
         rows = self.store.list_latest_observations(session_id)
         return build_observation_freshness(rows)
+
+    def _build_session_context(
+        self,
+        session_summary: str | None,
+        observation_freshness: tuple[ObservationFreshness, ...],
+    ) -> SessionContext:
+        return build_session_context(session_summary, observation_freshness)
 
     def _resolve_session_id(self, session_id: int | None) -> int:
         if session_id is not None:
@@ -936,105 +1039,6 @@ class MasterControlApp:
     def _step_signature(self, tool_name: str, arguments: dict[str, object]) -> str:
         return f"{tool_name}:{json.dumps(arguments, sort_keys=True)}"
 
-    def _build_turn_planning_prompt(
-        self,
-        *,
-        user_input: str,
-        iteration: int,
-        executions: list[dict[str, object]],
-    ) -> str | None:
-        if not executions:
-            if iteration == 0:
-                return "\n".join(
-                    [
-                        "Current-turn planning guardrails:",
-                        f"- original_user_request: {user_input}",
-                        "- For live host inspection requests, do not answer from memory alone.",
-                        "- If the user asks about current memory, disk, processes, service state, logs, or host metadata, return decision.state=needs_tools and call the matching read-only tool first.",
-                        "- Only return decision.state=complete on the first planning pass when the request is non-operational, already fully answered by the provided context, or safely unsupported.",
-                    ]
-                )
-            return (
-                "This is a continuation of the same user request. "
-                "If enough information is already available, return decision.state=complete with no steps."
-            )
-
-        observation_lines = [
-            self._summarize_execution_for_planner(execution) for execution in executions
-        ]
-        rendered_observations = "\n".join(f"- {line}" for line in observation_lines)
-        return "\n".join(
-            [
-                "Current-turn planning context:",
-                f"- original_user_request: {user_input}",
-                f"- planning_iteration: {iteration + 1}",
-                "- Return an explicit planner decision: needs_tools, complete, or blocked.",
-                "- Do not repeat tool calls that already ran in this same turn unless the user explicitly asked to rerun them.",
-                "- If the observations below are already enough, return decision.state=complete, no steps, and summarize the findings.",
-                "- If the request cannot continue safely with the available tools, return decision.state=blocked.",
-                "- If a prior step failed or requires confirmation, do not propose dependent steps.",
-                "Execution observations:",
-                rendered_observations,
-            ]
-        )
-
-    def _summarize_execution_for_planner(self, execution: dict[str, object]) -> str:
-        tool_name = str(execution.get("tool", "unknown"))
-        arguments = execution.get("arguments", {})
-        argument_text = json.dumps(arguments, sort_keys=True)
-        if execution.get("pending_confirmation"):
-            return f"{tool_name}({argument_text}) -> pending_confirmation"
-        if not execution.get("ok"):
-            return f"{tool_name}({argument_text}) -> error: {execution.get('error', 'unknown')}"
-
-        result = execution.get("result")
-        if not isinstance(result, dict):
-            return f"{tool_name}({argument_text}) -> ok"
-
-        if tool_name == "memory_usage":
-            return (
-                f"{tool_name}({argument_text}) -> memory={result.get('memory_used_percent')}%, "
-                f"swap={result.get('swap_used_percent')}%"
-            )
-        if tool_name == "top_processes":
-            processes = result.get("processes")
-            if isinstance(processes, list) and processes:
-                items = []
-                for item in processes[:3]:
-                    if isinstance(item, dict):
-                        command = item.get("command")
-                        cpu = item.get("cpu_percent")
-                        if isinstance(command, str):
-                            items.append(f"{command}({cpu}%)")
-                if items:
-                    return f"{tool_name}({argument_text}) -> {', '.join(items)}"
-        if tool_name == "service_status":
-            service_scope = result.get("scope")
-            scope_text = f", scope={service_scope}" if service_scope else ""
-            return (
-                f"{tool_name}({argument_text}) -> active={result.get('activestate')}, "
-                f"sub={result.get('substate')}{scope_text}"
-            )
-        if tool_name in {"restart_service", "reload_service"}:
-            post_state = result.get("post_restart") or result.get("post_reload")
-            if isinstance(post_state, dict):
-                service_scope = result.get("scope") or post_state.get("scope")
-                scope_text = f", scope={service_scope}" if service_scope else ""
-                return (
-                    f"{tool_name}({argument_text}) -> post active={post_state.get('activestate')}, "
-                    f"sub={post_state.get('substate')}{scope_text}"
-                )
-        if tool_name == "disk_usage":
-            return f"{tool_name}({argument_text}) -> used={result.get('used_percent')}%"
-        if tool_name == "read_journal":
-            return (
-                f"{tool_name}({argument_text}) -> lines={result.get('returned_lines')}, "
-                f"unit={result.get('unit')}"
-            )
-        if tool_name in {"read_config_file", "write_config_file", "restore_config_backup"}:
-            return f"{tool_name}({argument_text}) -> path={result.get('path')}"
-        return f"{tool_name}({argument_text}) -> ok"
-
     def _record_execution_observations(
         self,
         *,
@@ -1090,8 +1094,8 @@ class MasterControlApp:
         iteration: int,
         accumulated_executions: list[dict[str, object]],
     ) -> None:
-        stale_observation_keys = sorted({item.key for item in observation_freshness if item.stale})
-        planned_refresh_keys = self._collect_planned_refresh_keys(provider_response.plan)
+        stale_observation_keys = collect_stale_observation_keys(observation_freshness)
+        planned_refresh_keys = collect_planned_refresh_keys(provider_response.plan)
         decision = provider_response.resolved_decision()
         self.store.record_audit_event(
             "plan_generated",
@@ -1115,87 +1119,6 @@ class MasterControlApp:
             },
         )
 
-    def _validate_provider_response_for_loop(
-        self,
-        provider_response: ProviderResponse,
-    ):
-        decision = provider_response.resolved_decision()
-        has_steps = bool(provider_response.plan and provider_response.plan.steps)
-        if decision.state == "needs_tools" and not has_steps:
-            raise ProviderError("Provider declared needs_tools without returning executable steps.")
-        if decision.state != "needs_tools" and has_steps:
-            raise ProviderError(
-                "Provider returned executable steps for a non-needs_tools decision."
-            )
-        return decision
-
-    def _should_continue_planning(
-        self,
-        plan: ExecutionPlan | None,
-    ) -> bool:
-        if plan is None:
-            return False
-        return plan.intent in MULTI_STEP_PLANNING_INTENTS
-
-    def _classify_turn_decision(
-        self,
-        provider_response: ProviderResponse,
-        executions: list[dict[str, object]],
-    ) -> PlanningDecision:
-        for execution in executions:
-            if execution.get("pending_confirmation"):
-                return PlanningDecision(
-                    state="blocked",
-                    kind="awaiting_confirmation",
-                    reason="The next action is waiting for explicit confirmation before it can run.",
-                )
-        for execution in executions:
-            if not execution.get("ok"):
-                return PlanningDecision(
-                    state="blocked",
-                    kind="execution_failed",
-                    reason="A tool execution failed before the request could complete safely.",
-                )
-
-        plan_decision = provider_response.resolved_decision()
-        if executions and not self._should_continue_planning(provider_response.plan):
-            return PlanningDecision(
-                state="complete",
-                kind="evidence_sufficient",
-                reason="Current-turn evidence is sufficient for the final response.",
-            )
-        if plan_decision.state == "needs_tools" and self._collect_planned_refresh_keys(
-            provider_response.plan
-        ):
-            return PlanningDecision(
-                state="needs_tools",
-                kind="refresh_required",
-                reason="Fresh host observations are required before the diagnosis can continue.",
-            )
-        return plan_decision
-
-    def _collect_planned_refresh_keys(self, plan: ExecutionPlan | None) -> list[str]:
-        if plan is None:
-            return []
-        keys: list[str] = []
-        for step in plan.steps:
-            observation_key = observation_key_for_tool(step.tool_name)
-            if observation_key is None or observation_key in keys:
-                continue
-            keys.append(observation_key)
-        return keys
-
-    def _render_chat_response(
-        self,
-        provider_response: ProviderResponse,
-        executions: list[dict[str, object]],
-    ) -> str:
-        sections = [provider_response.message]
-        rendered_results = self._collect_rendered_execution_summaries(executions)
-        if rendered_results:
-            sections.extend(rendered_results)
-        return "\n\n".join(sections)
-
     def _build_final_chat_response(
         self,
         provider_response: ProviderResponse,
@@ -1207,7 +1130,7 @@ class MasterControlApp:
         session_summary: str | None,
         previous_response_id: str | None,
     ) -> FinalChatResponse:
-        fallback_message = self._render_chat_response(provider_response, executions)
+        fallback_message = render_chat_response(provider_response, executions)
         if not executions:
             return FinalChatResponse(message=fallback_message, response_id=previous_response_id)
 
@@ -1219,9 +1142,9 @@ class MasterControlApp:
             user_message=user_input,
             planning_message=provider_response.message,
             execution_observations=tuple(
-                self._summarize_execution_for_planner(execution) for execution in executions
+                summarize_execution_for_planner(execution) for execution in executions
             ),
-            rendered_results=tuple(self._collect_rendered_execution_summaries(executions)),
+            rendered_results=tuple(collect_rendered_execution_summaries(executions)),
             previous_response_id=previous_response_id,
         )
         try:
@@ -1246,62 +1169,6 @@ class MasterControlApp:
             metadata=synthesis_response.metadata,
         )
 
-    def _apply_turn_decision_guidance(
-        self,
-        message: str,
-        executions: list[dict[str, object]],
-        turn_decision: PlanningDecision,
-    ) -> str:
-        if turn_decision.state == "blocked" and turn_decision.kind == "awaiting_confirmation":
-            pending_execution = next(
-                (execution for execution in executions if execution.get("pending_confirmation")),
-                None,
-            )
-            if isinstance(pending_execution, dict):
-                approval = pending_execution.get("approval")
-                if isinstance(approval, dict):
-                    cli_command = approval.get("cli_command")
-                    chat_command = approval.get("chat_command")
-                    if (
-                        isinstance(cli_command, str) and cli_command and cli_command in message
-                    ) or (
-                        isinstance(chat_command, str) and chat_command and chat_command in message
-                    ):
-                        return f"{message}\n\nAção pendente de confirmação explícita."
-                    command_parts: list[str] = []
-                    if isinstance(cli_command, str) and cli_command.strip():
-                        command_parts.append(f"CLI: `{cli_command}`")
-                    if isinstance(chat_command, str) and chat_command.strip():
-                        command_parts.append(f"Chat: `{chat_command}`")
-                    if command_parts:
-                        return f"{message}\n\nAção pendente de confirmação explícita. " + " ".join(
-                            command_parts
-                        )
-            return f"{message}\n\nAção pendente de confirmação explícita."
-
-        if turn_decision.state == "blocked" and turn_decision.kind == "missing_safe_tool":
-            return (
-                f"{message}\n\nEste runtime não expõe a tool segura necessária para esse pedido. "
-                "Use `mc tools` para conferir as capabilities disponíveis."
-            )
-
-        if turn_decision.state == "blocked" and turn_decision.kind == "execution_failed":
-            return f"{message}\n\nO turno foi interrompido porque uma execução falhou antes da conclusão."
-
-        if turn_decision.state == "needs_tools" and turn_decision.kind == "refresh_required":
-            return (
-                f"{message}\n\nO agente ainda precisa atualizar sinais do host antes de concluir."
-            )
-
-        return message
-
-    def _collect_rendered_execution_summaries(
-        self,
-        executions: list[dict[str, object]],
-    ) -> list[str]:
-        rendered_results = [self._render_execution_summary(execution) for execution in executions]
-        return [item for item in rendered_results if item]
-
     def _sync_session_recommendations(
         self,
         session_id: int,
@@ -1310,248 +1177,11 @@ class MasterControlApp:
     ) -> RecommendationSyncResult:
         candidates = [item.as_dict() for item in build_recommendation_candidates(insights)]
         payload = self.store.sync_session_recommendations(session_id, candidates)
-        active = sort_recommendations(
-            self._enrich_recommendations_with_freshness(
-                list(payload["active"]),
-                observation_freshness,
-            )
+        return build_recommendation_sync_result(
+            payload,
+            observation_freshness,
+            command_builder=self._build_recommendation_commands,
         )
-        new = sort_recommendations(
-            self._enrich_recommendations_with_freshness(
-                list(payload["new"]),
-                observation_freshness,
-            )
-        )
-        reopened = sort_recommendations(
-            self._enrich_recommendations_with_freshness(
-                list(payload["reopened"]),
-                observation_freshness,
-            )
-        )
-        auto_resolved = sort_recommendations(
-            self._enrich_recommendations_with_freshness(
-                list(payload["auto_resolved"]),
-                observation_freshness,
-            )
-        )
-        return RecommendationSyncResult(
-            active=active,
-            new=new,
-            reopened=reopened,
-            auto_resolved=auto_resolved,
-        )
-
-    def _append_recommendations_to_message(
-        self,
-        message: str,
-        sync: RecommendationSyncResult,
-    ) -> str:
-        highlighted = [*sync.new, *sync.reopened]
-        if not highlighted:
-            return message
-
-        lines: list[str] = []
-        for item in highlighted[:2]:
-            line = f"- [#{item['id']} {item['status']}] {item['message']}"
-            action = item.get("action")
-            if isinstance(action, dict):
-                title = action.get("title")
-                if isinstance(title, str) and title.strip():
-                    line += f" Ação sugerida: {title.strip()}"
-            lines.append(line)
-        rendered = "\n".join(lines)
-        return f"{message}\n\nRecomendações da sessão:\n{rendered}"
-
-    def _enrich_recommendations_with_freshness(
-        self,
-        recommendations: list[dict[str, object]],
-        observation_freshness: tuple[ObservationFreshness, ...],
-    ) -> list[dict[str, object]]:
-        freshness_by_key = {item.key: item for item in observation_freshness}
-        enriched: list[dict[str, object]] = []
-        for item in recommendations:
-            source_key = item.get("source_key")
-            observation_key = (
-                observation_key_for_recommendation(source_key)
-                if isinstance(source_key, str)
-                else None
-            )
-            freshness = freshness_by_key.get(observation_key) if observation_key else None
-            confidence = "unknown"
-            signal_freshness: dict[str, object] | None = None
-            if freshness is not None:
-                confidence = "stale" if freshness.stale else "fresh"
-                signal_freshness = {
-                    "observation_key": freshness.key,
-                    "status": confidence,
-                    "age_seconds": freshness.age_seconds,
-                    "ttl_seconds": freshness.ttl_seconds,
-                    "observed_at": freshness.observed_at,
-                    "expires_at": freshness.expires_at,
-                }
-            enriched.append(
-                {
-                    **item,
-                    "confidence": confidence,
-                    "signal_freshness": signal_freshness,
-                }
-            )
-        return enriched
-
-    def _render_execution_summary(self, execution: dict[str, object]) -> str:
-        arguments = _coerce_mapping(execution.get("arguments"))
-        if not execution.get("ok"):
-            if execution.get("pending_confirmation"):
-                approval = execution.get("approval")
-                if isinstance(approval, dict):
-                    cli_command = approval.get("cli_command")
-                    chat_command = approval.get("chat_command")
-                    return (
-                        f"A execução de `{execution['tool']}` exige confirmação explícita antes de prosseguir. "
-                        f"CLI: `{cli_command}`. Chat: `{chat_command}`."
-                    )
-                return f"A execução de `{execution['tool']}` exige confirmação explícita antes de prosseguir."
-            return f"Falha em `{execution['tool']}`: {execution.get('error', 'erro desconhecido')}."
-
-        tool_name = str(execution["tool"])
-        result = execution["result"]
-        assert isinstance(result, dict)
-
-        if tool_name == "system_info":
-            return (
-                "Host: {hostname}. Kernel: {kernel}. Plataforma: {platform}. Usuário atual: {user}."
-            ).format(
-                hostname=result["hostname"],
-                kernel=result["kernel"],
-                platform=result["platform"],
-                user=result["user"],
-            )
-
-        if tool_name == "disk_usage":
-            return (
-                "Disco em {path}: {used_percent}% usado ({used} usados de {total}, {free} livres)."
-            ).format(
-                path=result["path"],
-                used_percent=result["used_percent"],
-                used=self._human_bytes(int(result["used_bytes"])),
-                total=self._human_bytes(int(result["total_bytes"])),
-                free=self._human_bytes(int(result["free_bytes"])),
-            )
-
-        if tool_name == "memory_usage":
-            return (
-                "Memória usada: {mem_percent}% ({mem_used} de {mem_total}). "
-                "Swap usada: {swap_percent}% ({swap_used} de {swap_total})."
-            ).format(
-                mem_percent=result["memory_used_percent"],
-                mem_used=self._human_bytes(int(result["memory_used_bytes"])),
-                mem_total=self._human_bytes(int(result["memory_total_bytes"])),
-                swap_percent=result["swap_used_percent"],
-                swap_used=self._human_bytes(int(result["swap_used_bytes"])),
-                swap_total=self._human_bytes(int(result["swap_total_bytes"])),
-            )
-
-        if tool_name == "top_processes":
-            if result.get("status") != "ok":
-                return (
-                    "Nao foi possivel coletar os processos no momento: "
-                    f"{result.get('reason', 'motivo desconhecido')}."
-                )
-            processes = result.get("processes", [])
-            if not processes:
-                return "Nenhum processo relevante foi retornado."
-            assert isinstance(processes, list)
-            summary = ", ".join(
-                f"{item['command']} ({item['cpu_percent']}% CPU)"
-                for item in processes[: min(5, len(processes))]
-            )
-            return f"Top processos por CPU: {summary}."
-
-        if tool_name == "service_status":
-            if result.get("status") != "ok":
-                service = result.get("service", arguments.get("name", "serviço"))
-                scope = result.get("scope")
-                scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
-                return (
-                    f"Nao foi possivel consultar o serviço{scope_text} `{service}`: "
-                    f"{result.get('reason', 'motivo desconhecido')}."
-                )
-            active = result.get("activestate", "desconhecido")
-            sub = result.get("substate", "desconhecido")
-            unit_file_state = result.get("unitfilestate", "desconhecido")
-            service = result.get("service", arguments.get("name", "serviço"))
-            scope = result.get("scope")
-            scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
-            return f"Serviço{scope_text} `{service}`: active={active}, sub={sub}, unit_file_state={unit_file_state}."
-
-        if tool_name == "read_journal":
-            if result.get("status") != "ok":
-                return (
-                    "Nao foi possivel ler o journal no momento: "
-                    f"{result.get('reason', 'motivo desconhecido')}."
-                )
-            entries = result.get("entries", [])
-            if not entries:
-                return "Nenhuma entrada de journal foi retornada."
-            assert isinstance(entries, list)
-            selected = entries[-min(5, len(entries)) :]
-            rendered_entries = "\n".join(f"- {entry}" for entry in selected)
-            return f"Entradas recentes do journal:\n{rendered_entries}"
-
-        if tool_name == "read_config_file":
-            path = result.get("path", arguments.get("path", "arquivo"))
-            line_count = result.get("line_count", 0)
-            return f"Arquivo `{path}` lido com sucesso ({line_count} linhas)."
-
-        if tool_name == "write_config_file":
-            path = result.get("path", arguments.get("path", "arquivo"))
-            backup_path = result.get("backup_path")
-            changed = result.get("changed", False)
-            if not changed:
-                return f"Arquivo `{path}` já estava no conteúdo desejado."
-            if backup_path:
-                return f"Arquivo `{path}` atualizado com backup em `{backup_path}`."
-            return f"Arquivo `{path}` criado e validado."
-
-        if tool_name == "restore_config_backup":
-            path = result.get("path", arguments.get("path", "arquivo"))
-            restored_from = result.get("restored_from")
-            return f"Arquivo `{path}` restaurado a partir de `{restored_from}`."
-
-        if tool_name == "restart_service":
-            service = result.get("service", arguments.get("name", "serviço"))
-            scope = result.get("scope")
-            scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
-            post_restart = result.get("post_restart")
-            if not isinstance(post_restart, dict):
-                return f"Serviço{scope_text} `{service}` reiniciado."
-            active = post_restart.get("activestate", "desconhecido")
-            sub = post_restart.get("substate", "desconhecido")
-            return f"Serviço{scope_text} `{service}` reiniciado. Estado atual: active={active}, sub={sub}."
-
-        if tool_name == "reload_service":
-            service = result.get("service", arguments.get("name", "serviço"))
-            scope = result.get("scope")
-            scope_text = f" ({scope})" if isinstance(scope, str) and scope else ""
-            post_reload = result.get("post_reload")
-            if not isinstance(post_reload, dict):
-                return f"Serviço{scope_text} `{service}` recarregado."
-            active = post_reload.get("activestate", "desconhecido")
-            sub = post_reload.get("substate", "desconhecido")
-            return f"Serviço{scope_text} `{service}` recarregado. Estado atual: active={active}, sub={sub}."
-
-        return json.dumps(result, indent=2, sort_keys=True)
-
-    def _human_bytes(self, value: int) -> str:
-        units = ["B", "KiB", "MiB", "GiB", "TiB"]
-        size = float(value)
-        for unit in units:
-            if size < 1024 or unit == units[-1]:
-                if unit == "B":
-                    return f"{int(size)} {unit}"
-                return f"{size:.2f} {unit}"
-            size /= 1024
-        return f"{size:.2f} TiB"
 
     def handle_message(self, user_input: str) -> str:
         normalized = user_input.strip()

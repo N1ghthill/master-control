@@ -5,7 +5,7 @@ import unicodedata
 
 from master_control.agent.observations import ObservationFreshness
 from master_control.agent.planner import ExecutionPlan, PlanningDecision, PlanStep
-from master_control.agent.session_summary import parse_session_summary
+from master_control.agent.session_context import SessionContext, build_session_context
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
 
 SERVICE_NAME_RE = re.compile(
@@ -16,6 +16,11 @@ JOURNAL_UNIT_RE = re.compile(
     r"(?:logs?|journal)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_.@-]+)",
     re.IGNORECASE,
 )
+PROCESS_NAME_RE = re.compile(
+    r"(?:processo|process)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_.@/-]+)",
+    re.IGNORECASE,
+)
+PID_RE = re.compile(r"\bpid\s+(\d+)\b", re.IGNORECASE)
 PATH_RE = re.compile(r"(/[^\s,;:]+)")
 INTEGER_RE = re.compile(r"\b(\d{1,3})\b")
 
@@ -27,10 +32,17 @@ class HeuristicProvider:
         available_tools = {spec.name for spec in request.available_tools}
         message = request.user_message.strip()
         normalized = _normalize(message)
-        service_scope = _extract_service_scope(normalized)
-        last_context = _extract_context(request.conversation_history, request.session_summary)
-        summary_map = parse_session_summary(request.session_summary)
+        session_context = request.session_context or build_session_context(
+            request.session_summary,
+            request.observation_freshness,
+        )
+        last_context = _extract_context(request.conversation_history, session_context)
+        service_scope = _resolve_service_scope(normalized, last_context)
         freshness_map = {item.key: item for item in request.observation_freshness}
+        candidate_service = _extract_service_name(message) or _guess_service_name_from_context(
+            session_context,
+            last_context,
+        )
 
         if _contains_any(normalized, ("diagnostico", "diagnosticar", "lento", "lentidao", "slow")):
             if "memory_usage" in available_tools and _needs_refresh(freshness_map, "memory"):
@@ -74,7 +86,34 @@ class HeuristicProvider:
                     ),
                 )
 
-            candidate_service = _guess_service_name_from_context(summary_map, last_context)
+            process_name = _guess_process_name_from_context(session_context)
+            if (
+                "process_to_unit" in available_tools
+                and process_name
+                and candidate_service is None
+                and _needs_refresh(freshness_map, "process_unit")
+            ):
+                message_text = (
+                    f"Vou correlacionar o processo `{process_name}` com um unit do systemd."
+                )
+                if "process_unit" in freshness_map and freshness_map["process_unit"].stale:
+                    message_text = (
+                        f"Vou atualizar a correlação do processo `{process_name}` com systemd antes de concluir."
+                    )
+                return _needs_tools_response(
+                    message_text,
+                    "Correlating the hottest process with a systemd unit is the next safe diagnostic step.",
+                    kind="refresh_required",
+                    intent="diagnose_performance",
+                    steps=(
+                        PlanStep(
+                            tool_name="process_to_unit",
+                            rationale="Correlate the hottest observed process with a systemd unit.",
+                            arguments={"name": process_name, "limit": 3},
+                        ),
+                    ),
+                )
+
             if (
                 "service_status" in available_tools
                 and candidate_service
@@ -93,7 +132,9 @@ class HeuristicProvider:
                     steps=(
                         PlanStep(
                             tool_name="service_status",
-                            rationale="Inspect the service related to the hottest process.",
+                            rationale=(
+                                "Inspect the explicitly referenced or previously tracked service."
+                            ),
                             arguments=_with_service_scope(
                                 {"name": candidate_service}, service_scope
                             ),
@@ -102,8 +143,105 @@ class HeuristicProvider:
                 )
 
             return _complete_response(
-                _build_diagnostic_summary(summary_map),
+                _build_diagnostic_summary(session_context),
                 "The diagnostic summary is already sufficient.",
+            )
+
+        if _contains_any(
+            normalized,
+            (
+                "servicos com falha",
+                "serviços com falha",
+                "servicos falhando",
+                "serviços falhando",
+                "failed services",
+                "servicos failed",
+                "serviços failed",
+            ),
+        ) and ("failed_services" in available_tools):
+            return _needs_tools_response(
+                "Vou listar os serviços em estado de falha.",
+                "Listing failed services requires a typed tool step.",
+                kind="inspection_request",
+                intent="inspect_failed_services",
+                steps=(
+                    PlanStep(
+                        tool_name="failed_services",
+                        rationale="List failed systemd services for the requested scope.",
+                        arguments=_with_service_scope(
+                            {"limit": _extract_int(message, default=10, min_value=1, max_value=20)},
+                            service_scope,
+                        ),
+                    ),
+                ),
+            )
+        if _contains_any(
+            normalized,
+            (
+                "servicos com falha",
+                "serviços com falha",
+                "servicos falhando",
+                "serviços falhando",
+                "failed services",
+            ),
+        ):
+            return _blocked_response(
+                "Entendi que você quer listar serviços com falha, mas a tool segura `failed_services` não está disponível neste runtime.",
+                "The runtime does not expose failed_services for this request.",
+                kind="missing_safe_tool",
+            )
+
+        if _contains_any(
+            normalized,
+            (
+                "qual unit do processo",
+                "qual unidade do processo",
+                "servico relacionado ao processo",
+                "serviço relacionado ao processo",
+                "correlacionar processo",
+                "correlacione o processo",
+                "processo pertence",
+            ),
+        ) and ("process_to_unit" in available_tools):
+            process_name = _extract_process_name(message) or _guess_process_name_from_context(
+                session_context
+            )
+            pid = _extract_pid(message)
+            if process_name or pid is not None:
+                arguments: dict[str, object] = {"limit": 3}
+                if pid is not None:
+                    arguments["pid"] = pid
+                elif process_name:
+                    arguments["name"] = process_name
+                return _needs_tools_response(
+                    "Vou correlacionar o processo com um unit do systemd.",
+                    "Correlating the process with a systemd unit requires a typed tool step.",
+                    kind="inspection_request",
+                    intent="inspect_process_unit",
+                    steps=(
+                        PlanStep(
+                            tool_name="process_to_unit",
+                            rationale="Correlate the requested process with a systemd unit.",
+                            arguments=arguments,
+                        ),
+                    ),
+                )
+        if _contains_any(
+            normalized,
+            (
+                "qual unit do processo",
+                "qual unidade do processo",
+                "servico relacionado ao processo",
+                "serviço relacionado ao processo",
+                "correlacionar processo",
+                "correlacione o processo",
+                "processo pertence",
+            ),
+        ):
+            return _blocked_response(
+                "Entendi que você quer correlacionar um processo com systemd, mas a tool segura `process_to_unit` não está disponível neste runtime.",
+                "The runtime does not expose process_to_unit for this request.",
+                kind="missing_safe_tool",
             )
 
         if _contains_any(normalized, ("visao geral", "visao do sistema", "health", "saude geral")):
@@ -450,12 +588,22 @@ def _extract_path(text: str) -> str | None:
     return match.group(1) if match else None
 
 
-def _extract_service_scope(normalized_text: str) -> str:
+def _extract_explicit_service_scope(normalized_text: str) -> str | None:
     if any(
         token in normalized_text
         for token in ("servico de usuario", "servico do usuario", "user service", "service user")
     ):
         return "user"
+    return None
+
+
+def _resolve_service_scope(normalized_text: str, context: dict[str, str]) -> str:
+    explicit_scope = _extract_explicit_service_scope(normalized_text)
+    if explicit_scope is not None:
+        return explicit_scope
+    context_scope = context.get("scope")
+    if context_scope in {"system", "user"}:
+        return context_scope
     return "system"
 
 
@@ -482,50 +630,77 @@ def _extract_journal_unit(text: str) -> str | None:
     return match.group(1)
 
 
+def _extract_process_name(text: str) -> str | None:
+    match = PROCESS_NAME_RE.search(text)
+    if not match:
+        return None
+    return match.group(1)
+
+
+def _extract_pid(text: str) -> int | None:
+    match = PID_RE.search(text)
+    if not match:
+        return None
+    return int(match.group(1))
+
+
 def _extract_history_context(
     conversation_history: tuple[ConversationMessage, ...],
 ) -> dict[str, str]:
     for message in reversed(conversation_history):
         if message.role != "user":
             continue
+        scope = _extract_explicit_service_scope(_normalize(message.content))
         unit = _extract_journal_unit(message.content) or _extract_service_name(message.content)
         path = _extract_path(message.content)
         if unit:
-            return {"unit": unit}
+            context = {"unit": unit}
+            if scope is not None:
+                context["scope"] = scope
+            return context
         if path:
             return {"path": path}
     return {}
 
 
-def _extract_summary_context(session_summary: str | None) -> dict[str, str]:
-    if not session_summary:
-        return {}
-
+def _extract_structured_context(session_context: SessionContext) -> dict[str, str]:
     context: dict[str, str] = {}
-    for line in session_summary.splitlines():
-        if ":" not in line:
-            continue
-        key, value = line.split(":", maxsplit=1)
-        normalized_key = key.strip()
-        normalized_value = value.strip()
-        if not normalized_value:
-            continue
-        if normalized_key == "tracked_unit":
-            context["unit"] = normalized_value
-        if normalized_key == "tracked_path":
-            context["path"] = normalized_value
+    tracked = session_context.tracked
+    unit = tracked.unit
+    if unit is None and session_context.service is not None:
+        unit = session_context.service.name
+    if unit is None and session_context.process_unit is not None:
+        unit = session_context.process_unit.unit
+    if unit is None and session_context.logs is not None:
+        unit = session_context.logs.unit
+    if unit:
+        context["unit"] = unit
+
+    scope = tracked.scope
+    if scope is None and session_context.service is not None:
+        scope = session_context.service.scope
+    if scope is None and session_context.process_unit is not None:
+        scope = session_context.process_unit.scope
+    if scope in {"system", "user"}:
+        context["scope"] = scope
+
+    path = tracked.path
+    if path is None and session_context.disk is not None:
+        path = session_context.disk.path
+    if path:
+        context["path"] = path
     return context
 
 
 def _extract_context(
     conversation_history: tuple[ConversationMessage, ...],
-    session_summary: str | None,
+    session_context: SessionContext,
 ) -> dict[str, str]:
     history_context = _extract_history_context(conversation_history)
-    summary_context = _extract_summary_context(session_summary)
+    structured_context = _extract_structured_context(session_context)
     return {
-        **summary_context,
         **history_context,
+        **structured_context,
     }
 
 
@@ -560,38 +735,61 @@ def _looks_like_service_follow_up(normalized: str) -> bool:
 
 
 def _guess_service_name_from_context(
-    summary_map: dict[str, str],
+    session_context: SessionContext,
     context: dict[str, str],
 ) -> str | None:
-    if "service" in summary_map:
-        service_line = summary_map["service"]
-        if ":" in service_line:
-            return service_line.split(":", maxsplit=1)[0].strip()
-
     unit = context.get("unit")
     if unit:
         return unit
-
-    process_line = summary_map.get("processes")
-    if not process_line:
-        return None
-    first_item = process_line.split(",", maxsplit=1)[0].strip()
-    if "(" in first_item:
-        first_item = first_item.split("(", maxsplit=1)[0].strip()
-    first_item = first_item.rstrip(":")
-    if not first_item:
-        return None
-    return first_item
+    if session_context.service is not None:
+        return session_context.service.name
+    if session_context.process_unit is not None:
+        return session_context.process_unit.unit
+    return None
 
 
-def _build_diagnostic_summary(summary_map: dict[str, str]) -> str:
+def _guess_process_name_from_context(session_context: SessionContext) -> str | None:
+    if session_context.processes is not None and session_context.processes.items:
+        return session_context.processes.items[0].command
+    if session_context.process_unit is not None:
+        return session_context.process_unit.query_name
+    return None
+
+
+def _build_diagnostic_summary(session_context: SessionContext) -> str:
     fragments: list[str] = []
-    if "memory" in summary_map:
-        fragments.append(f"memória: {summary_map['memory']}")
-    if "processes" in summary_map:
-        fragments.append(f"processos: {summary_map['processes']}")
-    if "service" in summary_map:
-        fragments.append(f"serviço: {summary_map['service']}")
+    if session_context.memory is not None:
+        memory_used = session_context.memory.memory_used_percent
+        swap_used = session_context.memory.swap_used_percent
+        if memory_used is not None and swap_used is not None:
+            fragments.append(f"memória: memory {memory_used}% used, swap {swap_used}% used")
+
+    if session_context.processes is not None and session_context.processes.items:
+        process_fragments: list[str] = []
+        for item in session_context.processes.items:
+            if item.cpu_percent is None:
+                process_fragments.append(item.command)
+            else:
+                process_fragments.append(f"{item.command}({item.cpu_percent}%)")
+        if process_fragments:
+            fragments.append(f"processos: {', '.join(process_fragments)}")
+
+    if session_context.process_unit is not None:
+        process_unit = session_context.process_unit
+        if process_unit.unit:
+            query_name = process_unit.query_name or "processo principal"
+            scope_text = f" ({process_unit.scope})" if process_unit.scope else ""
+            fragments.append(
+                f"correlacao: {query_name} -> {process_unit.unit}{scope_text}"
+            )
+
+    if session_context.service is not None:
+        service = session_context.service
+        if service.active_state and service.sub_state:
+            fragments.append(
+                "serviço: "
+                f"{service.name}: active={service.active_state}, sub={service.sub_state}"
+            )
 
     if not fragments:
         return "Ainda preciso coletar mais sinais antes de concluir o diagnóstico."

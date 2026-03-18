@@ -6,7 +6,9 @@ from master_control.config_manager import ConfigManager
 from master_control.executor.command_runner import CommandRunner
 from master_control.tools.base import Tool
 from master_control.tools.disk_usage import DiskUsageTool
+from master_control.tools.failed_services import FailedServicesTool
 from master_control.tools.memory_usage import MemoryUsageTool
+from master_control.tools.process_to_unit import ProcessToUnitTool
 from master_control.tools.read_config_file import ReadConfigFileTool
 from master_control.tools.read_journal import ReadJournalTool
 from master_control.tools.reload_service import ReloadServiceTool
@@ -43,7 +45,9 @@ def build_default_registry(state_dir: Path) -> ToolRegistry:
     registry.register(DiskUsageTool())
     registry.register(MemoryUsageTool())
     registry.register(TopProcessesTool(runner))
+    registry.register(ProcessToUnitTool(runner))
     registry.register(ServiceStatusTool(runner))
+    registry.register(FailedServicesTool(runner))
     registry.register(ReadConfigFileTool(config_manager))
     registry.register(WriteConfigFileTool(config_manager))
     registry.register(RestoreConfigBackupTool(config_manager))

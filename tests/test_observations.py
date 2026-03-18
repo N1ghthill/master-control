@@ -200,6 +200,44 @@ class ObservationFreshnessTest(unittest.TestCase):
                 )
             )
 
+    def test_chat_can_complete_diagnostic_from_fresh_observations_without_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            now = datetime.now(UTC).isoformat().replace("+00:00", "Z")
+            app.store.record_observation(
+                session_id,
+                "memory_usage",
+                "memory",
+                {"memory_used_percent": 42.0, "swap_used_percent": 0.0},
+                observed_at=now,
+                ttl_seconds=300,
+            )
+            app.store.record_observation(
+                session_id,
+                "top_processes",
+                "processes",
+                {"processes": [{"command": "nginx", "cpu_percent": 5.0}]},
+                observed_at=now,
+                ttl_seconds=120,
+            )
+
+            payload = app.chat("o host esta lento", session_id=session_id)
+
+            self.assertIsNone(payload["plan"])
+            self.assertIn("Resumo do diagnóstico", payload["message"])
+            self.assertIn("memória:", payload["message"])
+            self.assertIn("processos:", payload["message"])
+
 
 if __name__ == "__main__":
     unittest.main()

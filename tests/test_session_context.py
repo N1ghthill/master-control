@@ -4,10 +4,19 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.session_context import (
+    ServiceContext,
+    SessionContext,
+    TrackedEntities,
+    build_session_context,
+)
 from master_control.app import MasterControlApp
 from master_control.config import Settings
 from master_control.providers.base import ProviderRequest, ProviderResponse, SynthesisRequest
+from master_control.providers.heuristic import HeuristicProvider
+from master_control.tools.base import RiskLevel, ToolSpec
 
 
 class FakeOpenAIProvider:
@@ -82,6 +91,85 @@ class FakeSynthesisOpenAIProvider:
 
 
 class SessionContextTest(unittest.TestCase):
+    def test_build_session_context_prefers_structured_observations(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {
+                        "service": "ollama-local.service",
+                        "scope": "user",
+                        "activestate": "failed",
+                        "substate": "failed",
+                    },
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+                {
+                    "source": "top_processes",
+                    "key": "processes",
+                    "value": {
+                        "processes": [
+                            {"command": "python3", "cpu_percent": 91.2},
+                            {"command": "ollama", "cpu_percent": 14.0},
+                        ]
+                    },
+                    "observed_at": "2100-03-18T01:00:30Z",
+                    "expires_at": "2100-03-18T01:02:30Z",
+                },
+                {
+                    "source": "disk_usage",
+                    "key": "disk",
+                    "value": {"path": "/", "used_percent": 87.0},
+                    "observed_at": "2100-03-18T01:00:45Z",
+                    "expires_at": "2100-03-18T01:10:45Z",
+                },
+                {
+                    "source": "process_to_unit",
+                    "key": "process_unit",
+                    "value": {
+                        "query": {"name": "python3", "limit": 3},
+                        "primary_match": {
+                            "pid": 123,
+                            "command": "python3",
+                            "unit": "ollama-local.service",
+                            "scope": "user",
+                        },
+                    },
+                    "observed_at": "2100-03-18T01:01:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        context = build_session_context(
+            "\n".join(
+                [
+                    "tracked_path: /etc/mc.ini",
+                    "last_intent: diagnose_performance",
+                    "service: ollama-local.service: active=failed, sub=failed",
+                ]
+            ),
+            freshness,
+        )
+
+        self.assertEqual(context.tracked.unit, "ollama-local.service")
+        self.assertEqual(context.tracked.scope, "user")
+        self.assertEqual(context.tracked.path, "/etc/mc.ini")
+        self.assertEqual(context.last_intent, "diagnose_performance")
+        self.assertIsNotNone(context.service)
+        self.assertEqual(context.service.name, "ollama-local.service")
+        self.assertEqual(context.service.scope, "user")
+        self.assertEqual(context.service.active_state, "failed")
+        self.assertIsNotNone(context.processes)
+        self.assertEqual(context.processes.items[0].command, "python3")
+        self.assertEqual(context.disk.path, "/")
+        self.assertEqual(context.disk.used_percent, 87.0)
+        self.assertIsNotNone(context.process_unit)
+        self.assertEqual(context.process_unit.unit, "ollama-local.service")
+        self.assertEqual(context.process_unit.scope, "user")
+
     def test_previous_response_id_is_reused_when_session_is_resumed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             settings = Settings(
@@ -105,6 +193,12 @@ class SessionContextTest(unittest.TestCase):
             self.assertEqual(second_provider.calls[0].previous_response_id, "resp_1")
             self.assertGreater(len(second_provider.calls[0].conversation_history), 0)
             self.assertIsNotNone(second_provider.calls[0].session_summary)
+            self.assertIsNotNone(second_provider.calls[0].session_context)
+            self.assertIsNotNone(second_provider.calls[0].session_context.memory)
+            self.assertIsInstance(
+                second_provider.calls[0].session_context.memory.memory_used_percent,
+                float,
+            )
 
     def test_list_sessions_returns_provider_state(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -171,6 +265,38 @@ class SessionContextTest(unittest.TestCase):
             self.assertEqual(provider.synthesis_calls[0].previous_response_id, "resp_plan_1")
             self.assertTrue(provider.synthesis_calls[0].rendered_results)
             self.assertEqual(sessions[0]["previous_response_id"], "resp_syn_1")
+
+    def test_heuristic_provider_reuses_structured_service_context_without_summary(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="reinicie novamente",
+                available_tools=(
+                    ToolSpec(
+                        name="restart_service",
+                        description="Restart a systemd unit.",
+                        risk=RiskLevel.PRIVILEGED,
+                        arguments=("name", "scope"),
+                    ),
+                ),
+                session_context=SessionContext(
+                    tracked=TrackedEntities(unit="ollama-local.service", scope="user"),
+                    service=ServiceContext(
+                        name="ollama-local.service",
+                        scope="user",
+                        active_state="failed",
+                        sub_state="failed",
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNotNone(response.plan)
+        self.assertEqual(response.plan.steps[0].tool_name, "restart_service")
+        self.assertEqual(
+            response.plan.steps[0].arguments,
+            {"name": "ollama-local.service", "scope": "user"},
+        )
 
 
 if __name__ == "__main__":

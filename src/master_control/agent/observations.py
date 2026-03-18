@@ -10,7 +10,9 @@ OBSERVATION_TTLS_S = {
     "disk_usage": 600,
     "memory_usage": 300,
     "top_processes": 120,
+    "process_to_unit": 120,
     "service_status": 180,
+    "failed_services": 180,
     "restart_service": 180,
     "reload_service": 180,
     "read_journal": 90,
@@ -24,7 +26,9 @@ TOOL_OBSERVATION_KEYS = {
     "memory_usage": "memory",
     "disk_usage": "disk",
     "top_processes": "processes",
+    "process_to_unit": "process_unit",
     "service_status": "service",
+    "failed_services": "failed_services",
     "restart_service": "service",
     "reload_service": "service",
     "read_journal": "logs",
@@ -238,6 +242,23 @@ def _render_target(item: ObservationFreshness) -> str | None:
             if isinstance(scope, str) and scope:
                 return f"{service}, scope={scope}"
             return service
+    if item.key == "process_unit":
+        primary_match = item.value.get("primary_match")
+        if isinstance(primary_match, dict):
+            unit = primary_match.get("unit")
+            scope = primary_match.get("scope")
+            if isinstance(unit, str) and unit:
+                if isinstance(scope, str) and scope:
+                    return f"{unit}, scope={scope}"
+                return unit
+        query = item.value.get("query")
+        if isinstance(query, dict):
+            process_name = query.get("name")
+            pid = query.get("pid")
+            if isinstance(process_name, str) and process_name:
+                return process_name
+            if isinstance(pid, int):
+                return f"pid={pid}"
     if item.key == "logs":
         unit = item.value.get("unit")
         if isinstance(unit, str) and unit:
@@ -246,4 +267,8 @@ def _render_target(item: ObservationFreshness) -> str | None:
         path = item.value.get("path")
         if isinstance(path, str) and path:
             return path
+    if item.key == "failed_services":
+        scope = item.value.get("scope")
+        if isinstance(scope, str) and scope:
+            return f"scope={scope}"
     return None

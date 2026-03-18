@@ -293,6 +293,20 @@ class OpenAIResponsesProvider:
                     request.session_summary,
                 ]
             )
+        session_context_payload = (
+            request.session_context.as_dict() if request.session_context is not None else {}
+        )
+        if session_context_payload:
+            sections.extend(
+                [
+                    "Structured session context:",
+                    json.dumps(
+                        session_context_payload,
+                        ensure_ascii=False,
+                        sort_keys=True,
+                    ),
+                ]
+            )
         freshness_block = format_observation_freshness(request.observation_freshness)
         if freshness_block:
             sections.extend(

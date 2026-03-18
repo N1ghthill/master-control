@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from master_control.agent.observations import build_observation_freshness
+from master_control.agent.session_context import build_session_context
 from master_control.config import Settings
 from master_control.providers.base import (
     ConversationMessage,
@@ -105,6 +106,20 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                         },
                     )
                 ),
+                session_context=build_session_context(
+                    "tracked_unit: ssh\nlast_intent: inspect_logs",
+                    build_observation_freshness(
+                        (
+                            {
+                                "source": "memory_usage",
+                                "key": "memory",
+                                "value": {"memory_used_percent": 12.0},
+                                "observed_at": "2026-03-17T20:00:00Z",
+                                "expires_at": "2026-03-17T20:05:00Z",
+                            },
+                        )
+                    ),
+                ),
             )
 
             response = provider.plan(request)
@@ -123,6 +138,8 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertEqual(captured_payload["input"][2]["content"], "mostre o uso de memoria")
             self.assertIn("Local session summary:", captured_payload["instructions"])
             self.assertIn("tracked_unit: ssh", captured_payload["instructions"])
+            self.assertIn("Structured session context:", captured_payload["instructions"])
+            self.assertIn("\"last_intent\": \"inspect_logs\"", captured_payload["instructions"])
             self.assertIn("Observation freshness:", captured_payload["instructions"])
             self.assertIn("memory", captured_payload["instructions"])
             self.assertIn("Always set decision.state", captured_payload["instructions"])

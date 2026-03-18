@@ -152,7 +152,9 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn(f"Session {session_id} recommendations", output)
             self.assertIn("confidence=stale", output)
+            self.assertIn("evidence: sinal=service", output)
             self.assertIn("signal: service", output)
+            self.assertIn("next_cli: mc recommendation", output)
 
     def test_recommendations_command_lists_fresh_before_stale(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -224,6 +226,68 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertEqual(exit_code, 0)
             self.assertIn("memory_pressure", output_lines[0])
             self.assertIn("service_state_refresh", output_lines[1])
+
+    def test_recommendations_command_shows_confirm_step_for_accepted_action(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2100-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+            sync_payload = app.store.sync_session_recommendations(
+                session_id,
+                [
+                    {
+                        "dedupe_key": "service_state:nginx.service",
+                        "source_key": "service_state",
+                        "severity": "critical",
+                        "message": "O serviço nginx.service está falhando.",
+                        "action": {
+                            "kind": "run_tool",
+                            "tool_name": "restart_service",
+                            "title": "Reiniciar o serviço `nginx.service` com confirmação explícita.",
+                            "arguments": {"name": "nginx.service", "scope": "system"},
+                        },
+                    }
+                ],
+            )
+            recommendation_id = sync_payload["active"][0]["id"]
+            app.update_recommendation_status(recommendation_id, "accepted")
+
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(["recommendations", "--session-id", str(session_id)])
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("next: Execute a ação recomendada com confirmação explícita.", output)
+            self.assertIn(
+                f"next_cli: mc recommendation-run {recommendation_id} --confirm",
+                output,
+            )
 
     def test_reconcile_command_renders_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from master_control.agent.observations import build_observation_freshness
+from master_control.agent.session_context import build_session_context
 from master_control.config import Settings
 from master_control.providers.base import ConversationMessage, ProviderRequest, SynthesisRequest
 from master_control.providers.ollama_chat import OllamaChatProvider, TransportResponse
@@ -92,6 +93,20 @@ class OllamaChatProviderTest(unittest.TestCase):
                         },
                     )
                 ),
+                session_context=build_session_context(
+                    "tracked_unit: ssh\nlast_intent: inspect_logs",
+                    build_observation_freshness(
+                        (
+                            {
+                                "source": "service_status",
+                                "key": "service",
+                                "value": {"service": "ssh", "scope": "system"},
+                                "observed_at": "2026-03-17T20:00:00Z",
+                                "expires_at": "2026-03-17T20:03:00Z",
+                            },
+                        )
+                    ),
+                ),
             )
 
             response = provider.plan(request)
@@ -105,6 +120,8 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertFalse(captured_payload["stream"])
             self.assertEqual(captured_payload["messages"][0]["role"], "system")
             self.assertIn("Local session summary:", captured_payload["messages"][0]["content"])
+            self.assertIn("Structured session context:", captured_payload["messages"][0]["content"])
+            self.assertIn("\"tracked\":", captured_payload["messages"][0]["content"])
             self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
             self.assertIn("service", captured_payload["messages"][0]["content"])
             self.assertIn("Always set decision.state", captured_payload["messages"][0]["content"])

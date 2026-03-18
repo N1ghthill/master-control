@@ -7,6 +7,7 @@ from master_control.agent.planner import ExecutionPlan
 SUMMARY_ORDER = (
     "current_focus",
     "tracked_unit",
+    "tracked_scope",
     "tracked_path",
     "last_intent",
     "last_user_request",
@@ -41,9 +42,12 @@ def update_session_summary(
         if plan.steps:
             first_step = plan.steps[0]
             summary["current_focus"] = _truncate(first_step.rationale)
-            tracked_unit = _extract_tracked_unit(first_step.arguments)
+            tracked_unit = _extract_tracked_unit(first_step.tool_name, first_step.arguments)
             if tracked_unit:
                 summary["tracked_unit"] = _truncate(tracked_unit)
+            tracked_scope = _extract_tracked_scope(first_step.tool_name, first_step.arguments)
+            if tracked_scope:
+                summary["tracked_scope"] = tracked_scope
             tracked_path = _extract_tracked_path(first_step.arguments)
             if tracked_path:
                 summary["tracked_path"] = _truncate(tracked_path)
@@ -129,10 +133,13 @@ def _apply_execution_summary(
 
     if tool_name == "service_status":
         service = result.get("service")
+        scope = result.get("scope")
         active_state = result.get("activestate")
         sub_state = result.get("substate")
         if isinstance(service, str):
             summary["tracked_unit"] = _truncate(service)
+        if isinstance(scope, str) and scope:
+            summary["tracked_scope"] = scope
         if service and active_state and sub_state:
             summary["service"] = _truncate(f"{service}: active={active_state}, sub={sub_state}")
         return
@@ -167,6 +174,44 @@ def _apply_execution_summary(
             summary["processes"] = _truncate(", ".join(commands))
         return
 
+    if tool_name == "process_to_unit":
+        primary_match = result.get("primary_match")
+        if not isinstance(primary_match, dict):
+            return
+        unit = primary_match.get("unit")
+        scope = primary_match.get("scope")
+        if isinstance(unit, str) and unit:
+            summary["tracked_unit"] = _truncate(unit)
+        if isinstance(scope, str) and scope in {"system", "user"}:
+            summary["tracked_scope"] = scope
+        return
+
+    if tool_name == "failed_services":
+        units = result.get("units")
+        if not isinstance(units, list) or len(units) != 1:
+            return
+        only_unit = units[0]
+        if not isinstance(only_unit, dict):
+            return
+        unit = only_unit.get("unit")
+        scope = result.get("scope")
+        active_state = only_unit.get("active_state")
+        sub_state = only_unit.get("sub_state")
+        if isinstance(unit, str) and unit:
+            summary["tracked_unit"] = _truncate(unit)
+        if isinstance(scope, str) and scope in {"system", "user"}:
+            summary["tracked_scope"] = scope
+        if (
+            isinstance(unit, str)
+            and unit
+            and isinstance(active_state, str)
+            and active_state
+            and isinstance(sub_state, str)
+            and sub_state
+        ):
+            summary["service"] = _truncate(f"{unit}: active={active_state}, sub={sub_state}")
+        return
+
     if tool_name in {"read_config_file", "write_config_file", "restore_config_backup"}:
         path = result.get("path")
         if isinstance(path, str) and path:
@@ -176,9 +221,12 @@ def _apply_execution_summary(
 
     if tool_name in {"restart_service", "reload_service"}:
         service = result.get("service")
+        scope = result.get("scope")
         post_state = result.get("post_restart") or result.get("post_reload")
         if isinstance(service, str) and service:
             summary["tracked_unit"] = _truncate(service)
+        if isinstance(scope, str) and scope:
+            summary["tracked_scope"] = scope
         if isinstance(service, str) and isinstance(post_state, dict):
             active_state = post_state.get("activestate")
             sub_state = post_state.get("substate")
@@ -186,8 +234,16 @@ def _apply_execution_summary(
                 summary["service"] = _truncate(f"{service}: active={active_state}, sub={sub_state}")
 
 
-def _extract_tracked_unit(arguments: dict[str, object]) -> str | None:
-    for key in ("unit", "name"):
+def _extract_tracked_unit(tool_name: str, arguments: dict[str, object]) -> str | None:
+    candidate_keys = ["unit"]
+    if tool_name in {
+        "service_status",
+        "restart_service",
+        "reload_service",
+        "failed_services",
+    }:
+        candidate_keys.append("name")
+    for key in candidate_keys:
         value = arguments.get(key)
         if isinstance(value, str) and value.strip():
             return value.strip()
@@ -198,6 +254,20 @@ def _extract_tracked_path(arguments: dict[str, object]) -> str | None:
     value = arguments.get("path")
     if isinstance(value, str) and value.strip():
         return value.strip()
+    return None
+
+
+def _extract_tracked_scope(tool_name: str, arguments: dict[str, object]) -> str | None:
+    if tool_name not in {
+        "service_status",
+        "restart_service",
+        "reload_service",
+        "failed_services",
+    }:
+        return None
+    value = arguments.get("scope")
+    if isinstance(value, str) and value in {"system", "user"}:
+        return value
     return None
 
 
