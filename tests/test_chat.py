@@ -175,6 +175,37 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["lines"], 2)
 
+    def test_heuristic_provider_ignores_assistant_log_output_when_reusing_context(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.append_conversation_message(
+                session_id,
+                "user",
+                "me mostre os logs do ssh 5 linhas",
+            )
+            app.store.append_conversation_message(
+                session_id,
+                "assistant",
+                "Entradas recentes do journal:\n- -- No entries --",
+            )
+            app.store.upsert_session_summary(session_id, "tracked_unit: ssh")
+
+            payload = app.chat("agora 2 linhas", session_id=session_id)
+
+            self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "read_journal")
+            self.assertEqual(payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
+            self.assertEqual(payload["plan"]["steps"][0]["arguments"]["lines"], 2)
+
 
 if __name__ == "__main__":
     unittest.main()

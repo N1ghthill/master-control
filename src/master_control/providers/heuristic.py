@@ -403,6 +403,8 @@ def _extract_history_context(
     conversation_history: tuple[ConversationMessage, ...],
 ) -> dict[str, str]:
     for message in reversed(conversation_history):
+        if message.role != "user":
+            continue
         unit = _extract_journal_unit(message.content) or _extract_service_name(message.content)
         path = _extract_path(message.content)
         if unit:
