@@ -5,6 +5,7 @@ import unicodedata
 
 from master_control.agent.observations import ObservationFreshness
 from master_control.agent.planner import ExecutionPlan, PlanningDecision, PlanStep
+from master_control.agent.process_leads import select_process_lead
 from master_control.agent.session_context import SessionContext, build_session_context
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
 
@@ -808,8 +809,12 @@ def _guess_service_name_from_context(
 
 
 def _guess_process_name_from_context(session_context: SessionContext) -> str | None:
-    if session_context.processes is not None and session_context.processes.items:
-        return session_context.processes.items[0].command
+    selected_process = select_process_lead(
+        session_context.processes,
+        tracked=session_context.tracked,
+    )
+    if selected_process is not None:
+        return selected_process.command
     if session_context.process_unit is not None:
         return session_context.process_unit.query_name
     return None

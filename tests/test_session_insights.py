@@ -195,6 +195,27 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].action_tool_name, "process_to_unit")
         self.assertEqual(insights[0].action_arguments, {"name": "python3", "limit": "3"})
 
+    def test_collect_session_insights_hot_process_prefers_service_relevant_lead(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(),
+                processes=ProcessesContext(
+                    items=(
+                        ProcessEntryContext(command="python3", cpu_percent=91.2, occurrences=2),
+                        ProcessEntryContext(command="nginx", cpu_percent=88.0),
+                    ),
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].target, "nginx")
+        self.assertEqual(insights[0].action_tool_name, "process_to_unit")
+        self.assertEqual(insights[0].action_arguments, {"name": "nginx", "limit": "3"})
+        self.assertIn("melhor próximo alvo", insights[0].message)
+
     def test_collect_session_insights_hot_process_known_correlation_proposes_service_follow_up(self) -> None:
         insights = collect_session_insights_from_context(
             SessionContext(

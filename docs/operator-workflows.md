@@ -24,9 +24,10 @@ Expected evidence chain:
 Current behavior guarantees:
 
 - transient collector noise such as the `ps` helper is filtered out before process recommendations are derived
-- repeated commands in the rendered top-process view are collapsed so the operator sees a cleaner lead
+- repeated commands in the rendered top-process view are grouped with counts so the operator sees a cleaner lead
 - non-service correlations such as `.scope` remain evidence, but do not escalate into `service_status`
 - when a hot process already maps to a service unit, the recommendation layer can now move directly to `service_status`
+- when a generic interpreter dominates the top list, the slow-host path can prefer a nearby service-relevant process as the next `process_to_unit` lead
 
 Repeatable smoke path:
 

@@ -90,11 +90,14 @@ class ServiceContext:
 class ProcessEntryContext:
     command: str
     cpu_percent: float | None = None
+    occurrences: int | None = None
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {"command": self.command}
         if self.cpu_percent is not None:
             payload["cpu_percent"] = self.cpu_percent
+        if self.occurrences is not None:
+            payload["occurrences"] = self.occurrences
         return payload
 
 
@@ -595,6 +598,7 @@ def _extract_process_items(value: object) -> tuple[ProcessEntryContext, ...]:
         next_entry = ProcessEntryContext(
             command=command,
             cpu_percent=_as_float(item.get("cpu_percent")),
+            occurrences=1,
         )
         existing = items_by_command.get(command)
         if existing is None:
@@ -602,8 +606,14 @@ def _extract_process_items(value: object) -> tuple[ProcessEntryContext, ...]:
             continue
         existing_cpu = existing.cpu_percent
         next_cpu = next_entry.cpu_percent
-        if existing_cpu is None or (next_cpu is not None and next_cpu > existing_cpu):
-            items_by_command[command] = next_entry
+        merged_cpu = existing_cpu
+        if merged_cpu is None or (next_cpu is not None and next_cpu > merged_cpu):
+            merged_cpu = next_cpu
+        items_by_command[command] = ProcessEntryContext(
+            command=command,
+            cpu_percent=merged_cpu,
+            occurrences=(existing.occurrences or 1) + 1,
+        )
     return tuple(items_by_command.values())
 
 

@@ -47,6 +47,26 @@ class HotProcessTool(Tool):
         }
 
 
+class MixedHotProcessTool(Tool):
+    spec = ToolSpec(
+        name="top_processes",
+        description="Fake mixed hot process tool for tests.",
+        risk=RiskLevel.READ_ONLY,
+        arguments=("limit",),
+    )
+
+    def invoke(self, arguments):
+        del arguments
+        return {
+            "status": "ok",
+            "processes": [
+                {"command": "python3", "cpu_percent": 91.0},
+                {"command": "python3", "cpu_percent": 88.0},
+                {"command": "nginx", "cpu_percent": 88.0},
+            ],
+        }
+
+
 class HealthyServiceTool(Tool):
     spec = ToolSpec(
         name="service_status",
@@ -262,6 +282,32 @@ class MultiStepChatTest(unittest.TestCase):
             self.assertEqual(payload["turn_decision"]["state"], "complete")
             self.assertEqual(payload["turn_decision"]["kind"], "evidence_sufficient")
             self.assertIn("nginx.service", payload["message"])
+
+    def test_heuristic_provider_prefers_service_relevant_process_lead(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.registry.register(HighMemoryTool())
+            app.registry.register(MixedHotProcessTool())
+            app.registry.register(CorrelatedProcessUnitTool())
+            app.registry.register(HealthyServiceTool())
+
+            payload = app.chat("o host esta lento", new_session=True)
+
+            executed_tools = [item["tool"] for item in payload["executions"]]
+            self.assertEqual(
+                executed_tools,
+                ["memory_usage", "top_processes", "process_to_unit", "service_status"],
+            )
+            self.assertEqual(payload["executions"][2]["arguments"]["name"], "nginx")
+            self.assertEqual(payload["executions"][3]["arguments"]["name"], "nginx.service")
 
     def test_heuristic_provider_does_not_treat_scope_correlation_as_service(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
