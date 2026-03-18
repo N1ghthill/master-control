@@ -1,0 +1,51 @@
+flowchart TD
+    subgraph writes[Write path]
+        user[User turn]
+        tool[Tool execution]
+        insight[Insight reconciliation]
+        user --> msg[(conversation_messages)]
+        tool --> obs[(observations)]
+        tool --> audit[(audit_events)]
+        tool --> sum[(session_summaries)]
+        insight --> rec[(session_recommendations)]
+        user --> sess[(sessions)]
+    end
+
+    subgraph reads[Read path]
+        ctx[SessionContext builder]
+        planner[Provider planning]
+        renderer[Turn rendering]
+        recview[Recommendation view]
+        msg --> ctx
+        obs --> ctx
+        sum --> ctx
+        rec --> ctx
+        sess --> ctx
+        ctx --> planner
+        ctx --> renderer
+        ctx --> recview
+        audit --> renderer
+        rec --> recview
+        obs --> renderer
+    end
+
+    subgraph outputs[Operator-facing outputs]
+        chat[chat response]
+        reccli[mc recommendations]
+        auditcli[mc audit]
+    end
+
+    planner --> chat
+    renderer --> chat
+    recview --> reccli
+    audit --> auditcli
+
+    classDef state fill:#fff5e6,stroke:#8a5a12,stroke-width:1px,color:#3b2608;
+    classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
+    classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
+    classDef output fill:#f8edf8,stroke:#7a3d7a,stroke-width:1px,color:#311231;
+
+    class msg,obs,audit,sum,rec,sess state;
+    class ctx,planner,renderer,recview,tool,insight core;
+    class user entry;
+    class chat,reccli,auditcli output;

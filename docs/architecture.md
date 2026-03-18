@@ -68,12 +68,17 @@ The architecture favors strong boundaries:
   |- audit_events
 ```
 
-## Canonical flow diagram
+## Flow diagrams
 
-The repository now includes a Mermaid source diagram and a rendered SVG for the main MC request flow:
+The repository now keeps the canonical Mermaid diagrams under `docs/diagrams/`:
 
+- `docs/diagrams/README.md`
 - `docs/diagrams/master-control-flow.mmd`
-- `docs/diagrams/master-control-flow.svg`
+- `docs/diagrams/chat-planning-flow.mmd`
+- `docs/diagrams/recommendation-approval-flow.mmd`
+- `docs/diagrams/state-audit-flow.mmd`
+
+Primary end-to-end view:
 
 ![Master Control flow](diagrams/master-control-flow.svg)
 

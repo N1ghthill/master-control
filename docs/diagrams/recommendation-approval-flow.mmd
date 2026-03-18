@@ -1,0 +1,40 @@
+flowchart TD
+    obs[Fresh observations<br/>memory / disk / service / process / logs]
+    ctx[Structured SessionContext]
+    insights[Session insight derivation]
+    trust{Fresh enough<br/>and explicit evidence?}
+    refresh[Create refresh recommendation<br/>for safer evidence]
+    action[Create actionable recommendation<br/>with typed action envelope]
+    queue[Persist recommendation queue<br/>open / accepted / dismissed / resolved]
+    list[mc recommendations<br/>or chat session highlights]
+    operator[Operator]
+    accept[Accept recommendation]
+    confirm{Typed action requires<br/>--confirm ?}
+    guidance[Show next safe command<br/>and evidence summary]
+    run[recommendation-run / chat follow-up]
+    policy[Policy + target validation]
+    exec[Execute action]
+    audit[Record audit event]
+    resolve[Mark resolved<br/>or keep open on failure]
+    host[Linux Host]
+
+    obs --> ctx --> insights --> trust
+    trust -->|no| refresh --> queue
+    trust -->|yes| action --> queue
+    queue --> list --> operator
+    operator --> accept --> guidance
+    guidance --> run --> confirm
+    confirm -->|yes| guidance
+    confirm -->|no| policy --> exec --> host --> audit --> resolve --> queue
+
+    classDef state fill:#fff5e6,stroke:#8a5a12,stroke-width:1px,color:#3b2608;
+    classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
+    classDef decision fill:#fff3cd,stroke:#8a6d1b,stroke-width:1px,color:#3d2d08;
+    classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
+    classDef output fill:#f8edf8,stroke:#7a3d7a,stroke-width:1px,color:#311231;
+
+    class obs,ctx,queue,audit state;
+    class insights,policy,exec,resolve,host core;
+    class trust,confirm decision;
+    class operator,accept,run entry;
+    class refresh,action,list,guidance output;

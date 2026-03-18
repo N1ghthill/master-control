@@ -1,0 +1,38 @@
+flowchart TD
+    user[Operator]
+    cli[mc chat]
+    app[Agent App]
+    load[Load session state<br/>messages + summary + observations + recommendations]
+    ctx[Build SessionContext<br/>tracked entities + freshness]
+    provider[Provider planning pass<br/>heuristic / openai / ollama]
+    decision{plan_decision}
+    complete[Render final answer]
+    blocked[Render blocked guidance]
+    select[Select next typed tool step]
+    policy[Policy check]
+    confirm{Approval required?}
+    pending[Render confirmation command<br/>chat + CLI hint]
+    tool[Execute typed tool]
+    persist[Persist result<br/>observations + audit + summary]
+    loop{More evidence needed?}
+    final[Operator response]
+    host[Linux Host]
+
+    user --> cli --> app --> load --> ctx --> provider --> decision
+    decision -->|complete| complete --> final
+    decision -->|blocked| blocked --> final
+    decision -->|needs_tools| select --> policy --> confirm
+    confirm -->|yes| pending --> final
+    confirm -->|no| tool --> host --> persist --> loop
+    loop -->|yes| ctx
+    loop -->|no| complete
+
+    classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
+    classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
+    classDef decision fill:#fff3cd,stroke:#8a6d1b,stroke-width:1px,color:#3d2d08;
+    classDef output fill:#f8edf8,stroke:#7a3d7a,stroke-width:1px,color:#311231;
+
+    class user,cli entry;
+    class app,load,ctx,provider,select,policy,tool,persist,host core;
+    class decision,confirm,loop decision;
+    class complete,blocked,pending,final output;
