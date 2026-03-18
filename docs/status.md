@@ -47,6 +47,7 @@ Snapshot date: 2026-03-18
 - typed decision kinds and final `turn_decision` classification for confirmation waits, missing tools, refreshes, and evidence-backed completion
 - deterministic final-message guidance driven by `turn_decision`
 - structured session context passed to providers for high-risk follow-ups and recommendations
+- session analysis for summary, context, and proactive insights is now assembled through a dedicated agent seam instead of being rebuilt inline in the central app path
 - turn-planning, turn-rendering, and recommendation-view seams extracted from the central app layer
 - heuristic slow-host diagnosis now ignores non-service `systemd` correlations when deciding whether a `service_status` step is valid
 - rendered hot-process output now collapses repeated commands so slow-host diagnosis is less noisy in operator-facing output
@@ -158,4 +159,4 @@ At this snapshot, the project is validated by:
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
 - clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
-- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 122 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`
+- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 123 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`

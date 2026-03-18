@@ -18,11 +18,9 @@ from master_control.agent.recommendation_view import (
     enrich_recommendations_with_freshness,
     enrich_recommendations_with_operator_guidance,
 )
+from master_control.agent.session_analysis import build_session_analysis
 from master_control.agent.session_context import SessionContext, build_session_context
-from master_control.agent.session_insights import (
-    SessionInsight,
-    collect_session_insights_with_freshness,
-)
+from master_control.agent.session_insights import SessionInsight
 from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
     RECOMMENDATION_STATUSES,
@@ -204,14 +202,9 @@ class MasterControlApp:
             summary_text = session.get("summary_text")
             session_id = _coerce_int(session["session_id"], "session_id")
             observation_freshness = self._load_observation_freshness(session_id)
-            session_context = self._build_session_context(
+            analysis = build_session_analysis(
                 str(summary_text) if isinstance(summary_text, str) else None,
                 observation_freshness,
-            )
-            insights = collect_session_insights_with_freshness(
-                str(summary_text) if isinstance(summary_text, str) else None,
-                observation_freshness,
-                session_context=session_context,
             )
             active_recommendations = self.store.list_session_recommendations(
                 session_id,
@@ -225,8 +218,8 @@ class MasterControlApp:
             enriched.append(
                 {
                     **session,
-                    "session_context": session_context.as_dict(),
-                    "insight_count": len(insights),
+                    "session_context": analysis.session_context.as_dict(),
+                    "insight_count": len(analysis.insights),
                     "active_recommendation_count": active_count,
                 }
             )
@@ -237,18 +230,16 @@ class MasterControlApp:
         resolved_session_id = self._resolve_session_id(session_id)
         summary_text = self._load_session_summary(resolved_session_id)
         observation_freshness = self._load_observation_freshness(resolved_session_id)
-        session_context = self._build_session_context(summary_text, observation_freshness)
-        insights = collect_session_insights_with_freshness(
+        analysis = build_session_analysis(
             summary_text,
             observation_freshness,
-            session_context=session_context,
         )
         return {
             "session_id": resolved_session_id,
             "summary_text": summary_text,
-            "session_context": session_context.as_dict(),
+            "session_context": analysis.session_context.as_dict(),
             "observation_freshness": [item.as_dict() for item in observation_freshness],
-            "insights": [insight.as_dict() for insight in insights],
+            "insights": [insight.as_dict() for insight in analysis.insights],
         }
 
     def list_session_observations(
@@ -323,20 +314,15 @@ class MasterControlApp:
         for resolved_session_id in session_ids:
             summary_text = self._load_session_summary(resolved_session_id)
             observation_freshness = self._load_observation_freshness(resolved_session_id)
-            session_context = self._build_session_context(summary_text, observation_freshness)
-            insights = collect_session_insights_with_freshness(
-                summary_text,
-                observation_freshness,
-                session_context=session_context,
-            )
+            analysis = build_session_analysis(summary_text, observation_freshness)
             sync = self._sync_session_recommendations(
                 resolved_session_id,
-                insights,
+                list(analysis.insights),
                 observation_freshness,
             )
             payload = {
                 "session_id": resolved_session_id,
-                "insight_count": len(insights),
+                "insight_count": len(analysis.insights),
                 "observation_count": len(observation_freshness),
                 "stale_observation_count": sum(1 for item in observation_freshness if item.stale),
                 "active_count": len(sync.active),
@@ -787,15 +773,13 @@ class MasterControlApp:
         )
         self.store.upsert_session_summary(active_session_id, updated_summary)
         observation_freshness = planning_result.working_freshness
-        updated_session_context = self._build_session_context(updated_summary, observation_freshness)
-        insights = collect_session_insights_with_freshness(
+        analysis = build_session_analysis(
             updated_summary,
             observation_freshness,
-            session_context=updated_session_context,
         )
         recommendation_sync = self._sync_session_recommendations(
             active_session_id,
-            insights,
+            list(analysis.insights),
             observation_freshness,
         )
         message_with_turn_guidance = apply_turn_decision_guidance(
@@ -835,9 +819,9 @@ class MasterControlApp:
             "turn_decision": turn_decision,
             "provider_metadata": provider_metadata,
             "session_summary": updated_summary,
-            "session_context": updated_session_context.as_dict(),
+            "session_context": analysis.session_context.as_dict(),
             "observation_freshness": [item.as_dict() for item in observation_freshness],
-            "insights": [insight.as_dict() for insight in insights],
+            "insights": [insight.as_dict() for insight in analysis.insights],
             "recommendations": recommendation_sync.as_dict(),
             "executions": planning_result.executions,
         }

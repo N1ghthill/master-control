@@ -24,7 +24,7 @@ Validated successfully:
 
 Current automated suite size at this snapshot:
 
-- 122 tests
+- 123 tests
 
 Additional trust-boundary regressions now covered in the automated suite:
 
