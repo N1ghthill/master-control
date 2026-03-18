@@ -561,7 +561,7 @@ Observed result:
 - slow-host diagnosis now also groups repeated command rows and can favor a nearby service-relevant lead over a generic interpreter before the correlation step
 - failed-service triage now produces an actionable `service_status` next step instead of stopping at the unit list, and then pushes the operator toward fresh logs before mutating service state
 - the managed-config path now keeps rollback context visible and usable in a later follow-up turn, and it explicitly suggests post-change verification after writes and restores
-- the checked local baseline is green with 122 automated tests
+- the checked local baseline is green with 123 automated tests
 - the three selected workflows now have one shared smoke-and-guidance document
 
 Phase-level exit criteria:

@@ -5,6 +5,7 @@
 ### Added
 
 - structured `SessionContext` for the core high-risk planner and recommendation paths
+- extracted session-analysis seam for summary -> context -> insight assembly outside the central app orchestrator
 - `process_to_unit` as a typed read-only process -> `systemd` correlation tool
 - `failed_services` as a typed read-only failed-unit listing tool
 - extracted turn-planning, turn-rendering, and recommendation-view helpers from the central app layer
@@ -50,7 +51,7 @@
 - managed config writes and restores now produce an explicit `read_config_file` verification follow-up
 - recommendation and approval rendering now expose evidence summaries, freshness, target identity, and next-step commands
 - MVP closeout documents were rewritten as completion records instead of leaving an active milestone backlog behind
-- alpha validation now includes clean-environment install via `virtualenv`, real-host operator-utility smokes, workflow guidance docs, and 122 automated tests
+- alpha validation now includes clean-environment install via `virtualenv`, real-host operator-utility smokes, workflow guidance docs, and 123 automated tests
 - project documentation now reflects the current alpha stage instead of the initial scaffold stage
 - roadmap now separates completed foundation work from the remaining MVP closeout work
 - the project now reads as a late-alpha MVP candidate rather than an early scaffold
