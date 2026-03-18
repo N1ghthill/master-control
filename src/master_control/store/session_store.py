@@ -85,13 +85,50 @@ class SessionStore:
     def __init__(self, path: Path) -> None:
         self.path = path
 
+    def _connect(self) -> sqlite3.Connection:
+        connection = sqlite3.connect(self.path)
+        connection.execute("PRAGMA foreign_keys = ON")
+        connection.execute("PRAGMA busy_timeout = 5000")
+        connection.execute("PRAGMA journal_mode = WAL")
+        connection.execute("PRAGMA synchronous = NORMAL")
+        return connection
+
     def initialize(self) -> None:
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.executescript(SCHEMA)
             self._migrate_schema(connection)
             self._ensure_indexes(connection)
             connection.commit()
+
+    def diagnostics(self) -> dict[str, object]:
+        with closing(self._connect()) as connection:
+            foreign_keys = int(connection.execute("PRAGMA foreign_keys").fetchone()[0])
+            busy_timeout_ms = int(connection.execute("PRAGMA busy_timeout").fetchone()[0])
+            journal_mode = str(connection.execute("PRAGMA journal_mode").fetchone()[0])
+            synchronous_raw = int(connection.execute("PRAGMA synchronous").fetchone()[0])
+            integrity_check = str(connection.execute("PRAGMA integrity_check").fetchone()[0])
+            page_count = int(connection.execute("PRAGMA page_count").fetchone()[0])
+            page_size = int(connection.execute("PRAGMA page_size").fetchone()[0])
+
+        synchronous_mode = {
+            0: "OFF",
+            1: "NORMAL",
+            2: "FULL",
+            3: "EXTRA",
+        }.get(synchronous_raw, str(synchronous_raw))
+        size_bytes = page_count * page_size
+        return {
+            "ok": foreign_keys == 1 and integrity_check == "ok",
+            "path": str(self.path),
+            "exists": self.path.exists(),
+            "size_bytes": size_bytes,
+            "foreign_keys": foreign_keys == 1,
+            "busy_timeout_ms": busy_timeout_ms,
+            "journal_mode": journal_mode,
+            "synchronous": synchronous_mode,
+            "integrity_check": integrity_check,
+        }
 
     def _migrate_schema(self, connection: sqlite3.Connection) -> None:
         self._ensure_columns(
@@ -135,7 +172,7 @@ class SessionStore:
 
     def record_audit_event(self, event_type: str, payload: dict[str, object]) -> None:
         serialized_payload = json.dumps(payload, sort_keys=True)
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 "INSERT INTO audit_events (event_type, payload) VALUES (?, ?)",
                 (event_type, serialized_payload),
@@ -143,7 +180,7 @@ class SessionStore:
             connection.commit()
 
     def list_audit_events(self, limit: int = 20) -> list[dict[str, object]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT event_type, payload, created_at
@@ -167,13 +204,13 @@ class SessionStore:
         return events
 
     def count_audit_events(self) -> int:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute("SELECT COUNT(*) FROM audit_events")
             row = cursor.fetchone()
         return int(row[0]) if row is not None else 0
 
     def create_session(self) -> int:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute("INSERT INTO sessions DEFAULT VALUES")
             connection.commit()
             session_id = cursor.lastrowid
@@ -182,7 +219,7 @@ class SessionStore:
             return session_id
 
     def append_conversation_message(self, session_id: int, role: str, content: str) -> None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO conversation_messages (session_id, role, content)
@@ -198,7 +235,7 @@ class SessionStore:
         *,
         limit: int = 10,
     ) -> list[dict[str, object]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT role, content, created_at
@@ -222,7 +259,7 @@ class SessionStore:
         return messages
 
     def get_session_summary(self, session_id: int) -> dict[str, object] | None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT summary_text, updated_at
@@ -257,7 +294,7 @@ class SessionStore:
             observed_at=datetime.fromisoformat(observed_at_value.replace("Z", "+00:00")),
             ttl_seconds=ttl_seconds,
         )
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO observations (session_id, source, key, value, observed_at, expires_at)
@@ -275,7 +312,7 @@ class SessionStore:
             connection.commit()
 
     def list_latest_observations(self, session_id: int) -> list[dict[str, object]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT o.source, o.key, o.value, o.observed_at, o.expires_at
@@ -308,7 +345,7 @@ class SessionStore:
         return observations
 
     def upsert_session_summary(self, session_id: int, summary_text: str) -> None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO session_summaries (session_id, summary_text, updated_at)
@@ -328,7 +365,7 @@ class SessionStore:
         status: str | None = None,
         limit: int = 100,
     ) -> list[dict[str, object]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             if status is None:
                 cursor = connection.execute(
                     """
@@ -383,7 +420,7 @@ class SessionStore:
         return [self._row_to_recommendation(row) for row in rows]
 
     def get_recommendation(self, recommendation_id: int) -> dict[str, object] | None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT
@@ -416,7 +453,7 @@ class SessionStore:
         recommendation_id: int,
         status: str,
     ) -> dict[str, object] | None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 UPDATE session_recommendations
@@ -433,7 +470,7 @@ class SessionStore:
         session_id: int,
         candidates: list[dict[str, object]],
     ) -> dict[str, list[dict[str, object]]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT
@@ -621,7 +658,7 @@ class SessionStore:
         provider_backend: str,
         previous_response_id: str | None,
     ) -> None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             connection.execute(
                 """
                 INSERT INTO session_provider_state (
@@ -641,7 +678,7 @@ class SessionStore:
             connection.commit()
 
     def get_session_provider_state(self, session_id: int) -> dict[str, object] | None:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT provider_backend, previous_response_id, updated_at
@@ -663,7 +700,7 @@ class SessionStore:
         }
 
     def session_exists(self, session_id: int) -> bool:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 "SELECT 1 FROM sessions WHERE id = ? LIMIT 1",
                 (session_id,),
@@ -672,7 +709,7 @@ class SessionStore:
         return row is not None
 
     def list_sessions(self, limit: int = 20) -> list[dict[str, object]]:
-        with closing(sqlite3.connect(self.path)) as connection:
+        with closing(self._connect()) as connection:
             cursor = connection.execute(
                 """
                 SELECT

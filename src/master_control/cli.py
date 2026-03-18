@@ -136,15 +136,21 @@ def build_parser() -> argparse.ArgumentParser:
         "--once",
         help="Process one message and exit.",
     )
-    chat_parser.add_argument(
+    chat_session_group = chat_parser.add_mutually_exclusive_group()
+    chat_session_group.add_argument(
         "--session-id",
         type=int,
         help="Resume an existing session by id.",
     )
-    chat_parser.add_argument(
+    chat_session_group.add_argument(
         "--new-session",
         action="store_true",
         help="Force creation of a new session.",
+    )
+    chat_session_group.add_argument(
+        "--continue-latest",
+        action="store_true",
+        help="Resume the latest known session.",
     )
 
     timer_parser = subparsers.add_parser(
@@ -353,6 +359,19 @@ def main(argv: Sequence[str] | None = None) -> int:
             )
             print(f"planner:   {doctor_payload['planner_mode']}")
             print(f"llm_ready: {'yes' if doctor_payload['llm_provider_available'] else 'no'}")
+            store_diagnostics = cast(dict[str, Any], doctor_payload["store_diagnostics"])
+            store_status = "ok" if store_diagnostics["ok"] else "error"
+            print(
+                "store:     "
+                f"{store_status} journal={store_diagnostics['journal_mode']} "
+                f"integrity={store_diagnostics['integrity_check']}"
+            )
+            timer_diagnostics = cast(dict[str, Any], doctor_payload["reconcile_timer_diagnostics"])
+            timer_summary = "ready" if timer_diagnostics["available"] else "missing systemctl"
+            if not timer_diagnostics["user_scope_ready"]:
+                missing = ", ".join(cast(list[str], timer_diagnostics["user_scope_missing_env"]))
+                timer_summary = f"{timer_summary}; user_env_missing={missing}"
+            print(f"timer:     {timer_summary}")
             active_check = cast(dict[str, Any], doctor_payload["active_provider_check"])
             print(f"active:    {active_check['summary']}")
             provider_checks = cast(dict[str, Any], doctor_payload["provider_checks"])
@@ -560,11 +579,14 @@ def main(argv: Sequence[str] | None = None) -> int:
     if args.command == "chat":
         app.bootstrap()
         try:
+            session_id = args.session_id
+            if args.continue_latest:
+                session_id = app.latest_session_id()
             return _run_chat(
                 app,
                 args.once,
                 as_json=args.json,
-                session_id=args.session_id,
+                session_id=session_id,
                 new_session=args.new_session,
             )
         except ValueError as exc:

@@ -12,6 +12,7 @@ from master_control.tools.base import (
     get_int_argument,
     get_string_argument,
 )
+from master_control.tools.service_actions import validate_unit_name
 
 
 class ReadJournalTool(Tool):
@@ -27,8 +28,11 @@ class ReadJournalTool(Tool):
 
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         lines = get_int_argument(arguments, "lines", default=50, min_value=1, max_value=200)
-        unit = get_string_argument(arguments, "unit", default=None)
+        raw_unit = get_string_argument(arguments, "unit", default=None)
         assert lines is not None
+        unit = None
+        if raw_unit is not None:
+            unit = validate_unit_name(raw_unit, label="unit")
 
         if shutil.which("journalctl") is None:
             return {
@@ -41,6 +45,7 @@ class ReadJournalTool(Tool):
 
         command = [
             "journalctl",
+            "-q",
             "--no-pager",
             "--output=short-iso",
             "-n",
@@ -69,7 +74,11 @@ class ReadJournalTool(Tool):
                 "entries": [],
             }
 
-        entries = [line for line in result.stdout.splitlines() if line.strip()]
+        entries = [
+            line
+            for line in result.stdout.splitlines()
+            if line.strip() and line.strip() != "-- No entries --"
+        ]
         return {
             "status": "ok",
             "unit": unit,

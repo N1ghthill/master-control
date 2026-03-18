@@ -59,6 +59,8 @@ from master_control.providers.base import (
 from master_control.providers.factory import build_provider
 from master_control.store.session_store import SessionStore
 from master_control.systemd_timer import (
+    SystemdTimerError,
+    collect_reconcile_timer_diagnostics,
     install_reconcile_timer,
     remove_reconcile_timer,
     render_reconcile_units,
@@ -151,6 +153,8 @@ class MasterControlApp:
     def doctor(self) -> dict[str, object]:
         self.bootstrap()
         provider_checks = collect_provider_checks(self.settings)
+        store_diagnostics = self.store.diagnostics()
+        timer_diagnostics = collect_reconcile_timer_diagnostics()
         active_provider_check = dict(
             provider_checks.get(
                 self.provider.name,
@@ -161,7 +165,9 @@ class MasterControlApp:
                 },
             )
         )
-        doctor_ok = bool(active_provider_check.get("available", False))
+        doctor_ok = bool(active_provider_check.get("available", False)) and bool(
+            store_diagnostics.get("ok", False)
+        )
         llm_provider_available = any(
             bool(provider_checks[name].get("available", False)) for name in ("ollama", "openai")
         )
@@ -176,6 +182,8 @@ class MasterControlApp:
             "active_provider_check": active_provider_check,
             "provider_checks": provider_checks,
             "provider_diagnostics": self.provider.diagnostics(),
+            "store_diagnostics": store_diagnostics,
+            "reconcile_timer_diagnostics": timer_diagnostics,
             "audit_event_count": self.store.count_audit_events(),
             "session_count": len(self.store.list_sessions(limit=10_000)),
             "tools": [spec.name for spec in self.list_tools()],
@@ -385,15 +393,18 @@ class MasterControlApp:
         run_systemctl: bool = True,
     ) -> dict[str, object]:
         self.bootstrap()
-        payload = install_reconcile_timer(
-            self.settings,
-            scope=scope,
-            on_calendar=on_calendar,
-            randomized_delay=randomized_delay,
-            target_dir=Path(target_dir) if target_dir else None,
-            python_executable=python_executable,
-            run_systemctl=run_systemctl,
-        )
+        try:
+            payload = install_reconcile_timer(
+                self.settings,
+                scope=scope,
+                on_calendar=on_calendar,
+                randomized_delay=randomized_delay,
+                target_dir=Path(target_dir) if target_dir else None,
+                python_executable=python_executable,
+                run_systemctl=run_systemctl,
+            )
+        except SystemdTimerError as exc:
+            raise ValueError(str(exc)) from exc
         self.store.record_audit_event("reconcile_timer_installed", payload)
         return payload
 
@@ -405,11 +416,14 @@ class MasterControlApp:
         run_systemctl: bool = True,
     ) -> dict[str, object]:
         self.bootstrap()
-        payload = remove_reconcile_timer(
-            scope=scope,
-            target_dir=Path(target_dir) if target_dir else None,
-            run_systemctl=run_systemctl,
-        )
+        try:
+            payload = remove_reconcile_timer(
+                scope=scope,
+                target_dir=Path(target_dir) if target_dir else None,
+                run_systemctl=run_systemctl,
+            )
+        except SystemdTimerError as exc:
+            raise ValueError(str(exc)) from exc
         self.store.record_audit_event("reconcile_timer_removed", payload)
         return payload
 
@@ -954,12 +968,8 @@ class MasterControlApp:
     ) -> SessionContext:
         return build_session_context(session_summary, observation_freshness)
 
-    def _resolve_session_id(self, session_id: int | None) -> int:
-        if session_id is not None:
-            if not self.store.session_exists(session_id):
-                raise ValueError(f"Unknown session_id: {session_id}")
-            return session_id
-
+    def latest_session_id(self) -> int:
+        self.bootstrap()
         sessions = self.store.list_sessions(limit=1)
         if not sessions:
             raise ValueError("No sessions available.")
@@ -967,6 +977,13 @@ class MasterControlApp:
         if not isinstance(resolved, int):
             raise ValueError("No sessions available.")
         return resolved
+
+    def _resolve_session_id(self, session_id: int | None) -> int:
+        if session_id is not None:
+            if not self.store.session_exists(session_id):
+                raise ValueError(f"Unknown session_id: {session_id}")
+            return session_id
+        return self.latest_session_id()
 
     def _ensure_chat_session(self) -> int:
         if self.chat_session_id is None:

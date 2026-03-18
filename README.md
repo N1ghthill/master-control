@@ -65,6 +65,7 @@ mc tool failed_services --arg scope=system --arg limit=5
 mc chat --once "mostre o uso de memoria"
 mc chat --once "o host esta lento"
 mc chat --once "reinicie o servico nginx"
+mc chat --continue-latest --once "agora 2 linhas"
 mc sessions --limit 5
 mc observations --session-id 1
 mc observations --session-id 1 --stale-only
@@ -266,9 +267,11 @@ Observation inspection:
 - `mc observations --session-id <id>` shows the latest stored observations and freshness for a session
 - `mc observations --session-id <id> --stale-only` filters only stale observations
 - observations start appearing from new executions after the freshness model was introduced; older sessions are not backfilled
+- `mc doctor` now reports local SQLite health (`journal_mode`, integrity check) and timer prerequisites (`systemctl` presence plus missing user-scope env vars)
 - `mc recommendations --session-id <id>` now shows confidence/freshness for the signal behind each recommendation
 - recommendation listings and chat highlights now prioritize fresh signals before stale ones
 - `mc reconcile --session-id <id>` recomputes recommendations from the current summary + freshness state without waiting for a new chat turn
+- `mc chat --continue-latest --once "<follow-up>"` continues the latest chat session across separate CLI invocations
 - `mc reconcile-timer render` shows the generated `systemd` service and timer units without touching disk
 - `mc reconcile-timer install --scope user` installs a periodic `systemd --user` timer that runs `mc reconcile --all`
 - `mc reconcile-timer remove --scope user` disables and removes that timer again

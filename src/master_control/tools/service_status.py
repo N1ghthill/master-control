@@ -11,7 +11,11 @@ from master_control.tools.base import (
     ToolSpec,
     get_string_argument,
 )
-from master_control.tools.service_actions import read_service_state, validate_service_scope
+from master_control.tools.service_actions import (
+    read_service_state,
+    validate_service_name,
+    validate_service_scope,
+)
 
 
 class ServiceStatusTool(Tool):
@@ -29,13 +33,14 @@ class ServiceStatusTool(Tool):
         service_name = get_string_argument(arguments, "name", required=True)
         scope_name = validate_service_scope(get_string_argument(arguments, "scope"))
         assert service_name is not None
+        normalized_name = validate_service_name(service_name)
 
         try:
-            payload = read_service_state(self.runner, service_name, scope=scope_name)
+            payload = read_service_state(self.runner, normalized_name, scope=scope_name)
         except ToolError as exc:
             return {
                 "status": "unavailable",
-                "service": service_name,
+                "service": normalized_name,
                 "scope": scope_name,
                 "reason": str(exc),
             }

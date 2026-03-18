@@ -9,11 +9,11 @@ from master_control.agent.session_context import SessionContext, build_session_c
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
 
 SERVICE_NAME_RE = re.compile(
-    r"(?:servi(?:co|ço)|service|unit|status)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_.@-]+)",
+    r"(?:servi(?:co|ço)|service|unit|status)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_@][A-Za-z0-9_.@-]*)",
     re.IGNORECASE,
 )
 JOURNAL_UNIT_RE = re.compile(
-    r"(?:logs?|journal)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_.@-]+)",
+    r"(?:logs?|journal)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_@][A-Za-z0-9_.@-]*)",
     re.IGNORECASE,
 )
 PROCESS_NAME_RE = re.compile(

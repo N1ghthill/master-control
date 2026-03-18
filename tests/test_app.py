@@ -28,6 +28,9 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertIn("system_info", payload["tools"])
             self.assertTrue(payload["ok"])
             self.assertEqual(payload["planner_mode"], "heuristic")
+            self.assertTrue(payload["store_diagnostics"]["ok"])
+            self.assertEqual(payload["store_diagnostics"]["journal_mode"], "wal")
+            self.assertIn("available", payload["reconcile_timer_diagnostics"])
 
     def test_doctor_reports_unavailable_explicit_ollama_provider(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

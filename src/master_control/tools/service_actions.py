@@ -8,16 +8,27 @@ from typing import Any
 from master_control.executor.command_runner import CommandExecutionError, CommandRunner
 from master_control.tools.base import ToolArgumentError, ToolError
 
-SERVICE_NAME_RE = re.compile(r"^[A-Za-z0-9@_.:-]+(?:\.service)?$")
+UNIT_NAME_RE = re.compile(r"^[A-Za-z0-9@_.:][A-Za-z0-9@_.:-]*$")
 SERVICE_SCOPES = {"system", "user"}
 USER_SCOPE_ENV_KEYS = ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS")
 
 
-def validate_service_name(service_name: str) -> str:
-    normalized = service_name.strip()
-    if not SERVICE_NAME_RE.fullmatch(normalized):
+def validate_unit_name(unit_name: str, *, label: str = "unit") -> str:
+    normalized = unit_name.strip()
+    if not normalized:
+        raise ToolArgumentError(f"Argument '{label}' cannot be empty.")
+    if normalized.startswith("-") or not UNIT_NAME_RE.fullmatch(normalized):
         raise ToolArgumentError(
-            "Argument 'name' must be a valid systemd unit name without shell syntax."
+            f"Argument '{label}' must be a valid systemd unit name without shell syntax."
+        )
+    return normalized
+
+
+def validate_service_name(service_name: str) -> str:
+    normalized = validate_unit_name(service_name, label="name")
+    if "." in normalized and not normalized.endswith(".service"):
+        raise ToolArgumentError(
+            "Argument 'name' must reference a service unit name."
         )
     return normalized
 
@@ -72,6 +83,16 @@ def read_service_state(
             continue
         key, value = line.split("=", maxsplit=1)
         payload[key.lower()] = value
+    missing_fields = [
+        field
+        for field in ("id", "loadstate", "activestate", "substate")
+        if not isinstance(payload.get(field), str) or not str(payload[field]).strip()
+    ]
+    if missing_fields:
+        missing_text = ", ".join(missing_fields)
+        raise ToolError(
+            f"systemctl returned incomplete metadata for `{service_name}`: missing {missing_text}."
+        )
     return payload
 
 

@@ -96,6 +96,47 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertIn("service:", output)
             self.assertIn("source=service_status", output)
 
+    def test_chat_continue_latest_reuses_last_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            env = {
+                "MC_STATE_DIR": tmp_dir,
+                "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                "MC_PROVIDER": "heuristic",
+            }
+
+            first_stdout = io.StringIO()
+            with patch.dict(os.environ, env, clear=False):
+                with redirect_stdout(first_stdout):
+                    first_exit = main(["--json", "chat", "--once", "me mostre os logs do ssh 5 linhas"])
+
+            first_payload = json.loads(first_stdout.getvalue())
+
+            second_stdout = io.StringIO()
+            with patch.dict(os.environ, env, clear=False):
+                with redirect_stdout(second_stdout):
+                    second_exit = main(
+                        ["--json", "chat", "--continue-latest", "--once", "agora 2 linhas"]
+                    )
+
+            second_payload = json.loads(second_stdout.getvalue())
+            app = MasterControlApp(
+                Settings(
+                    app_name="master-control",
+                    log_level="INFO",
+                    provider="heuristic",
+                    state_dir=state_dir,
+                    db_path=state_dir / "mc.sqlite3",
+                )
+            )
+
+            self.assertEqual(first_exit, 0)
+            self.assertEqual(second_exit, 0)
+            self.assertEqual(first_payload["session_id"], second_payload["session_id"])
+            self.assertEqual(second_payload["plan"]["steps"][0]["tool_name"], "read_journal")
+            self.assertEqual(second_payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
+            self.assertEqual(len(app.list_sessions(limit=10)), 1)
+
     def test_recommendations_command_renders_freshness_summary(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

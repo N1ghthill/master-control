@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-import subprocess
+import os
 import sys
 from dataclasses import dataclass
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 
 from master_control.config import Settings
+from master_control.executor.command_runner import CommandExecutionError, CommandRunner
+from master_control.tools.service_actions import (
+    build_systemctl_env,
+    ensure_systemctl_available,
+    validate_service_scope,
+)
 
 RECONCILE_SERVICE_NAME = "master-control-reconcile.service"
 RECONCILE_TIMER_NAME = "master-control-reconcile.timer"
@@ -25,6 +32,10 @@ class RenderedSystemdUnit:
             "path": str(self.path),
             "content": self.content,
         }
+
+
+class SystemdTimerError(RuntimeError):
+    """Raised when reconcile timer operations fail."""
 
 
 def render_reconcile_units(
@@ -78,6 +89,7 @@ def install_reconcile_timer(
     python_executable: str | None = None,
     project_root: Path | None = None,
     run_systemctl: bool = True,
+    runner: CommandRunner | None = None,
 ) -> dict[str, object]:
     units = render_reconcile_units(
         settings,
@@ -90,11 +102,14 @@ def install_reconcile_timer(
     )
     units["service"].path.parent.mkdir(parents=True, exist_ok=True)
     for unit in units.values():
-        unit.path.write_text(unit.content, encoding="utf-8")
+        _write_unit_file(unit.path, unit.content)
 
+    systemctl_actions: list[dict[str, object]] = []
     if run_systemctl:
-        _run_systemctl(scope, "daemon-reload")
-        _run_systemctl(scope, "enable", "--now", RECONCILE_TIMER_NAME)
+        systemctl_actions.append(_run_systemctl(scope, "daemon-reload", runner=runner))
+        systemctl_actions.append(
+            _run_systemctl(scope, "enable", "--now", RECONCILE_TIMER_NAME, runner=runner)
+        )
 
     return {
         "scope": _normalize_scope(scope),
@@ -103,6 +118,7 @@ def install_reconcile_timer(
         "timer": units["timer"].as_dict(),
         "on_calendar": on_calendar,
         "randomized_delay": randomized_delay,
+        "systemctl_actions": systemctl_actions,
     }
 
 
@@ -111,15 +127,26 @@ def remove_reconcile_timer(
     scope: str = "user",
     target_dir: Path | None = None,
     run_systemctl: bool = True,
+    runner: CommandRunner | None = None,
 ) -> dict[str, object]:
     resolved_scope = _normalize_scope(scope)
     resolved_target_dir = target_dir or systemd_unit_dir_for_scope(resolved_scope)
     service_path = resolved_target_dir / RECONCILE_SERVICE_NAME
     timer_path = resolved_target_dir / RECONCILE_TIMER_NAME
     removed_paths: list[str] = []
+    systemctl_actions: list[dict[str, object]] = []
 
     if run_systemctl:
-        _run_systemctl(resolved_scope, "disable", "--now", RECONCILE_TIMER_NAME, check=False)
+        systemctl_actions.append(
+            _run_systemctl(
+                resolved_scope,
+                "disable",
+                "--now",
+                RECONCILE_TIMER_NAME,
+                check=False,
+                runner=runner,
+            )
+        )
 
     for path in (service_path, timer_path):
         if path.exists():
@@ -127,7 +154,7 @@ def remove_reconcile_timer(
             removed_paths.append(str(path))
 
     if run_systemctl:
-        _run_systemctl(resolved_scope, "daemon-reload")
+        systemctl_actions.append(_run_systemctl(resolved_scope, "daemon-reload", runner=runner))
 
     return {
         "scope": resolved_scope,
@@ -135,6 +162,7 @@ def remove_reconcile_timer(
         "removed_paths": removed_paths,
         "service_path": str(service_path),
         "timer_path": str(timer_path),
+        "systemctl_actions": systemctl_actions,
     }
 
 
@@ -143,6 +171,19 @@ def systemd_unit_dir_for_scope(scope: str) -> Path:
     if resolved_scope == "user":
         return Path.home() / ".config" / "systemd" / "user"
     return Path("/etc/systemd/system")
+
+
+def collect_reconcile_timer_diagnostics() -> dict[str, object]:
+    systemctl_path = _lookup_systemctl_path()
+    user_scope_missing_env = _missing_user_scope_environment()
+    return {
+        "available": systemctl_path is not None,
+        "systemctl_path": systemctl_path,
+        "user_scope_ready": not user_scope_missing_env,
+        "user_scope_missing_env": user_scope_missing_env,
+        "default_user_unit_dir": str(systemd_unit_dir_for_scope("user")),
+        "default_system_unit_dir": str(systemd_unit_dir_for_scope("system")),
+    }
 
 
 def _render_reconcile_service(
@@ -202,16 +243,89 @@ def _render_reconcile_timer(
     )
 
 
-def _run_systemctl(scope: str, *args: str, check: bool = True) -> None:
+def _write_unit_file(path: Path, content: str) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    with NamedTemporaryFile(
+        "w",
+        encoding="utf-8",
+        dir=path.parent,
+        prefix=f".{path.name}.",
+        delete=False,
+    ) as handle:
+        handle.write(content)
+        handle.flush()
+        os.fsync(handle.fileno())
+        temp_path = Path(handle.name)
+    os.chmod(temp_path, 0o644)
+    os.replace(temp_path, path)
+
+
+def _run_systemctl(
+    scope: str,
+    *args: str,
+    check: bool = True,
+    runner: CommandRunner | None = None,
+) -> dict[str, object]:
+    resolved_scope = _normalize_scope(scope)
+    command = _build_systemctl_management_command(resolved_scope, list(args))
+    active_runner = runner or CommandRunner()
+    ensure_systemctl_available()
+    try:
+        result = active_runner.run(
+            command,
+            timeout_s=10.0,
+            env=build_systemctl_env(resolved_scope),
+        )
+    except (CommandExecutionError, RuntimeError) as exc:
+        raise SystemdTimerError(str(exc)) from exc
+
+    payload = {
+        "command": command,
+        "returncode": result.returncode,
+        "stdout": result.stdout,
+        "stderr": result.stderr,
+        "ok": result.returncode == 0,
+    }
+    if check and result.returncode != 0:
+        reason = (result.stderr or result.stdout).strip()
+        raise SystemdTimerError(
+            reason or f"systemctl command failed: {' '.join(command)}"
+        )
+    return payload
+
+
+def _build_systemctl_management_command(scope: str, parts: list[str]) -> list[str]:
     command = ["systemctl"]
-    if _normalize_scope(scope) == "user":
+    if scope == "user":
         command.append("--user")
-    command.extend(args)
-    subprocess.run(command, check=check, text=True, capture_output=True)
+    else:
+        command.append("--no-ask-password")
+    command.extend(parts)
+    return command
+
+
+def _lookup_systemctl_path() -> str | None:
+    try:
+        ensure_systemctl_available()
+    except RuntimeError:
+        return None
+    return _find_systemctl_path()
+
+
+def _find_systemctl_path() -> str | None:
+    from shutil import which
+
+    return which("systemctl")
+
+
+def _missing_user_scope_environment() -> list[str]:
+    missing: list[str] = []
+    for key in ("XDG_RUNTIME_DIR", "DBUS_SESSION_BUS_ADDRESS"):
+        value = os.getenv(key)
+        if not value:
+            missing.append(key)
+    return missing
 
 
 def _normalize_scope(scope: str) -> str:
-    normalized = scope.strip().lower()
-    if normalized not in {"user", "system"}:
-        raise ValueError(f"Unsupported systemd scope: {scope}")
-    return normalized
+    return validate_service_scope(scope)

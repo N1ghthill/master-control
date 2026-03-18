@@ -5,9 +5,10 @@ import unittest
 from unittest.mock import patch
 
 from master_control.executor.command_runner import CommandResult
-from master_control.tools.base import ToolError
+from master_control.tools.base import ToolArgumentError, ToolError
 from master_control.tools.failed_services import FailedServicesTool
 from master_control.tools.process_to_unit import ProcessToUnitTool
+from master_control.tools.read_journal import ReadJournalTool
 from master_control.tools.reload_service import ReloadServiceTool
 from master_control.tools.restart_service import RestartServiceTool
 from master_control.tools.service_status import ServiceStatusTool
@@ -157,6 +158,31 @@ class ServiceToolsTest(unittest.TestCase):
             "unix:path=/run/user/1000/bus",
         )
 
+    def test_service_status_rejects_option_like_unit_name(self) -> None:
+        tool = ServiceStatusTool(StubRunner([]))
+
+        with self.assertRaises(ToolArgumentError):
+            tool.invoke({"name": "--help"})
+
+    def test_service_status_reports_incomplete_systemctl_metadata(self) -> None:
+        runner = StubRunner(
+            [
+                CommandResult(
+                    returncode=0,
+                    stdout="  -h --host=[USER@]HOST\n",
+                    stderr="",
+                    truncated_stdout=False,
+                    truncated_stderr=False,
+                )
+            ]
+        )
+        tool = ServiceStatusTool(runner)
+
+        payload = tool.invoke({"name": "demo.service"})
+
+        self.assertEqual(payload["status"], "unavailable")
+        self.assertIn("incomplete metadata", payload["reason"])
+
     def test_restart_service_uses_user_scope_without_system_password_flag(self) -> None:
         runner = StubRunner(
             [
@@ -247,6 +273,33 @@ class ServiceToolsTest(unittest.TestCase):
         ):
             with self.assertRaisesRegex(ToolError, "does not support reload"):
                 tool.invoke({"name": "demo.service", "scope": "user"})
+
+    def test_read_journal_rejects_option_like_unit_name(self) -> None:
+        tool = ReadJournalTool(StubRunner([]))
+
+        with self.assertRaises(ToolArgumentError):
+            tool.invoke({"unit": "--since=yesterday"})
+
+    def test_read_journal_filters_no_entries_sentinel(self) -> None:
+        runner = StubRunner(
+            [
+                CommandResult(
+                    returncode=0,
+                    stdout="-- No entries --\n",
+                    stderr="",
+                    truncated_stdout=False,
+                    truncated_stderr=False,
+                )
+            ]
+        )
+        tool = ReadJournalTool(runner)
+
+        payload = tool.invoke({"unit": "ssh", "lines": "3"})
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["returned_lines"], 0)
+        self.assertEqual(payload["entries"], [])
+        self.assertIn("-q", runner.calls[0]["args"])
 
 
 if __name__ == "__main__":

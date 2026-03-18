@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections import OrderedDict
 
 from master_control.agent.planner import ExecutionPlan
+from master_control.agent.tool_result_views import build_tool_result_view
 
 SUMMARY_ORDER = (
     "current_focus",
@@ -102,136 +103,14 @@ def _apply_execution_summary(
         return
 
     tool_name = execution.get("tool")
+    arguments = execution.get("arguments")
     result = execution.get("result")
     if not isinstance(tool_name, str) or not isinstance(result, dict):
         return
-
-    if tool_name == "system_info":
-        hostname = result.get("hostname")
-        kernel = result.get("kernel")
-        if hostname and kernel:
-            summary["host"] = _truncate(f"{hostname}, kernel {kernel}")
-        return
-
-    if tool_name == "memory_usage":
-        memory_used_percent = result.get("memory_used_percent")
-        swap_used_percent = result.get("swap_used_percent")
-        if memory_used_percent is not None and swap_used_percent is not None:
-            summary["memory"] = _truncate(
-                f"memory {memory_used_percent}% used, swap {swap_used_percent}% used"
-            )
-        return
-
-    if tool_name == "disk_usage":
-        path = result.get("path")
-        used_percent = result.get("used_percent")
-        if isinstance(path, str):
-            summary["tracked_path"] = _truncate(path)
-        if path is not None and used_percent is not None:
-            summary["disk"] = _truncate(f"{path} is {used_percent}% used")
-        return
-
-    if tool_name == "service_status":
-        service = result.get("service")
-        scope = result.get("scope")
-        active_state = result.get("activestate")
-        sub_state = result.get("substate")
-        if isinstance(service, str):
-            summary["tracked_unit"] = _truncate(service)
-        if isinstance(scope, str) and scope:
-            summary["tracked_scope"] = scope
-        if service and active_state and sub_state:
-            summary["service"] = _truncate(f"{service}: active={active_state}, sub={sub_state}")
-        return
-
-    if tool_name == "read_journal":
-        unit = result.get("unit") or "system"
-        returned_lines = result.get("returned_lines")
-        if isinstance(unit, str) and unit:
-            summary["tracked_unit"] = _truncate(unit)
-        if returned_lines is not None:
-            summary["logs"] = _truncate(
-                f"{unit}: last journal read returned {returned_lines} lines"
-            )
-        return
-
-    if tool_name == "top_processes":
-        processes = result.get("processes")
-        if not isinstance(processes, list) or not processes:
-            return
-        commands: list[str] = []
-        for item in processes[:3]:
-            if not isinstance(item, dict):
-                continue
-            command = item.get("command")
-            cpu_percent = item.get("cpu_percent")
-            if isinstance(command, str):
-                if isinstance(cpu_percent, (int, float)):
-                    commands.append(f"{command}({cpu_percent}%)")
-                else:
-                    commands.append(command)
-        if commands:
-            summary["processes"] = _truncate(", ".join(commands))
-        return
-
-    if tool_name == "process_to_unit":
-        primary_match = result.get("primary_match")
-        if not isinstance(primary_match, dict):
-            return
-        unit = primary_match.get("unit")
-        scope = primary_match.get("scope")
-        if isinstance(unit, str) and unit:
-            summary["tracked_unit"] = _truncate(unit)
-        if isinstance(scope, str) and scope in {"system", "user"}:
-            summary["tracked_scope"] = scope
-        return
-
-    if tool_name == "failed_services":
-        units = result.get("units")
-        if not isinstance(units, list) or len(units) != 1:
-            return
-        only_unit = units[0]
-        if not isinstance(only_unit, dict):
-            return
-        unit = only_unit.get("unit")
-        scope = result.get("scope")
-        active_state = only_unit.get("active_state")
-        sub_state = only_unit.get("sub_state")
-        if isinstance(unit, str) and unit:
-            summary["tracked_unit"] = _truncate(unit)
-        if isinstance(scope, str) and scope in {"system", "user"}:
-            summary["tracked_scope"] = scope
-        if (
-            isinstance(unit, str)
-            and unit
-            and isinstance(active_state, str)
-            and active_state
-            and isinstance(sub_state, str)
-            and sub_state
-        ):
-            summary["service"] = _truncate(f"{unit}: active={active_state}, sub={sub_state}")
-        return
-
-    if tool_name in {"read_config_file", "write_config_file", "restore_config_backup"}:
-        path = result.get("path")
-        if isinstance(path, str) and path:
-            summary["tracked_path"] = _truncate(path)
-            summary["config"] = _truncate(f"{tool_name}: {path}")
-        return
-
-    if tool_name in {"restart_service", "reload_service"}:
-        service = result.get("service")
-        scope = result.get("scope")
-        post_state = result.get("post_restart") or result.get("post_reload")
-        if isinstance(service, str) and service:
-            summary["tracked_unit"] = _truncate(service)
-        if isinstance(scope, str) and scope:
-            summary["tracked_scope"] = scope
-        if isinstance(service, str) and isinstance(post_state, dict):
-            active_state = post_state.get("activestate")
-            sub_state = post_state.get("substate")
-            if active_state and sub_state:
-                summary["service"] = _truncate(f"{service}: active={active_state}, sub={sub_state}")
+    resolved_arguments = arguments if isinstance(arguments, dict) else {}
+    view = build_tool_result_view(tool_name, resolved_arguments, result)
+    for key, value in view.summary_updates.items():
+        summary[key] = _truncate(value)
 
 
 def _extract_tracked_unit(tool_name: str, arguments: dict[str, object]) -> str | None:

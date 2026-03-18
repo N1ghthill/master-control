@@ -4,6 +4,7 @@ import json
 
 from master_control.agent.observations import ObservationFreshness, observation_key_for_tool
 from master_control.agent.planner import ExecutionPlan, PlanningDecision
+from master_control.agent.tool_result_views import build_tool_result_view
 from master_control.providers.base import ProviderError, ProviderResponse
 
 
@@ -59,50 +60,13 @@ def summarize_execution_for_planner(execution: dict[str, object]) -> str:
     result = execution.get("result")
     if not isinstance(result, dict):
         return f"{tool_name}({argument_text}) -> ok"
+    return build_tool_result_view(tool_name, _coerce_mapping(arguments), result).planner_summary
 
-    if tool_name == "memory_usage":
-        return (
-            f"{tool_name}({argument_text}) -> memory={result.get('memory_used_percent')}%, "
-            f"swap={result.get('swap_used_percent')}%"
-        )
-    if tool_name == "top_processes":
-        processes = result.get("processes")
-        if isinstance(processes, list) and processes:
-            items = []
-            for item in processes[:3]:
-                if isinstance(item, dict):
-                    command = item.get("command")
-                    cpu = item.get("cpu_percent")
-                    if isinstance(command, str):
-                        items.append(f"{command}({cpu}%)")
-            if items:
-                return f"{tool_name}({argument_text}) -> {', '.join(items)}"
-    if tool_name == "service_status":
-        service_scope = result.get("scope")
-        scope_text = f", scope={service_scope}" if service_scope else ""
-        return (
-            f"{tool_name}({argument_text}) -> active={result.get('activestate')}, "
-            f"sub={result.get('substate')}{scope_text}"
-        )
-    if tool_name in {"restart_service", "reload_service"}:
-        post_state = result.get("post_restart") or result.get("post_reload")
-        if isinstance(post_state, dict):
-            service_scope = result.get("scope") or post_state.get("scope")
-            scope_text = f", scope={service_scope}" if service_scope else ""
-            return (
-                f"{tool_name}({argument_text}) -> post active={post_state.get('activestate')}, "
-                f"sub={post_state.get('substate')}{scope_text}"
-            )
-    if tool_name == "disk_usage":
-        return f"{tool_name}({argument_text}) -> used={result.get('used_percent')}%"
-    if tool_name == "read_journal":
-        return (
-            f"{tool_name}({argument_text}) -> lines={result.get('returned_lines')}, "
-            f"unit={result.get('unit')}"
-        )
-    if tool_name in {"read_config_file", "write_config_file", "restore_config_backup"}:
-        return f"{tool_name}({argument_text}) -> path={result.get('path')}"
-    return f"{tool_name}({argument_text}) -> ok"
+
+def _coerce_mapping(value: object) -> dict[str, object]:
+    if isinstance(value, dict):
+        return value
+    return {}
 
 
 def validate_provider_response_for_loop(provider_response: ProviderResponse) -> PlanningDecision:
