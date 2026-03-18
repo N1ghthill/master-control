@@ -1,0 +1,45 @@
+from __future__ import annotations
+
+from collections.abc import Mapping
+from typing import Any
+
+from master_control.executor.command_runner import CommandRunner
+from master_control.tools.base import (
+    RiskLevel,
+    Tool,
+    ToolSpec,
+    ToolError,
+    get_string_argument,
+)
+from master_control.tools.service_actions import read_service_state, validate_service_scope
+
+
+class ServiceStatusTool(Tool):
+    spec = ToolSpec(
+        name="service_status",
+        description="Inspect a systemd service status by unit name and optional scope.",
+        risk=RiskLevel.READ_ONLY,
+        arguments=("name", "scope"),
+    )
+
+    def __init__(self, runner: CommandRunner) -> None:
+        self.runner = runner
+
+    def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
+        service_name = get_string_argument(arguments, "name", required=True)
+        scope_name = validate_service_scope(get_string_argument(arguments, "scope"))
+        assert service_name is not None
+
+        try:
+            payload = read_service_state(self.runner, service_name, scope=scope_name)
+        except ToolError as exc:
+            return {
+                "status": "unavailable",
+                "service": service_name,
+                "scope": scope_name,
+                "reason": str(exc),
+            }
+        return {
+            "status": "ok",
+            **payload,
+        }

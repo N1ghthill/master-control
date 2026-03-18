@@ -1,0 +1,31 @@
+[build-system]
+requires = ["setuptools>=80.0"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "master-control"
+version = "0.1.0a1"
+description = "Conversational Linux agent with controlled execution and auditable actions."
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "Irving" }]
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8.3",
+  "ruff>=0.11",
+]
+
+[project.scripts]
+mc = "master_control.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py313"
