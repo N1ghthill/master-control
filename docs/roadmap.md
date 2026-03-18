@@ -15,6 +15,7 @@ Snapshot date: 2026-03-18
 - detailed sequencing and result targets live in `docs/mvp-evolution-plan.md`
 - the closed execution record lives in `docs/mvp-closeout-backlog.md`
 - the active post-MVP planning record now lives in `docs/post-mvp-evolution-plan.md`
+- the current beta gate lives in `docs/beta-readiness-gate.md`
 - post-MVP Milestone P1 (trust and baseline stabilization) completed on 2026-03-18
 - post-MVP Milestone P2 (workflow depth and operator usefulness) completed on 2026-03-18
 
@@ -212,4 +213,4 @@ The MVP closeout is complete. The next roadmap track is:
 2. broader post-alpha hardening
 3. incremental operator utility beyond the narrow MVP baseline
 
-The current execution recommendation after Milestone P2 is to rerun the documented operator workflows on more host profiles before broader interface expansion. See `docs/post-mvp-evolution-plan.md` and `docs/operator-workflows.md`.
+The current execution recommendation after Milestone P2 is to rerun the documented operator workflows on more host profiles before broader interface expansion. See `docs/post-mvp-evolution-plan.md`, `docs/operator-workflows.md`, and `docs/beta-readiness-gate.md`.

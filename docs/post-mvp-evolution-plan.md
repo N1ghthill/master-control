@@ -447,6 +447,7 @@ Use the repository docs as operational artifacts with these roles:
 - `docs/roadmap.md`: phase-level direction and sequencing only
 - `docs/post-mvp-evolution-plan.md`: active planning record for the current post-MVP track
 - `docs/operator-workflows.md`: bounded operator journeys, smoke commands, and workflow safety notes
+- `docs/beta-readiness-gate.md`: release gate for moving from late alpha to beta-oriented scope
 - `docs/alpha-validation-report.md` or future validation docs: validation evidence only
 - `docs/release-checklist.md`: release gate only
 

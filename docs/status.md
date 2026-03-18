@@ -13,6 +13,7 @@ Snapshot date: 2026-03-18
 - MVP closeout backlog record: `docs/mvp-closeout-backlog.md`
 - Active post-MVP planning record: `docs/post-mvp-evolution-plan.md`
 - Active operator workflow guide: `docs/operator-workflows.md`
+- Active beta gate: `docs/beta-readiness-gate.md`
 - Milestone note: service recommendation trust hardening completed on 2026-03-18
 - Milestone note: structured session state and orchestration refactor completed on 2026-03-18
 - Milestone note: operator utility and approval UX completed on 2026-03-18
@@ -122,6 +123,7 @@ Alpha release material now available:
 - `docs/alpha-release-notes.md`
 - `docs/mvp-evolution-plan.md`
 - `docs/operator-workflows.md`
+- `docs/beta-readiness-gate.md`
 
 ## What is intentionally out of scope right now
 
