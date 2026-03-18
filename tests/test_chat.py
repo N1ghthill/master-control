@@ -5,8 +5,10 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from master_control.agent.planner import PlanningDecision
 from master_control.app import MasterControlApp
 from master_control.config import Settings
+from master_control.providers.base import ProviderResponse
 from master_control.tools.base import RiskLevel, Tool, ToolSpec
 
 
@@ -34,6 +36,25 @@ class FailedServicesListTool(Tool):
                 }
             ],
         }
+
+
+class StaticNoPlanProvider:
+    name = "static"
+
+    def diagnostics(self) -> dict[str, object]:
+        return {"name": self.name, "ready": True}
+
+    def plan(self, request) -> ProviderResponse:
+        del request
+        return ProviderResponse(
+            message="Ainda não vou executar nada sem atualizar o contexto.",
+            plan=None,
+            decision=PlanningDecision(
+                state="complete",
+                kind="evidence_sufficient",
+                reason="No additional tool step requested for this turn.",
+            ),
+        )
 
 
 class ChatFlowTest(unittest.TestCase):
@@ -440,6 +461,46 @@ class ChatFlowTest(unittest.TestCase):
                 written["result"]["backup_path"],
             )
             self.assertTrue(payload["executions"][0]["pending_confirmation"])
+
+    def test_reconcile_recommendations_exposes_config_verification_after_write(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            managed_root = state_dir / "managed-configs"
+            managed_root.mkdir(parents=True, exist_ok=True)
+            config_path = managed_root / "service.ini"
+            config_path.write_text("[service]\nmode=old\n", encoding="utf-8")
+
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings, provider_override=StaticNoPlanProvider())
+            app.bootstrap()
+            session_id = app.store.create_session()
+
+            written = app.run_tool(
+                "write_config_file",
+                {"path": str(config_path), "content": "[service]\nmode=new\n"},
+                confirmed=True,
+                audit_context={"source": "test", "session_id": session_id},
+            )
+            sync = app.reconcile_recommendations(session_id=session_id)
+
+            self.assertTrue(written["ok"])
+            active = sync["sessions"][0]["recommendations"]["active"]
+            verification = next(
+                item
+                for item in active
+                if item.get("source_key") == "config_verification_available"
+            )
+            self.assertEqual(verification["action"]["tool_name"], "read_config_file")
+            self.assertEqual(
+                verification["action"]["arguments"],
+                {"path": str(config_path)},
+            )
 
 
 if __name__ == "__main__":

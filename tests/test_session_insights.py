@@ -8,6 +8,7 @@ from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
 from master_control.agent.session_context import (
     ConfigContext,
+    LogContext,
     ProcessEntryContext,
     ProcessesContext,
     ProcessUnitContext,
@@ -331,14 +332,37 @@ class SessionInsightsTest(unittest.TestCase):
             {"path": "/etc/app.ini", "backup_path": "/tmp/app.bak"},
         )
 
+    def test_collect_session_insights_config_write_proposes_verification(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(path="/etc/app.ini"),
+                config=ConfigContext(
+                    source="write_config_file",
+                    path="/etc/app.ini",
+                    target="managed_ini",
+                    validation_kind="ini_parse",
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "config_verification_available")
+        self.assertEqual(insights[0].action_tool_name, "read_config_file")
+        self.assertEqual(insights[0].action_arguments, {"path": "/etc/app.ini"})
+
     def test_collect_session_insights_without_service_evidence_does_not_propose_restart(self) -> None:
         insights = collect_session_insights("service: nginx.service: active=failed, sub=failed")
 
-        self.assertEqual(len(insights), 1)
-        self.assertEqual(insights[0].key, "service_state")
-        self.assertEqual(insights[0].target, "nginx.service")
-        self.assertIsNone(insights[0].action_tool_name)
-        self.assertEqual(insights[0].action_arguments, {})
+        self.assertEqual(len(insights), 2)
+        service_state = next(item for item in insights if item.key == "service_state")
+        logs_follow_up = next(item for item in insights if item.key == "service_logs_follow_up")
+        self.assertEqual(service_state.target, "nginx.service")
+        self.assertIsNone(service_state.action_tool_name)
+        self.assertEqual(service_state.action_arguments, {})
+        self.assertEqual(logs_follow_up.action_tool_name, "read_journal")
+        self.assertEqual(logs_follow_up.action_arguments, {"unit": "nginx.service", "lines": "40"})
 
     def test_collect_session_insights_preserves_scope_for_unhealthy_service(self) -> None:
         insights = collect_session_insights(
@@ -351,10 +375,16 @@ class SessionInsightsTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(len(insights), 1)
-        self.assertEqual(insights[0].key, "service_state")
-        self.assertIsNone(insights[0].action_tool_name)
-        self.assertEqual(insights[0].action_arguments, {})
+        self.assertEqual(len(insights), 2)
+        service_state = next(item for item in insights if item.key == "service_state")
+        logs_follow_up = next(item for item in insights if item.key == "service_logs_follow_up")
+        self.assertIsNone(service_state.action_tool_name)
+        self.assertEqual(service_state.action_arguments, {})
+        self.assertEqual(logs_follow_up.action_tool_name, "read_journal")
+        self.assertEqual(
+            logs_follow_up.action_arguments,
+            {"unit": "ollama-local.service", "lines": "40"},
+        )
 
     def test_collect_session_insights_with_fresh_service_evidence_proposes_restart(self) -> None:
         freshness = build_observation_freshness(
@@ -365,6 +395,13 @@ class SessionInsightsTest(unittest.TestCase):
                     "value": {"service": "ollama-local.service", "scope": "user"},
                     "observed_at": "2100-03-18T01:00:00Z",
                     "expires_at": "2100-03-18T01:03:00Z",
+                },
+                {
+                    "source": "read_journal",
+                    "key": "logs",
+                    "value": {"unit": "ollama-local.service", "returned_lines": 20},
+                    "observed_at": "2100-03-18T01:01:00Z",
+                    "expires_at": "2100-03-18T01:02:30Z",
                 },
             )
         )
@@ -398,6 +435,13 @@ class SessionInsightsTest(unittest.TestCase):
                     "observed_at": "2100-03-18T01:00:00Z",
                     "expires_at": "2100-03-18T01:03:00Z",
                 },
+                {
+                    "source": "read_journal",
+                    "key": "logs",
+                    "value": {"unit": "ollama-local.service", "returned_lines": 20},
+                    "observed_at": "2100-03-18T01:01:00Z",
+                    "expires_at": "2100-03-18T01:02:30Z",
+                },
             )
         )
 
@@ -410,6 +454,7 @@ class SessionInsightsTest(unittest.TestCase):
                     active_state="failed",
                     sub_state="failed",
                 ),
+                logs=LogContext(unit="ollama-local.service", returned_lines=20, stale=False),
             ),
             freshness,
         )
@@ -421,6 +466,78 @@ class SessionInsightsTest(unittest.TestCase):
             insights[0].action_arguments,
             {"name": "ollama-local.service", "scope": "user"},
         )
+
+    def test_collect_session_insights_unhealthy_service_suggests_logs_when_not_reviewed(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {"service": "nginx.service", "scope": "system"},
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(unit="nginx.service", scope="system"),
+                service=ServiceContext(
+                    name="nginx.service",
+                    scope="system",
+                    active_state="failed",
+                    sub_state="failed",
+                ),
+            ),
+            freshness,
+        )
+
+        self.assertEqual(len(insights), 2)
+        logs_follow_up = next(item for item in insights if item.key == "service_logs_follow_up")
+        self.assertEqual(logs_follow_up.action_tool_name, "read_journal")
+        self.assertEqual(
+            logs_follow_up.action_arguments,
+            {"unit": "nginx.service", "lines": "40"},
+        )
+
+    def test_collect_session_insights_stale_logs_suggest_log_refresh(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {"service": "nginx.service", "scope": "system"},
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+                {
+                    "source": "read_journal",
+                    "key": "logs",
+                    "value": {"unit": "nginx.service", "returned_lines": 10},
+                    "observed_at": "2026-03-17T20:00:00Z",
+                    "expires_at": "2026-03-17T20:01:30Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(unit="nginx.service", scope="system"),
+                service=ServiceContext(
+                    name="nginx.service",
+                    scope="system",
+                    active_state="failed",
+                    sub_state="failed",
+                ),
+                logs=LogContext(unit="nginx.service", returned_lines=10, stale=True),
+            ),
+            freshness,
+        )
+
+        logs_follow_up = next(item for item in insights if item.key == "service_logs_follow_up")
+        self.assertIn("desatualizados", logs_follow_up.message)
+        self.assertEqual(logs_follow_up.action_tool_name, "read_journal")
 
     def test_collect_session_insights_requests_refresh_when_service_signal_is_stale(self) -> None:
         freshness = build_observation_freshness(

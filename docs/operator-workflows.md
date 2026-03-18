@@ -63,6 +63,7 @@ Expected evidence chain:
 Current behavior guarantees:
 
 - a fresh failed-services observation can now produce a direct `service_status` recommendation
+- once a service is confirmed unhealthy, the recommendation layer now pushes the operator toward `read_journal` when matching log evidence is missing or stale
 - recommendation rendering keeps the operator on an explicit accept -> confirm -> execute path
 - stale failed-service listings degrade to a refresh recommendation instead of a stale action
 
@@ -108,6 +109,7 @@ Current behavior guarantees:
 
 - config target, validation kind, and last backup path are now preserved in session summary/context
 - a recent managed backup creates a rollback recommendation in session insights
+- recent `write_config_file` and `restore_config_backup` actions now create an explicit `read_config_file` verification follow-up
 - natural-language follow-up such as `desfaça a última mudança` can now map to `restore_config_backup`
 
 Controlled smoke path:
