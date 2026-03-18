@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.planner import ExecutionPlan, PlanStep, PLANNING_DECISION_STATES, PlanningDecision
 from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import (
@@ -91,10 +91,12 @@ class OllamaChatProvider:
         message = parsed.get("message")
         intent = parsed.get("intent")
         steps_payload = parsed.get("steps")
+        decision_payload = parsed.get("decision")
         if not isinstance(message, str) or not isinstance(intent, str) or not isinstance(
             steps_payload, list
         ):
             raise ProviderError("Ollama provider returned a malformed plan payload.")
+        decision = self._build_decision(decision_payload, steps_payload)
 
         metadata = {
             "model": body.get("model", self.model),
@@ -107,6 +109,7 @@ class OllamaChatProvider:
             message=message,
             plan=self._build_plan(intent, steps_payload),
             response_id=None,
+            decision=decision,
             metadata=metadata,
         )
 
@@ -238,9 +241,14 @@ class OllamaChatProvider:
             "Return a JSON object that matches the provided schema.",
             "Use only the provided tools. Never invent tools or arguments.",
             "Prefer the smallest sufficient plan.",
-            "If the request cannot be satisfied safely with the available tools, return an empty steps array and explain that clearly in message.",
+            "Always set decision.state to exactly one of: needs_tools, complete, blocked.",
+            "Use needs_tools only when you are returning one or more tool steps.",
+            "Use complete when the current context already supports the final answer and no more tools are needed.",
+            "Use blocked when the request cannot be satisfied safely with the available tools.",
+            "For live host inspection requests, do not answer from memory alone. Use the matching read-only tool first unless current-turn observations already provide the evidence.",
             "Write the message in the same language as the user.",
             "You may receive current-turn execution observations in the extra instructions. Use them to continue the same request without repeating completed steps.",
+            "If the current-turn observations are already enough, return decision.state=complete and an empty steps array.",
             "Available tools:",
             *tool_lines,
         ]
@@ -316,6 +324,20 @@ class OllamaChatProvider:
                 "intent": {
                     "type": "string",
                 },
+                "decision": {
+                    "type": "object",
+                    "additionalProperties": False,
+                    "properties": {
+                        "state": {
+                            "type": "string",
+                            "enum": list(PLANNING_DECISION_STATES),
+                        },
+                        "reason": {
+                            "type": "string",
+                        },
+                    },
+                    "required": ["state", "reason"],
+                },
                 "steps": {
                     "type": "array",
                     "items": {
@@ -340,7 +362,7 @@ class OllamaChatProvider:
                     },
                 },
             },
-            "required": ["message", "intent", "steps"],
+            "required": ["message", "intent", "decision", "steps"],
         }
 
     def _build_plan(self, intent: str, steps_payload: list[object]) -> ExecutionPlan | None:
@@ -366,6 +388,29 @@ class OllamaChatProvider:
                 )
             )
         return ExecutionPlan(intent=intent, steps=tuple(steps))
+
+    def _build_decision(
+        self,
+        raw_decision: object,
+        steps_payload: list[object],
+    ) -> PlanningDecision:
+        if not isinstance(raw_decision, dict):
+            raise ProviderError("Ollama provider returned a malformed planning decision.")
+        state = raw_decision.get("state")
+        reason = raw_decision.get("reason")
+        if not isinstance(state, str) or not isinstance(reason, str):
+            raise ProviderError("Ollama provider returned an invalid planning decision.")
+        try:
+            decision = PlanningDecision(state=state, reason=reason)
+        except ValueError as exc:
+            raise ProviderError(str(exc)) from exc
+
+        has_steps = bool(steps_payload)
+        if decision.state == "needs_tools" and not has_steps:
+            raise ProviderError("Ollama provider declared needs_tools without any steps.")
+        if decision.state != "needs_tools" and has_steps:
+            raise ProviderError("Ollama provider returned steps for a non-needs_tools decision.")
+        return decision
 
     def _default_transport(
         self,

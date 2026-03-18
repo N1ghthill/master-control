@@ -10,6 +10,16 @@ Master Control currently supports these planning providers:
 - `heuristic`: local rules-only planner for offline bootstrap and tests
 - `noop`: disabled provider that only returns static guidance
 
+## Planning contract
+
+The planning layer is now explicit about turn state. A provider response must declare one of:
+
+- `needs_tools`: one or more typed tool steps are required before the answer is complete
+- `complete`: the current context is already sufficient and no more tools are needed
+- `blocked`: the request cannot continue safely with the available tools
+
+This is carried in `plan_decision` at the app boundary and recorded in `plan_generated` audit events.
+
 ## OpenAI provider
 
 The OpenAI integration uses the `Responses API` with a single required function tool named `submit_plan`.

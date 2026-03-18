@@ -33,6 +33,10 @@ class OllamaChatProviderTest(unittest.TestCase):
                         {
                             "message": "Vou verificar a memória.",
                             "intent": "inspect_memory",
+                            "decision": {
+                                "state": "needs_tools",
+                                "reason": "Memory data is required before answering.",
+                            },
                             "steps": [
                                 {
                                     "tool_name": "memory_usage",
@@ -90,6 +94,7 @@ class OllamaChatProviderTest(unittest.TestCase):
             response = provider.plan(request)
 
             self.assertEqual(response.message, "Vou verificar a memória.")
+            self.assertEqual(response.decision.state, "needs_tools")
             self.assertEqual(response.plan.intent, "inspect_memory")
             self.assertEqual(response.plan.steps[0].tool_name, "memory_usage")
             self.assertEqual(captured_payload["format"]["type"], "object")
@@ -98,6 +103,9 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertIn("Local session summary:", captured_payload["messages"][0]["content"])
             self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
             self.assertIn("service", captured_payload["messages"][0]["content"])
+            self.assertIn("Always set decision.state", captured_payload["messages"][0]["content"])
+            self.assertIn("do not answer from memory alone", captured_payload["messages"][0]["content"])
+            self.assertIn("decision", captured_payload["format"]["required"])
 
     def test_provider_can_synthesize_final_response(self) -> None:
         captured_payload: dict[str, object] = {}

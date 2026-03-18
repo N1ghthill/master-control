@@ -26,6 +26,7 @@ class ChatFlowTest(unittest.TestCase):
 
             self.assertEqual(payload["provider"], "heuristic")
             self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "memory_usage")
+            self.assertEqual(payload["plan_decision"]["state"], "needs_tools")
             self.assertIn("Memória usada:", payload["message"])
 
     def test_chat_records_plan_generation_in_audit_log(self) -> None:
@@ -62,6 +63,7 @@ class ChatFlowTest(unittest.TestCase):
             payload = app.chat("escreva um poema sobre o kernel")
 
             self.assertIsNone(payload["plan"])
+            self.assertEqual(payload["plan_decision"]["state"], "blocked")
             self.assertIn("Ainda não consegui mapear", payload["message"])
 
     def test_chat_extracts_unit_name_for_journal_requests(self) -> None:

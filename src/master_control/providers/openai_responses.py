@@ -6,7 +6,7 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.planner import ExecutionPlan, PlanStep, PLANNING_DECISION_STATES, PlanningDecision
 from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import (
@@ -92,10 +92,12 @@ class OpenAIResponsesProvider:
         message = arguments.get("message")
         intent = arguments.get("intent")
         steps_payload = arguments.get("steps")
+        decision_payload = arguments.get("decision")
         if not isinstance(message, str) or not isinstance(intent, str) or not isinstance(
             steps_payload, list
         ):
             raise ProviderError("OpenAI provider returned a malformed plan payload.")
+        decision = self._build_decision(decision_payload, steps_payload)
 
         plan = self._build_plan(intent, steps_payload)
         request_id = response.headers.get("x-request-id")
@@ -108,6 +110,7 @@ class OpenAIResponsesProvider:
             message=message,
             plan=plan,
             response_id=body.get("id"),
+            decision=decision,
             metadata=metadata,
         )
 
@@ -260,11 +263,15 @@ class OpenAIResponsesProvider:
             "Return exactly one function call to submit_plan.",
             "Use only the provided tools. Never invent tools or arguments.",
             "Prefer the smallest sufficient plan.",
-            "If the request cannot be satisfied safely with the available tools, return an empty steps array and explain that clearly in message.",
+            "Always set decision.state to exactly one of: needs_tools, complete, blocked.",
+            "Use needs_tools only when you are returning one or more tool steps.",
+            "Use complete when the current context already supports the final answer and no more tools are needed.",
+            "Use blocked when the request cannot be satisfied safely with the available tools.",
+            "For live host inspection requests, do not answer from memory alone. Use the matching read-only tool first unless current-turn observations already provide the evidence.",
             "Write the message in the same language as the user.",
             "When previous session context is provided in the input, use it to resolve safe follow-up requests.",
             "You may receive current-turn execution observations in the extra instructions. Use them to continue the same request without repeating completed steps.",
-            "If the current-turn observations are already enough, return an empty steps array and summarize the findings.",
+            "If the current-turn observations are already enough, return decision.state=complete and an empty steps array.",
             "Available tools:",
             *tool_lines,
         ]
@@ -321,9 +328,25 @@ class OpenAIResponsesProvider:
                         "type": "string",
                         "description": "Short snake_case summary of the request.",
                     },
+                    "decision": {
+                        "type": "object",
+                        "additionalProperties": False,
+                        "description": "Explicit planner decision for this turn.",
+                        "properties": {
+                            "state": {
+                                "type": "string",
+                                "enum": list(PLANNING_DECISION_STATES),
+                            },
+                            "reason": {
+                                "type": "string",
+                                "description": "Short reason for continuing, completing, or blocking.",
+                            },
+                        },
+                        "required": ["state", "reason"],
+                    },
                     "steps": {
                         "type": "array",
-                        "description": "Ordered tool plan. Use an empty array if no safe plan exists.",
+                        "description": "Ordered tool plan. Must be non-empty only when decision.state=needs_tools.",
                         "items": {
                             "type": "object",
                             "additionalProperties": False,
@@ -348,7 +371,7 @@ class OpenAIResponsesProvider:
                         },
                     },
                 },
-                "required": ["message", "intent", "steps"],
+                "required": ["message", "intent", "decision", "steps"],
             },
         }
 
@@ -417,6 +440,29 @@ class OpenAIResponsesProvider:
                 )
             )
         return ExecutionPlan(intent=intent, steps=tuple(steps))
+
+    def _build_decision(
+        self,
+        raw_decision: object,
+        steps_payload: list[object],
+    ) -> PlanningDecision:
+        if not isinstance(raw_decision, dict):
+            raise ProviderError("OpenAI provider returned a malformed planning decision.")
+        state = raw_decision.get("state")
+        reason = raw_decision.get("reason")
+        if not isinstance(state, str) or not isinstance(reason, str):
+            raise ProviderError("OpenAI provider returned an invalid planning decision.")
+        try:
+            decision = PlanningDecision(state=state, reason=reason)
+        except ValueError as exc:
+            raise ProviderError(str(exc)) from exc
+
+        has_steps = bool(steps_payload)
+        if decision.state == "needs_tools" and not has_steps:
+            raise ProviderError("OpenAI provider declared needs_tools without any steps.")
+        if decision.state != "needs_tools" and has_steps:
+            raise ProviderError("OpenAI provider returned steps for a non-needs_tools decision.")
+        return decision
 
     def _default_transport(
         self,

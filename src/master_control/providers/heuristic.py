@@ -3,7 +3,7 @@ from __future__ import annotations
 import re
 import unicodedata
 
-from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.planner import ExecutionPlan, PlanStep, PlanningDecision
 from master_control.agent.observations import ObservationFreshness
 from master_control.agent.session_summary import parse_session_summary
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
@@ -38,15 +38,14 @@ class HeuristicProvider:
                 message_text = "Vou começar verificando a memória do sistema."
                 if "memory" in freshness_map and freshness_map["memory"].stale:
                     message_text = "Vou atualizar os dados de memória antes de continuar o diagnóstico."
-                return ProviderResponse(
-                    message=message_text,
-                    plan=ExecutionPlan(
-                        intent="diagnose_performance",
-                        steps=(
-                            PlanStep(
-                                tool_name="memory_usage",
-                                rationale="Check memory pressure before deeper diagnosis.",
-                            ),
+                return _needs_tools_response(
+                    message_text,
+                    "Refreshing memory data is the next safe diagnostic step.",
+                    intent="diagnose_performance",
+                    steps=(
+                        PlanStep(
+                            tool_name="memory_usage",
+                            rationale="Check memory pressure before deeper diagnosis.",
                         ),
                     ),
                 )
@@ -55,16 +54,15 @@ class HeuristicProvider:
                 message_text = "Agora vou verificar os processos com maior uso de CPU."
                 if "processes" in freshness_map and freshness_map["processes"].stale:
                     message_text = "Vou atualizar a lista de processos antes de seguir com o diagnóstico."
-                return ProviderResponse(
-                    message=message_text,
-                    plan=ExecutionPlan(
-                        intent="diagnose_performance",
-                        steps=(
-                            PlanStep(
-                                tool_name="top_processes",
-                                rationale="Inspect the highest CPU consumers.",
-                                arguments={"limit": _extract_int(message, default=5, min_value=1, max_value=10)},
-                            ),
+                return _needs_tools_response(
+                    message_text,
+                    "Refreshing process activity is the next safe diagnostic step.",
+                    intent="diagnose_performance",
+                    steps=(
+                        PlanStep(
+                            tool_name="top_processes",
+                            rationale="Inspect the highest CPU consumers.",
+                            arguments={"limit": _extract_int(message, default=5, min_value=1, max_value=10)},
                         ),
                     ),
                 )
@@ -80,23 +78,22 @@ class HeuristicProvider:
                     message_text = (
                         f"Vou atualizar o estado do serviço `{candidate_service}` antes de concluir."
                     )
-                return ProviderResponse(
-                    message=message_text,
-                    plan=ExecutionPlan(
-                        intent="diagnose_performance",
-                        steps=(
-                            PlanStep(
-                                tool_name="service_status",
-                                rationale="Inspect the service related to the hottest process.",
-                                arguments=_with_service_scope({"name": candidate_service}, service_scope),
-                            ),
+                return _needs_tools_response(
+                    message_text,
+                    "Refreshing the related service state is the next safe diagnostic step.",
+                    intent="diagnose_performance",
+                    steps=(
+                        PlanStep(
+                            tool_name="service_status",
+                            rationale="Inspect the service related to the hottest process.",
+                            arguments=_with_service_scope({"name": candidate_service}, service_scope),
                         ),
                     ),
                 )
 
-            return ProviderResponse(
-                message=_build_diagnostic_summary(summary_map),
-                plan=None,
+            return _complete_response(
+                _build_diagnostic_summary(summary_map),
+                "The diagnostic summary is already sufficient.",
             )
 
         if _contains_any(normalized, ("visao geral", "visao do sistema", "health", "saude geral")):
@@ -123,27 +120,33 @@ class HeuristicProvider:
                         rationale="Inspect memory pressure.",
                     )
                 )
-            return ProviderResponse(
-                message="Vou montar um resumo rápido do host.",
-                plan=ExecutionPlan(intent="host_overview", steps=tuple(steps)),
+            if steps:
+                return _needs_tools_response(
+                    "Vou montar um resumo rápido do host.",
+                    "Collecting baseline host signals requires tool execution.",
+                    intent="host_overview",
+                    steps=tuple(steps),
+                )
+            return _blocked_response(
+                "Ainda não há ferramentas disponíveis para montar essa visão geral.",
+                "No host overview tools are available.",
             )
 
         if _contains_any(normalized, ("log", "logs", "journal")) and "read_journal" in available_tools:
             unit = _extract_journal_unit(message) or last_context.get("unit")
             lines = _extract_int(message, default=20, min_value=1, max_value=200)
-            return ProviderResponse(
-                message="Vou ler as entradas recentes do journal.",
-                plan=ExecutionPlan(
-                    intent="inspect_logs",
-                    steps=(
-                        PlanStep(
-                            tool_name="read_journal",
-                            rationale="Read recent journal entries for the requested scope.",
-                            arguments={
-                                "lines": lines,
-                                **({"unit": unit} if unit else {}),
-                            },
-                        ),
+            return _needs_tools_response(
+                "Vou ler as entradas recentes do journal.",
+                "Reading the journal is the next safe diagnostic step.",
+                intent="inspect_logs",
+                steps=(
+                    PlanStep(
+                        tool_name="read_journal",
+                        rationale="Read recent journal entries for the requested scope.",
+                        arguments={
+                            "lines": lines,
+                            **({"unit": unit} if unit else {}),
+                        },
                     ),
                 ),
             )
@@ -153,16 +156,15 @@ class HeuristicProvider:
         ):
             service_name = _extract_service_name(message) or last_context.get("unit")
             if service_name:
-                return ProviderResponse(
-                    message=f"Posso recarregar o serviço `{service_name}` com confirmação explícita.",
-                    plan=ExecutionPlan(
-                        intent="reload_service",
-                        steps=(
-                            PlanStep(
-                                tool_name="reload_service",
-                                rationale="Reload the requested service after explicit confirmation.",
-                                arguments=_with_service_scope({"name": service_name}, service_scope),
-                            ),
+                return _needs_tools_response(
+                    f"Posso recarregar o serviço `{service_name}` com confirmação explícita.",
+                    "The requested service reload still requires a typed tool step.",
+                    intent="reload_service",
+                    steps=(
+                        PlanStep(
+                            tool_name="reload_service",
+                            rationale="Reload the requested service after explicit confirmation.",
+                            arguments=_with_service_scope({"name": service_name}, service_scope),
                         ),
                     ),
                 )
@@ -172,16 +174,15 @@ class HeuristicProvider:
         ):
             service_name = _extract_service_name(message) or last_context.get("unit")
             if service_name:
-                return ProviderResponse(
-                    message=f"Posso reiniciar o serviço `{service_name}` com confirmação explícita.",
-                    plan=ExecutionPlan(
-                        intent="restart_service",
-                        steps=(
-                            PlanStep(
-                                tool_name="restart_service",
-                                rationale="Restart the requested service after explicit confirmation.",
-                                arguments=_with_service_scope({"name": service_name}, service_scope),
-                            ),
+                return _needs_tools_response(
+                    f"Posso reiniciar o serviço `{service_name}` com confirmação explícita.",
+                    "The requested service restart still requires a typed tool step.",
+                    intent="restart_service",
+                    steps=(
+                        PlanStep(
+                            tool_name="restart_service",
+                            rationale="Restart the requested service after explicit confirmation.",
+                            arguments=_with_service_scope({"name": service_name}, service_scope),
                         ),
                     ),
                 )
@@ -191,16 +192,15 @@ class HeuristicProvider:
         ):
             service_name = _extract_service_name(message) or last_context.get("unit")
             if service_name:
-                return ProviderResponse(
-                    message=f"Vou verificar o status do serviço `{service_name}`.",
-                    plan=ExecutionPlan(
-                        intent="inspect_service_status",
-                        steps=(
-                            PlanStep(
-                                tool_name="service_status",
-                                rationale="Check the unit state in systemd.",
-                                arguments=_with_service_scope({"name": service_name}, service_scope),
-                            ),
+                return _needs_tools_response(
+                    f"Vou verificar o status do serviço `{service_name}`.",
+                    "Checking service state requires a typed tool step.",
+                    intent="inspect_service_status",
+                    steps=(
+                        PlanStep(
+                            tool_name="service_status",
+                            rationale="Check the unit state in systemd.",
+                            arguments=_with_service_scope({"name": service_name}, service_scope),
                         ),
                     ),
                 )
@@ -209,19 +209,18 @@ class HeuristicProvider:
             unit = last_context.get("unit")
             if unit:
                 lines = _extract_int(message, default=20, min_value=1, max_value=200)
-                return ProviderResponse(
-                    message=f"Vou continuar a inspeção dos logs de `{unit}`.",
-                    plan=ExecutionPlan(
-                        intent="inspect_logs_follow_up",
-                        steps=(
-                            PlanStep(
-                                tool_name="read_journal",
-                                rationale="Reuse the last referenced unit from session history.",
-                                arguments={
-                                    "unit": unit,
-                                    "lines": lines,
-                                },
-                            ),
+                return _needs_tools_response(
+                    f"Vou continuar a inspeção dos logs de `{unit}`.",
+                    "The follow-up log request still requires a journal read.",
+                    intent="inspect_logs_follow_up",
+                    steps=(
+                        PlanStep(
+                            tool_name="read_journal",
+                            rationale="Reuse the last referenced unit from session history.",
+                            arguments={
+                                "unit": unit,
+                                "lines": lines,
+                            },
                         ),
                     ),
                 )
@@ -229,16 +228,15 @@ class HeuristicProvider:
         if _looks_like_service_follow_up(normalized) and "service_status" in available_tools:
             unit = last_context.get("unit")
             if unit:
-                return ProviderResponse(
-                    message=f"Vou continuar a inspeção do serviço `{unit}`.",
-                    plan=ExecutionPlan(
-                        intent="inspect_service_status_follow_up",
-                        steps=(
-                            PlanStep(
-                                tool_name="service_status",
-                                rationale="Reuse the last referenced unit from session history.",
-                                arguments=_with_service_scope({"name": unit}, service_scope),
-                            ),
+                return _needs_tools_response(
+                    f"Vou continuar a inspeção do serviço `{unit}`.",
+                    "The follow-up service request still requires a status check.",
+                    intent="inspect_service_status_follow_up",
+                    steps=(
+                        PlanStep(
+                            tool_name="service_status",
+                            rationale="Reuse the last referenced unit from session history.",
+                            arguments=_with_service_scope({"name": unit}, service_scope),
                         ),
                     ),
                 )
@@ -247,16 +245,15 @@ class HeuristicProvider:
             "disk_usage" in available_tools
         ):
             path = _extract_path(message) or "/"
-            return ProviderResponse(
-                message=f"Vou verificar o uso de disco em `{path}`.",
-                plan=ExecutionPlan(
-                    intent="inspect_disk_usage",
-                    steps=(
-                        PlanStep(
-                            tool_name="disk_usage",
-                            rationale="Inspect filesystem utilization for the requested path.",
-                            arguments={"path": path},
-                        ),
+            return _needs_tools_response(
+                f"Vou verificar o uso de disco em `{path}`.",
+                "Inspecting filesystem usage requires a typed disk tool.",
+                intent="inspect_disk_usage",
+                steps=(
+                    PlanStep(
+                        tool_name="disk_usage",
+                        rationale="Inspect filesystem utilization for the requested path.",
+                        arguments={"path": path},
                     ),
                 ),
             )
@@ -266,16 +263,15 @@ class HeuristicProvider:
         ):
             path = _extract_path(message) or last_context.get("path")
             if path:
-                return ProviderResponse(
-                    message=f"Vou ler o arquivo gerenciado `{path}`.",
-                    plan=ExecutionPlan(
-                        intent="read_config_file",
-                        steps=(
-                            PlanStep(
-                                tool_name="read_config_file",
-                                rationale="Read the requested managed configuration file.",
-                                arguments={"path": path},
-                            ),
+                return _needs_tools_response(
+                    f"Vou ler o arquivo gerenciado `{path}`.",
+                    "Reading the requested managed file requires a typed tool step.",
+                    intent="read_config_file",
+                    steps=(
+                        PlanStep(
+                            tool_name="read_config_file",
+                            rationale="Read the requested managed configuration file.",
+                            arguments={"path": path},
                         ),
                     ),
                 )
@@ -283,15 +279,14 @@ class HeuristicProvider:
         if _contains_any(normalized, ("memoria", "memória", "ram", "swap")) and (
             "memory_usage" in available_tools
         ):
-            return ProviderResponse(
-                message="Vou verificar a memória do sistema.",
-                plan=ExecutionPlan(
-                    intent="inspect_memory",
-                    steps=(
-                        PlanStep(
-                            tool_name="memory_usage",
-                            rationale="Inspect RAM and swap usage.",
-                        ),
+            return _needs_tools_response(
+                "Vou verificar a memória do sistema.",
+                "Inspecting memory usage requires a typed tool step.",
+                intent="inspect_memory",
+                steps=(
+                    PlanStep(
+                        tool_name="memory_usage",
+                        rationale="Inspect RAM and swap usage.",
                     ),
                 ),
             )
@@ -300,16 +295,15 @@ class HeuristicProvider:
             "top_processes" in available_tools
         ):
             limit = _extract_int(message, default=5, min_value=1, max_value=20)
-            return ProviderResponse(
-                message="Vou listar os processos com maior uso de CPU.",
-                plan=ExecutionPlan(
-                    intent="inspect_processes",
-                    steps=(
-                        PlanStep(
-                            tool_name="top_processes",
-                            rationale="Show the most CPU-intensive processes.",
-                            arguments={"limit": limit},
-                        ),
+            return _needs_tools_response(
+                "Vou listar os processos com maior uso de CPU.",
+                "Inspecting CPU-heavy processes requires a typed tool step.",
+                intent="inspect_processes",
+                steps=(
+                    PlanStep(
+                        tool_name="top_processes",
+                        rationale="Show the most CPU-intensive processes.",
+                        arguments={"limit": limit},
                     ),
                 ),
             )
@@ -317,24 +311,24 @@ class HeuristicProvider:
         if _contains_any(normalized, ("sistema", "host", "hostname")) and (
             "system_info" in available_tools
         ):
-            return ProviderResponse(
-                message="Vou coletar as informações básicas do host.",
-                plan=ExecutionPlan(
-                    intent="inspect_system_info",
-                    steps=(
-                        PlanStep(
-                            tool_name="system_info",
-                            rationale="Collect basic host metadata.",
-                        ),
+            return _needs_tools_response(
+                "Vou coletar as informações básicas do host.",
+                "Collecting host metadata requires a typed tool step.",
+                intent="inspect_system_info",
+                steps=(
+                    PlanStep(
+                        tool_name="system_info",
+                        rationale="Collect basic host metadata.",
                     ),
                 ),
             )
 
-        return ProviderResponse(
+        return _blocked_response(
             message=(
                 "Ainda não consegui mapear esse pedido para uma ação segura. "
                 "Posso inspecionar memória, disco, processos, status de serviço, logs do journal e informações básicas do host."
-            )
+            ),
+            reason="The request does not map to a supported safe tool flow.",
         )
 
     def diagnostics(self) -> dict[str, object]:
@@ -533,3 +527,33 @@ def _needs_refresh(
     if entry is None:
         return True
     return entry.stale
+
+
+def _needs_tools_response(
+    message: str,
+    reason: str,
+    *,
+    intent: str,
+    steps: tuple[PlanStep, ...],
+) -> ProviderResponse:
+    return ProviderResponse(
+        message=message,
+        plan=ExecutionPlan(intent=intent, steps=steps),
+        decision=PlanningDecision(state="needs_tools", reason=reason),
+    )
+
+
+def _complete_response(message: str, reason: str) -> ProviderResponse:
+    return ProviderResponse(
+        message=message,
+        plan=None,
+        decision=PlanningDecision(state="complete", reason=reason),
+    )
+
+
+def _blocked_response(message: str, reason: str) -> ProviderResponse:
+    return ProviderResponse(
+        message=message,
+        plan=None,
+        decision=PlanningDecision(state="blocked", reason=reason),
+    )

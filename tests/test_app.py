@@ -176,6 +176,7 @@ class MasterControlAppTest(unittest.TestCase):
                 any(
                     "memory" in event["payload"].get("stale_observation_keys", [])
                     and "memory" in event["payload"].get("planned_refresh_keys", [])
+                    and event["payload"].get("decision", {}).get("state") == "needs_tools"
                     for event in plan_events
                 )
             )

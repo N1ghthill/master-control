@@ -31,6 +31,7 @@ Snapshot date: 2026-03-17
 - iterative per-turn planning loop that can continue a diagnosis using fresh tool outputs
 - provider health reporting in `mc doctor`, including local Ollama endpoint and model availability
 - LLM-backed final response synthesis for OpenAI and Ollama after tool execution
+- explicit planning decisions (`needs_tools`, `complete`, `blocked`) across the provider contract and audit trail
 
 ### Linux inspection tools
 

@@ -50,6 +50,7 @@ from master_control.tools.registry import ToolRegistry, build_default_registry
 
 PROVIDER_HISTORY_LIMIT = 8
 MAX_PLANNING_ITERATIONS = 4
+MULTI_STEP_PLANNING_INTENTS = {"diagnose_performance"}
 
 
 @dataclass(frozen=True, slots=True)
@@ -638,6 +639,7 @@ class MasterControlApp:
             if planning_result.provider_response.plan
             else None
         )
+        plan_decision = planning_result.provider_response.resolved_decision().as_dict()
         final_response = self._build_final_chat_response(
             planning_result.provider_response,
             planning_result.executions,
@@ -686,6 +688,7 @@ class MasterControlApp:
             "session_id": active_session_id,
             "message": final_message_with_recommendations,
             "plan": plan_payload,
+            "plan_decision": plan_decision,
             "provider_metadata": provider_metadata,
             "session_summary": updated_summary,
             "observation_freshness": [item.as_dict() for item in observation_freshness],
@@ -730,6 +733,7 @@ class MasterControlApp:
             provider_response = self.provider.plan(provider_request)
             last_provider_response = provider_response
             previous_response_id = provider_response.response_id or previous_response_id
+            decision = self._validate_provider_response_for_loop(provider_response)
 
             plan_payload = provider_response.plan.as_dict() if provider_response.plan else None
             self._record_plan_generated(
@@ -743,6 +747,9 @@ class MasterControlApp:
                 iteration=iteration,
                 accumulated_executions=accumulated_executions,
             )
+
+            if decision.state != "needs_tools":
+                break
 
             new_executions = self._execute_plan(
                 provider_response.plan,
@@ -763,6 +770,8 @@ class MasterControlApp:
             working_freshness = self._load_observation_freshness(session_id)
 
             if any(not execution.get("ok") for execution in new_executions):
+                break
+            if not self._should_continue_planning(provider_response.plan):
                 break
 
         return PlanningLoopResult(
@@ -891,10 +900,18 @@ class MasterControlApp:
     ) -> str | None:
         if not executions:
             if iteration == 0:
-                return None
+                return "\n".join(
+                    [
+                        "Current-turn planning guardrails:",
+                        f"- original_user_request: {user_input}",
+                        "- For live host inspection requests, do not answer from memory alone.",
+                        "- If the user asks about current memory, disk, processes, service state, logs, or host metadata, return decision.state=needs_tools and call the matching read-only tool first.",
+                        "- Only return decision.state=complete on the first planning pass when the request is non-operational, already fully answered by the provided context, or safely unsupported.",
+                    ]
+                )
             return (
                 "This is a continuation of the same user request. "
-                "If enough information is already available, return no steps and summarize it."
+                "If enough information is already available, return decision.state=complete with no steps."
             )
 
         observation_lines = [
@@ -907,8 +924,10 @@ class MasterControlApp:
                 "Current-turn planning context:",
                 f"- original_user_request: {user_input}",
                 f"- planning_iteration: {iteration + 1}",
+                "- Return an explicit planner decision: needs_tools, complete, or blocked.",
                 "- Do not repeat tool calls that already ran in this same turn unless the user explicitly asked to rerun them.",
-                "- If the observations below are already enough, return no steps and summarize the findings.",
+                "- If the observations below are already enough, return decision.state=complete, no steps, and summarize the findings.",
+                "- If the request cannot continue safely with the available tools, return decision.state=blocked.",
                 "- If a prior step failed or requires confirmation, do not propose dependent steps.",
                 "Execution observations:",
                 rendered_observations,
@@ -1029,6 +1048,7 @@ class MasterControlApp:
     ) -> None:
         stale_observation_keys = sorted({item.key for item in observation_freshness if item.stale})
         planned_refresh_keys = self._collect_planned_refresh_keys(provider_response.plan)
+        decision = provider_response.resolved_decision()
         self.store.record_audit_event(
             "plan_generated",
             {
@@ -1042,6 +1062,7 @@ class MasterControlApp:
                 "message": provider_response.message,
                 "provider_metadata": provider_response.metadata,
                 "response_id": provider_response.response_id,
+                "decision": decision.as_dict(),
                 "plan": plan_payload,
                 "stale_observation_keys": stale_observation_keys,
                 "planned_refresh_keys": planned_refresh_keys,
@@ -1049,6 +1070,26 @@ class MasterControlApp:
                 "prior_execution_count": len(accumulated_executions),
             },
         )
+
+    def _validate_provider_response_for_loop(
+        self,
+        provider_response: ProviderResponse,
+    ):
+        decision = provider_response.resolved_decision()
+        has_steps = bool(provider_response.plan and provider_response.plan.steps)
+        if decision.state == "needs_tools" and not has_steps:
+            raise ProviderError("Provider declared needs_tools without returning executable steps.")
+        if decision.state != "needs_tools" and has_steps:
+            raise ProviderError("Provider returned executable steps for a non-needs_tools decision.")
+        return decision
+
+    def _should_continue_planning(
+        self,
+        plan: ExecutionPlan | None,
+    ) -> bool:
+        if plan is None:
+            return False
+        return plan.intent in MULTI_STEP_PLANNING_INTENTS
 
     def _collect_planned_refresh_keys(self, plan: ExecutionPlan | None) -> list[str]:
         if plan is None:

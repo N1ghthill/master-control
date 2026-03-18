@@ -23,6 +23,7 @@
 - session-scoped observation persistence with TTL-based freshness
 - `reconcile-timer render|install|remove` commands for optional periodic recommendation maintenance through `systemd`
 - final response synthesis for `openai` and `ollama` after tool execution
+- explicit planning decisions for provider turns: `needs_tools`, `complete`, `blocked`
 
 ### Changed
 
@@ -41,6 +42,7 @@
 - recommendation state can now be reconciled explicitly without a new chat turn
 - recommendation maintenance can now be scheduled through generated `systemd` user or system units
 - chat responses on LLM-backed providers now prefer a model-synthesized final answer, with deterministic local fallback on synthesis failure
+- planning no longer relies only on empty/non-empty step arrays; decision state is now explicit in provider output and audit
 
 ### Notes
 

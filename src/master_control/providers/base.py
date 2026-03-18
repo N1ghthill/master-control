@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from master_control.agent.planner import ExecutionPlan
+from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.agent.observations import ObservationFreshness
 from master_control.tools.base import ToolSpec
 
@@ -40,7 +40,21 @@ class ProviderResponse:
     message: str
     plan: ExecutionPlan | None = None
     response_id: str | None = None
+    decision: PlanningDecision | None = None
     metadata: dict[str, object] = field(default_factory=dict)
+
+    def resolved_decision(self) -> PlanningDecision:
+        if self.decision is not None:
+            return self.decision
+        if self.plan is not None and self.plan.steps:
+            return PlanningDecision(
+                state="needs_tools",
+                reason="Provider returned executable tool steps.",
+            )
+        return PlanningDecision(
+            state="complete",
+            reason="Provider returned no further tool steps.",
+        )
 
 
 class ProviderError(RuntimeError):

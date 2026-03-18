@@ -102,7 +102,7 @@ class SessionContextTest(unittest.TestCase):
             second_app.chat("e agora me mostre de novo", session_id=session_id)
 
             self.assertEqual(first_provider.calls[0].previous_response_id, None)
-            self.assertEqual(second_provider.calls[0].previous_response_id, "resp_2")
+            self.assertEqual(second_provider.calls[0].previous_response_id, "resp_1")
             self.assertGreater(len(second_provider.calls[0].conversation_history), 0)
             self.assertIsNotNone(second_provider.calls[0].session_summary)
 
@@ -124,7 +124,7 @@ class SessionContextTest(unittest.TestCase):
             self.assertEqual(len(sessions), 1)
             self.assertEqual(sessions[0]["session_id"], payload["session_id"])
             self.assertEqual(sessions[0]["provider_backend"], "openai")
-            self.assertEqual(sessions[0]["previous_response_id"], "resp_2")
+            self.assertEqual(sessions[0]["previous_response_id"], "resp_1")
             self.assertIsInstance(sessions[0]["summary_text"], str)
 
     def test_session_summary_survives_beyond_short_history_window(self) -> None:
@@ -168,7 +168,7 @@ class SessionContextTest(unittest.TestCase):
 
             self.assertIn("resumo final sintetizado", payload["message"])
             self.assertEqual(len(provider.synthesis_calls), 1)
-            self.assertEqual(provider.synthesis_calls[0].previous_response_id, "resp_plan_2")
+            self.assertEqual(provider.synthesis_calls[0].previous_response_id, "resp_plan_1")
             self.assertTrue(provider.synthesis_calls[0].rendered_results)
             self.assertEqual(sessions[0]["previous_response_id"], "resp_syn_1")
 
