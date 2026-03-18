@@ -18,7 +18,22 @@ The planning layer is now explicit about turn state. A provider response must de
 - `complete`: the current context is already sufficient and no more tools are needed
 - `blocked`: the request cannot continue safely with the available tools
 
+That decision now also carries a typed `kind`, for example:
+
+- `refresh_required`
+- `inspection_request`
+- `diagnostic_step`
+- `evidence_sufficient`
+- `unsupported_request`
+- `missing_safe_tool`
+
 This is carried in `plan_decision` at the app boundary and recorded in `plan_generated` audit events.
+
+After execution, MC also derives a `turn_decision` for the final payload and audit trail. This lets the operator distinguish planner intent from turn outcome, including cases such as:
+
+- `awaiting_confirmation`
+- `execution_failed`
+- `evidence_sufficient`
 
 ## OpenAI provider
 

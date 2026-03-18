@@ -27,6 +27,9 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["provider"], "heuristic")
             self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "memory_usage")
             self.assertEqual(payload["plan_decision"]["state"], "needs_tools")
+            self.assertEqual(payload["plan_decision"]["kind"], "inspection_request")
+            self.assertEqual(payload["turn_decision"]["state"], "complete")
+            self.assertEqual(payload["turn_decision"]["kind"], "evidence_sufficient")
             self.assertIn("Memória usada:", payload["message"])
 
     def test_chat_records_plan_generation_in_audit_log(self) -> None:
@@ -46,6 +49,7 @@ class ChatFlowTest(unittest.TestCase):
             event_types = {event["event_type"] for event in events}
 
             self.assertIn("plan_generated", event_types)
+            self.assertIn("chat_completed", event_types)
             self.assertIn("tool_execution", event_types)
 
     def test_chat_returns_guidance_when_provider_cannot_map_request(self) -> None:
@@ -64,6 +68,7 @@ class ChatFlowTest(unittest.TestCase):
 
             self.assertIsNone(payload["plan"])
             self.assertEqual(payload["plan_decision"]["state"], "blocked")
+            self.assertEqual(payload["turn_decision"]["kind"], "unsupported_request")
             self.assertIn("Ainda não consegui mapear", payload["message"])
 
     def test_chat_extracts_unit_name_for_journal_requests(self) -> None:
@@ -119,6 +124,8 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "restart_service")
             self.assertFalse(payload["executions"][0]["ok"])
             self.assertTrue(payload["executions"][0]["pending_confirmation"])
+            self.assertEqual(payload["turn_decision"]["state"], "blocked")
+            self.assertEqual(payload["turn_decision"]["kind"], "awaiting_confirmation")
             self.assertIn("mc tool restart_service", payload["message"])
             self.assertIn("/tool restart_service", payload["message"])
 
@@ -177,6 +184,27 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["tool_name"], "read_journal")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["lines"], 2)
+
+    def test_chat_reports_missing_safe_tool_when_runtime_lacks_memory_tool(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.registry._tools.pop("memory_usage")
+
+            payload = app.chat("mostre o uso de memoria")
+
+            self.assertIsNone(payload["plan"])
+            self.assertEqual(payload["plan_decision"]["state"], "blocked")
+            self.assertEqual(payload["plan_decision"]["kind"], "missing_safe_tool")
+            self.assertEqual(payload["turn_decision"]["kind"], "missing_safe_tool")
+            self.assertIn("memory_usage", payload["message"])
 
     def test_heuristic_provider_ignores_assistant_log_output_when_reusing_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

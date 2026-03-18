@@ -120,6 +120,7 @@ Current state:
 - periodic recommendation reconciliation can now be installed as an optional `systemd` timer
 - OpenAI and Ollama now synthesize the final operator-facing answer from executed tool results
 - planner outputs now carry an explicit decision state instead of relying only on empty/non-empty step arrays
+- the app now distinguishes planner intent from final turn outcome through typed `plan_decision` and `turn_decision`
 
 ## Phase 4: Service mode and external interfaces
 

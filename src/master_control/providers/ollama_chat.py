@@ -6,7 +6,13 @@ import urllib.request
 from dataclasses import dataclass
 from typing import Any, Callable
 
-from master_control.agent.planner import ExecutionPlan, PlanStep, PLANNING_DECISION_STATES, PlanningDecision
+from master_control.agent.planner import (
+    ExecutionPlan,
+    PlanStep,
+    PLANNING_DECISION_KINDS_BY_STATE,
+    PLANNING_DECISION_STATES,
+    PlanningDecision,
+)
 from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import (
@@ -242,6 +248,10 @@ class OllamaChatProvider:
             "Use only the provided tools. Never invent tools or arguments.",
             "Prefer the smallest sufficient plan.",
             "Always set decision.state to exactly one of: needs_tools, complete, blocked.",
+            "Always set decision.kind to a valid subtype for that state.",
+            "For needs_tools use one of: inspection_request, diagnostic_step, refresh_required.",
+            "For complete use: evidence_sufficient.",
+            "For blocked use one of: unsupported_request, missing_safe_tool.",
             "Use needs_tools only when you are returning one or more tool steps.",
             "Use complete when the current context already supports the final answer and no more tools are needed.",
             "Use blocked when the request cannot be satisfied safely with the available tools.",
@@ -332,11 +342,21 @@ class OllamaChatProvider:
                             "type": "string",
                             "enum": list(PLANNING_DECISION_STATES),
                         },
+                        "kind": {
+                            "type": "string",
+                            "enum": sorted(
+                                {
+                                    kind
+                                    for kinds in PLANNING_DECISION_KINDS_BY_STATE.values()
+                                    for kind in kinds
+                                }
+                            ),
+                        },
                         "reason": {
                             "type": "string",
                         },
                     },
-                    "required": ["state", "reason"],
+                    "required": ["state", "kind", "reason"],
                 },
                 "steps": {
                     "type": "array",
@@ -397,11 +417,12 @@ class OllamaChatProvider:
         if not isinstance(raw_decision, dict):
             raise ProviderError("Ollama provider returned a malformed planning decision.")
         state = raw_decision.get("state")
+        kind = raw_decision.get("kind")
         reason = raw_decision.get("reason")
-        if not isinstance(state, str) or not isinstance(reason, str):
+        if not isinstance(state, str) or not isinstance(kind, str) or not isinstance(reason, str):
             raise ProviderError("Ollama provider returned an invalid planning decision.")
         try:
-            decision = PlanningDecision(state=state, reason=reason)
+            decision = PlanningDecision(state=state, kind=kind, reason=reason)
         except ValueError as exc:
             raise ProviderError(str(exc)) from exc
 

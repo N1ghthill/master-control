@@ -79,7 +79,7 @@ This repository currently contains:
 - An OpenAI provider that uses the Responses API to return structured plans via function calling
 - An Ollama provider that uses `/api/chat` with schema-constrained JSON output
 - LLM-backed final response synthesis after tool execution for OpenAI and Ollama providers
-- explicit planner decisions (`needs_tools`, `complete`, `blocked`) in the provider contract
+- explicit planner decisions (`needs_tools`, `complete`, `blocked`) plus typed decision kinds in the provider contract
 - Persistent session memory built from short history plus a compact deterministic session summary
 - Session-scoped observations with TTL-based freshness, so stale diagnostic context can be refreshed automatically
 - Deterministic proactive suggestions derived from each session summary
@@ -224,7 +224,7 @@ Observation inspection:
 - `mc reconcile-timer install --scope user` installs a periodic `systemd --user` timer that runs `mc reconcile --all`
 - `mc reconcile-timer remove --scope user` disables and removes that timer again
 - when `openai` or `ollama` is active, MC now asks the model for a final operator-facing synthesis after tool execution instead of relying only on local templates
-- chat JSON payloads now expose `plan_decision`, so the caller can see whether the planner chose to continue, complete, or block
+- chat JSON payloads now expose both `plan_decision` and `turn_decision`, so the caller can distinguish what the planner requested from what actually happened in the turn
 
 Provider-specific optional knobs:
 

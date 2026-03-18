@@ -35,6 +35,7 @@ class OllamaChatProviderTest(unittest.TestCase):
                             "intent": "inspect_memory",
                             "decision": {
                                 "state": "needs_tools",
+                                "kind": "inspection_request",
                                 "reason": "Memory data is required before answering.",
                             },
                             "steps": [
@@ -95,6 +96,7 @@ class OllamaChatProviderTest(unittest.TestCase):
 
             self.assertEqual(response.message, "Vou verificar a memória.")
             self.assertEqual(response.decision.state, "needs_tools")
+            self.assertEqual(response.decision.kind, "inspection_request")
             self.assertEqual(response.plan.intent, "inspect_memory")
             self.assertEqual(response.plan.steps[0].tool_name, "memory_usage")
             self.assertEqual(captured_payload["format"]["type"], "object")

@@ -17,7 +17,7 @@ from master_control.agent.session_insights import (
     SessionInsight,
     collect_session_insights_with_freshness,
 )
-from master_control.agent.planner import ExecutionPlan
+from master_control.agent.planner import ExecutionPlan, PlanningDecision
 from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
     RECOMMENDATION_STATUSES,
@@ -640,6 +640,10 @@ class MasterControlApp:
             else None
         )
         plan_decision = planning_result.provider_response.resolved_decision().as_dict()
+        turn_decision = self._classify_turn_decision(
+            planning_result.provider_response,
+            planning_result.executions,
+        ).as_dict()
         final_response = self._build_final_chat_response(
             planning_result.provider_response,
             planning_result.executions,
@@ -683,12 +687,27 @@ class MasterControlApp:
             "assistant",
             final_message_with_recommendations,
         )
+        self.store.record_audit_event(
+            "chat_completed",
+            {
+                "source": "chat",
+                "session_id": active_session_id,
+                "configured_provider": self.settings.provider,
+                "provider_backend": self.provider.name,
+                "plan_decision": plan_decision,
+                "turn_decision": turn_decision,
+                "execution_count": len(planning_result.executions),
+                "recommendation_highlight_count": len(recommendation_sync.new)
+                + len(recommendation_sync.reopened),
+            },
+        )
         return {
             "provider": self.provider.name,
             "session_id": active_session_id,
             "message": final_message_with_recommendations,
             "plan": plan_payload,
             "plan_decision": plan_decision,
+            "turn_decision": turn_decision,
             "provider_metadata": provider_metadata,
             "session_summary": updated_summary,
             "observation_freshness": [item.as_dict() for item in observation_freshness],
@@ -1090,6 +1109,41 @@ class MasterControlApp:
         if plan is None:
             return False
         return plan.intent in MULTI_STEP_PLANNING_INTENTS
+
+    def _classify_turn_decision(
+        self,
+        provider_response: ProviderResponse,
+        executions: list[dict[str, object]],
+    ) -> PlanningDecision:
+        for execution in executions:
+            if execution.get("pending_confirmation"):
+                return PlanningDecision(
+                    state="blocked",
+                    kind="awaiting_confirmation",
+                    reason="The next action is waiting for explicit confirmation before it can run.",
+                )
+        for execution in executions:
+            if not execution.get("ok"):
+                return PlanningDecision(
+                    state="blocked",
+                    kind="execution_failed",
+                    reason="A tool execution failed before the request could complete safely.",
+                )
+
+        plan_decision = provider_response.resolved_decision()
+        if executions and not self._should_continue_planning(provider_response.plan):
+            return PlanningDecision(
+                state="complete",
+                kind="evidence_sufficient",
+                reason="Current-turn evidence is sufficient for the final response.",
+            )
+        if plan_decision.state == "needs_tools" and self._collect_planned_refresh_keys(provider_response.plan):
+            return PlanningDecision(
+                state="needs_tools",
+                kind="refresh_required",
+                reason="Fresh host observations are required before the diagnosis can continue.",
+            )
+        return plan_decision
 
     def _collect_planned_refresh_keys(self, plan: ExecutionPlan | None) -> list[str]:
         if plan is None:

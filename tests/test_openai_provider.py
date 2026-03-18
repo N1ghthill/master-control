@@ -42,6 +42,7 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                                 "intent": "inspect_memory",
                                 "decision": {
                                     "state": "needs_tools",
+                                    "kind": "inspection_request",
                                     "reason": "Memory data is required before answering.",
                                 },
                                 "steps": [
@@ -109,6 +110,7 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertEqual(response.message, "Vou verificar a memória.")
             self.assertEqual(response.response_id, "resp_123")
             self.assertEqual(response.decision.state, "needs_tools")
+            self.assertEqual(response.decision.kind, "inspection_request")
             self.assertEqual(response.metadata["request_id"], "req_123")
             self.assertEqual(response.plan.intent, "inspect_memory")
             self.assertEqual(response.plan.steps[0].tool_name, "memory_usage")
@@ -167,6 +169,7 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                                 "intent": "inspect_memory",
                                 "decision": {
                                     "state": "complete",
+                                    "kind": "evidence_sufficient",
                                     "reason": "The current context is already enough.",
                                 },
                                 "steps": [],

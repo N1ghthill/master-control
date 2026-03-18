@@ -41,6 +41,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     message_text,
                     "Refreshing memory data is the next safe diagnostic step.",
+                    kind="refresh_required",
                     intent="diagnose_performance",
                     steps=(
                         PlanStep(
@@ -57,6 +58,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     message_text,
                     "Refreshing process activity is the next safe diagnostic step.",
+                    kind="refresh_required",
                     intent="diagnose_performance",
                     steps=(
                         PlanStep(
@@ -81,6 +83,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     message_text,
                     "Refreshing the related service state is the next safe diagnostic step.",
+                    kind="refresh_required",
                     intent="diagnose_performance",
                     steps=(
                         PlanStep(
@@ -124,12 +127,14 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     "Vou montar um resumo rápido do host.",
                     "Collecting baseline host signals requires tool execution.",
+                    kind="diagnostic_step",
                     intent="host_overview",
                     steps=tuple(steps),
                 )
             return _blocked_response(
                 "Ainda não há ferramentas disponíveis para montar essa visão geral.",
                 "No host overview tools are available.",
+                kind="missing_safe_tool",
             )
 
         if _contains_any(normalized, ("log", "logs", "journal")) and "read_journal" in available_tools:
@@ -138,6 +143,7 @@ class HeuristicProvider:
             return _needs_tools_response(
                 "Vou ler as entradas recentes do journal.",
                 "Reading the journal is the next safe diagnostic step.",
+                kind="inspection_request",
                 intent="inspect_logs",
                 steps=(
                     PlanStep(
@@ -150,6 +156,12 @@ class HeuristicProvider:
                     ),
                 ),
             )
+        if _contains_any(normalized, ("log", "logs", "journal")):
+            return _blocked_response(
+                "Entendi que você quer inspecionar logs, mas a tool segura `read_journal` não está disponível neste runtime.",
+                "The runtime does not expose read_journal for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _contains_any(normalized, ("recarregar", "recarregue", "reload")) and (
             "reload_service" in available_tools
@@ -159,6 +171,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Posso recarregar o serviço `{service_name}` com confirmação explícita.",
                     "The requested service reload still requires a typed tool step.",
+                    kind="inspection_request",
                     intent="reload_service",
                     steps=(
                         PlanStep(
@@ -168,6 +181,11 @@ class HeuristicProvider:
                         ),
                     ),
                 )
+            return _blocked_response(
+                "Entendi o pedido de recarga do serviço, mas a tool segura `reload_service` não está disponível neste runtime.",
+                "The runtime does not expose reload_service for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _contains_any(normalized, ("reiniciar", "reinicie", "restart")) and (
             "restart_service" in available_tools
@@ -177,6 +195,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Posso reiniciar o serviço `{service_name}` com confirmação explícita.",
                     "The requested service restart still requires a typed tool step.",
+                    kind="inspection_request",
                     intent="restart_service",
                     steps=(
                         PlanStep(
@@ -186,6 +205,11 @@ class HeuristicProvider:
                         ),
                     ),
                 )
+            return _blocked_response(
+                "Entendi o pedido de reinício do serviço, mas a tool segura `restart_service` não está disponível neste runtime.",
+                "The runtime does not expose restart_service for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _contains_any(normalized, ("servico", "serviço", "service", "status")) and (
             "service_status" in available_tools
@@ -195,6 +219,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Vou verificar o status do serviço `{service_name}`.",
                     "Checking service state requires a typed tool step.",
+                    kind="inspection_request",
                     intent="inspect_service_status",
                     steps=(
                         PlanStep(
@@ -204,6 +229,11 @@ class HeuristicProvider:
                         ),
                     ),
                 )
+            return _blocked_response(
+                "Entendi que você quer inspecionar o serviço, mas a tool segura `service_status` não está disponível neste runtime.",
+                "The runtime does not expose service_status for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _looks_like_log_follow_up(normalized) and "read_journal" in available_tools:
             unit = last_context.get("unit")
@@ -212,6 +242,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Vou continuar a inspeção dos logs de `{unit}`.",
                     "The follow-up log request still requires a journal read.",
+                    kind="inspection_request",
                     intent="inspect_logs_follow_up",
                     steps=(
                         PlanStep(
@@ -231,6 +262,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Vou continuar a inspeção do serviço `{unit}`.",
                     "The follow-up service request still requires a status check.",
+                    kind="inspection_request",
                     intent="inspect_service_status_follow_up",
                     steps=(
                         PlanStep(
@@ -248,6 +280,7 @@ class HeuristicProvider:
             return _needs_tools_response(
                 f"Vou verificar o uso de disco em `{path}`.",
                 "Inspecting filesystem usage requires a typed disk tool.",
+                kind="inspection_request",
                 intent="inspect_disk_usage",
                 steps=(
                     PlanStep(
@@ -256,6 +289,12 @@ class HeuristicProvider:
                         arguments={"path": path},
                     ),
                 ),
+            )
+        if _contains_any(normalized, ("disco", "disk", "espaco", "espaço", "storage")):
+            return _blocked_response(
+                "Entendi que você quer inspecionar disco, mas a tool segura `disk_usage` não está disponível neste runtime.",
+                "The runtime does not expose disk_usage for this request.",
+                kind="missing_safe_tool",
             )
 
         if _contains_any(normalized, ("arquivo", "config", "configuracao", "configuração")) and (
@@ -266,6 +305,7 @@ class HeuristicProvider:
                 return _needs_tools_response(
                     f"Vou ler o arquivo gerenciado `{path}`.",
                     "Reading the requested managed file requires a typed tool step.",
+                    kind="inspection_request",
                     intent="read_config_file",
                     steps=(
                         PlanStep(
@@ -275,6 +315,11 @@ class HeuristicProvider:
                         ),
                     ),
                 )
+            return _blocked_response(
+                "Entendi que você quer ler um arquivo gerenciado, mas a tool segura `read_config_file` não está disponível neste runtime.",
+                "The runtime does not expose read_config_file for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _contains_any(normalized, ("memoria", "memória", "ram", "swap")) and (
             "memory_usage" in available_tools
@@ -282,6 +327,7 @@ class HeuristicProvider:
             return _needs_tools_response(
                 "Vou verificar a memória do sistema.",
                 "Inspecting memory usage requires a typed tool step.",
+                kind="inspection_request",
                 intent="inspect_memory",
                 steps=(
                     PlanStep(
@@ -289,6 +335,12 @@ class HeuristicProvider:
                         rationale="Inspect RAM and swap usage.",
                     ),
                 ),
+            )
+        if _contains_any(normalized, ("memoria", "memória", "ram", "swap")):
+            return _blocked_response(
+                "Entendi que você quer inspecionar memória, mas a tool segura `memory_usage` não está disponível neste runtime.",
+                "The runtime does not expose memory_usage for this request.",
+                kind="missing_safe_tool",
             )
 
         if _contains_any(normalized, ("processo", "processos", "cpu")) and (
@@ -298,6 +350,7 @@ class HeuristicProvider:
             return _needs_tools_response(
                 "Vou listar os processos com maior uso de CPU.",
                 "Inspecting CPU-heavy processes requires a typed tool step.",
+                kind="inspection_request",
                 intent="inspect_processes",
                 steps=(
                     PlanStep(
@@ -307,6 +360,12 @@ class HeuristicProvider:
                     ),
                 ),
             )
+        if _contains_any(normalized, ("processo", "processos", "cpu")):
+            return _blocked_response(
+                "Entendi que você quer inspecionar processos, mas a tool segura `top_processes` não está disponível neste runtime.",
+                "The runtime does not expose top_processes for this request.",
+                kind="missing_safe_tool",
+            )
 
         if _contains_any(normalized, ("sistema", "host", "hostname")) and (
             "system_info" in available_tools
@@ -314,6 +373,7 @@ class HeuristicProvider:
             return _needs_tools_response(
                 "Vou coletar as informações básicas do host.",
                 "Collecting host metadata requires a typed tool step.",
+                kind="inspection_request",
                 intent="inspect_system_info",
                 steps=(
                     PlanStep(
@@ -321,6 +381,12 @@ class HeuristicProvider:
                         rationale="Collect basic host metadata.",
                     ),
                 ),
+            )
+        if _contains_any(normalized, ("sistema", "host", "hostname")):
+            return _blocked_response(
+                "Entendi que você quer inspecionar o host, mas a tool segura `system_info` não está disponível neste runtime.",
+                "The runtime does not expose system_info for this request.",
+                kind="missing_safe_tool",
             )
 
         return _blocked_response(
@@ -533,27 +599,28 @@ def _needs_tools_response(
     message: str,
     reason: str,
     *,
+    kind: str | None = None,
     intent: str,
     steps: tuple[PlanStep, ...],
 ) -> ProviderResponse:
     return ProviderResponse(
         message=message,
         plan=ExecutionPlan(intent=intent, steps=steps),
-        decision=PlanningDecision(state="needs_tools", reason=reason),
+        decision=PlanningDecision(state="needs_tools", kind=kind, reason=reason),
     )
 
 
-def _complete_response(message: str, reason: str) -> ProviderResponse:
+def _complete_response(message: str, reason: str, *, kind: str | None = None) -> ProviderResponse:
     return ProviderResponse(
         message=message,
         plan=None,
-        decision=PlanningDecision(state="complete", reason=reason),
+        decision=PlanningDecision(state="complete", kind=kind, reason=reason),
     )
 
 
-def _blocked_response(message: str, reason: str) -> ProviderResponse:
+def _blocked_response(message: str, reason: str, *, kind: str | None = None) -> ProviderResponse:
     return ProviderResponse(
         message=message,
         plan=None,
-        decision=PlanningDecision(state="blocked", reason=reason),
+        decision=PlanningDecision(state="blocked", kind=kind, reason=reason),
     )
