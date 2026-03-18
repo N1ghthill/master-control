@@ -34,6 +34,7 @@
 - alpha release docs now include a real-host validation report and release notes baseline
 - stale session observations can now trigger refresh-oriented planning instead of relying on old summaries
 - recommendations now degrade to refresh actions when the underlying signal is stale
+- recommendation listings now expose signal freshness/confidence in the operator surface
 
 ### Notes
 

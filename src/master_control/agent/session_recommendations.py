@@ -20,6 +20,16 @@ ACTIVE_RECOMMENDATION_STATUSES = (
     RECOMMENDATION_STATUS_OPEN,
     RECOMMENDATION_STATUS_ACCEPTED,
 )
+SOURCE_KEY_TO_OBSERVATION_KEY = {
+    "disk_pressure": "disk",
+    "disk_pressure_refresh": "disk",
+    "memory_pressure": "memory",
+    "memory_pressure_refresh": "memory",
+    "service_state": "service",
+    "service_state_refresh": "service",
+    "hot_process": "processes",
+    "hot_process_refresh": "processes",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -91,3 +101,7 @@ def _build_action(insight: SessionInsight) -> RecommendationAction | None:
         title=insight.action_title,
         arguments=dict(insight.action_arguments),
     )
+
+
+def observation_key_for_recommendation(source_key: str) -> str | None:
+    return SOURCE_KEY_TO_OBSERVATION_KEY.get(source_key)

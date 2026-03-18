@@ -180,6 +180,51 @@ class MasterControlAppTest(unittest.TestCase):
                 )
             )
 
+    def test_list_session_recommendations_includes_signal_freshness(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-17T20:00:00Z",
+                ttl_seconds=180,
+            )
+            app.store.sync_session_recommendations(
+                session_id,
+                [
+                    {
+                        "dedupe_key": "service_state_refresh:nginx.service",
+                        "source_key": "service_state_refresh",
+                        "severity": "warning",
+                        "message": "Atualize o status do serviço antes de agir.",
+                        "action": {
+                            "kind": "run_tool",
+                            "tool_name": "service_status",
+                            "title": "Atualizar o status do serviço `nginx.service`.",
+                            "arguments": {"name": "nginx.service", "scope": "system"},
+                        },
+                    }
+                ],
+            )
+
+            payload = app.list_session_recommendations(session_id=session_id)
+
+            recommendation = payload["recommendations"][0]
+            self.assertEqual(recommendation["confidence"], "stale")
+            self.assertEqual(recommendation["signal_freshness"]["observation_key"], "service")
+
     def test_registry_contains_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

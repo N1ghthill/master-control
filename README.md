@@ -54,6 +54,7 @@ mc observations --session-id 1
 mc observations --session-id 1 --stale-only
 mc insights --session-id 1
 mc recommendations --session-id 1
+mc recommendations --session-id 1 --status open
 mc recommendation <id> accepted
 mc recommendation-run <id>
 mc recommendation-run <id> --confirm
@@ -208,6 +209,7 @@ Observation inspection:
 - `mc observations --session-id <id>` shows the latest stored observations and freshness for a session
 - `mc observations --session-id <id> --stale-only` filters only stale observations
 - observations start appearing from new executions after the freshness model was introduced; older sessions are not backfilled
+- `mc recommendations --session-id <id>` now shows confidence/freshness for the signal behind each recommendation
 
 Provider-specific optional knobs:
 

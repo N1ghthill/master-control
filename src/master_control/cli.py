@@ -170,6 +170,20 @@ def _render_observation_target(item: dict[str, object]) -> str | None:
     return None
 
 
+def _format_recommendation_action(item: dict[str, object]) -> str | None:
+    action = item.get("action")
+    if not isinstance(action, dict):
+        return None
+    tool_name = action.get("tool_name")
+    if not isinstance(tool_name, str) or not tool_name:
+        return None
+    arguments = action.get("arguments")
+    if isinstance(arguments, dict) and arguments:
+        rendered_arguments = " ".join(f"{key}={value}" for key, value in arguments.items())
+        return f"{tool_name} {rendered_arguments}"
+    return tool_name
+
+
 def _run_chat(
     app: MasterControlApp,
     once: str | None,
@@ -313,7 +327,33 @@ def main(argv: Sequence[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
             return 2
-        _print_json(payload)
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"Session {payload['session_id']} recommendations")
+            if payload["status_filter"]:
+                print(f"filter={payload['status_filter']}")
+            if not payload["recommendations"]:
+                print("No recommendations matched this session.")
+                return 0
+            for item in payload["recommendations"]:
+                print(
+                    f"#{item['id']} [{item['status']} {item['severity']}] "
+                    f"{item['source_key']} confidence={item.get('confidence', 'unknown')}"
+                )
+                print(item["message"])
+                freshness = item.get("signal_freshness")
+                if isinstance(freshness, dict):
+                    print(
+                        "signal:"
+                        f" {freshness.get('observation_key')} "
+                        f"status={freshness.get('status')} "
+                        f"age={_format_observation_duration(freshness.get('age_seconds'))} "
+                        f"ttl={_format_observation_duration(freshness.get('ttl_seconds'))}"
+                    )
+                action_text = _format_recommendation_action(item)
+                if action_text:
+                    print(f"action: {action_text}")
         return 0
 
     if args.command == "recommendation":

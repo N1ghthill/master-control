@@ -22,6 +22,7 @@ from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
     RECOMMENDATION_STATUSES,
     build_recommendation_candidates,
+    observation_key_for_recommendation,
 )
 from master_control.agent.session_summary import update_session_summary
 from master_control.config import Settings
@@ -182,10 +183,15 @@ class MasterControlApp:
     ) -> dict[str, object]:
         self.bootstrap()
         resolved_session_id = self._resolve_session_id(session_id)
+        observation_freshness = self._load_observation_freshness(resolved_session_id)
         recommendations = self.store.list_session_recommendations(
             resolved_session_id,
             status=status,
             limit=200,
+        )
+        recommendations = self._enrich_recommendations_with_freshness(
+            recommendations,
+            observation_freshness,
         )
         return {
             "session_id": resolved_session_id,
@@ -959,6 +965,42 @@ class MasterControlApp:
             lines.append(line)
         rendered = "\n".join(lines)
         return f"{message}\n\nRecomendações da sessão:\n{rendered}"
+
+    def _enrich_recommendations_with_freshness(
+        self,
+        recommendations: list[dict[str, object]],
+        observation_freshness: tuple[ObservationFreshness, ...],
+    ) -> list[dict[str, object]]:
+        freshness_by_key = {item.key: item for item in observation_freshness}
+        enriched: list[dict[str, object]] = []
+        for item in recommendations:
+            source_key = item.get("source_key")
+            observation_key = (
+                observation_key_for_recommendation(source_key)
+                if isinstance(source_key, str)
+                else None
+            )
+            freshness = freshness_by_key.get(observation_key) if observation_key else None
+            confidence = "unknown"
+            signal_freshness: dict[str, object] | None = None
+            if freshness is not None:
+                confidence = "stale" if freshness.stale else "fresh"
+                signal_freshness = {
+                    "observation_key": freshness.key,
+                    "status": confidence,
+                    "age_seconds": freshness.age_seconds,
+                    "ttl_seconds": freshness.ttl_seconds,
+                    "observed_at": freshness.observed_at,
+                    "expires_at": freshness.expires_at,
+                }
+            enriched.append(
+                {
+                    **item,
+                    "confidence": confidence,
+                    "signal_freshness": signal_freshness,
+                }
+            )
+        return enriched
 
     def _render_execution_summary(self, execution: dict[str, object]) -> str:
         if not execution.get("ok"):
