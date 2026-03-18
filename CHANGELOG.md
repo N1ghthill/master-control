@@ -4,6 +4,10 @@
 
 ### Added
 
+- structured `SessionContext` for the core high-risk planner and recommendation paths
+- `process_to_unit` as a typed read-only process -> `systemd` correlation tool
+- `failed_services` as a typed read-only failed-unit listing tool
+- extracted turn-planning, turn-rendering, and recommendation-view helpers from the central app layer
 - modular Python scaffold for Master Control
 - CLI-first application bootstrap
 - SQLite-backed session, summary, recommendation, and audit storage
@@ -30,6 +34,12 @@
 
 ### Changed
 
+- the narrow local CLI MVP closeout is now complete for the alpha baseline
+- slow-host diagnosis can now chain memory, processes, process correlation, and service status when correlation evidence exists
+- hot-process follow-up logic no longer relies on guessed service identity and can use typed correlation evidence instead
+- recommendation and approval rendering now expose evidence summaries, freshness, target identity, and next-step commands
+- MVP closeout documents were rewritten as completion records instead of leaving an active milestone backlog behind
+- alpha validation now includes clean-environment install via `virtualenv`, real-host operator-utility smokes, and 92 automated tests
 - project documentation now reflects the current alpha stage instead of the initial scaffold stage
 - roadmap now separates completed foundation work from the remaining MVP closeout work
 - the project now reads as a late-alpha MVP candidate rather than an early scaffold
@@ -53,7 +63,8 @@
 ### Notes
 
 - the repository is still pre-release
-- the current milestone is a narrow local CLI MVP, not a production-ready Linux operations platform
+- the narrow local CLI MVP is closed for the current alpha baseline
+- the project is not yet a production-ready Linux operations platform
 
 ## 0.1.0a1 - 2026-03-17
 

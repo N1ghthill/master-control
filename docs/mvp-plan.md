@@ -15,6 +15,16 @@ Master Control MVP means:
 
 This MVP does not require web UI, daemon mode, plugins, or remote multi-user deployment.
 
+## Canonical planning documents
+
+To avoid legacy planning drift, use the documents this way:
+
+- `docs/mvp-plan.md`: stable MVP contract and exit criteria
+- `docs/mvp-evolution-plan.md`: milestone sequencing and closeout completion record
+- `docs/mvp-closeout-backlog.md`: closed execution backlog record for the MVP closeout
+- `docs/status.md`: current implementation snapshot
+- `docs/roadmap.md`: phase-level view of the post-closeout roadmap
+
 ## Exit criteria
 
 The MVP should only be called complete when all of these are true:
@@ -22,69 +32,71 @@ The MVP should only be called complete when all of these are true:
 1. the agent can inspect host state through typed tools and explain the result conversationally
 2. sessions can be resumed with enough context to make follow-up requests useful
 3. risky follow-up actions are represented explicitly and never execute implicitly
-4. at least two operational mutation paths exist with policy gates and validation
-5. the operator can trace what happened through local audit events
-6. the main flows are covered by automated tests and documented commands
+4. risky operational recommendations are only suggested when backed by explicit evidence and preserved target scope
+5. at least two operational mutation paths exist with policy gates and validation
+6. the operator can trace what happened through local audit events
+7. the main flows are covered by automated tests and documented commands
 
 ## Current delta to close
 
-### Workstream 1: Approval UX
+The narrow local CLI MVP closeout is complete. `docs/mvp-evolution-plan.md` now serves as the completion record for that delivery plan.
+
+### Workstream 1: Correctness and context hardening
 
 Status:
 
-- implemented in the current codebase
+- completed on 2026-03-18 for the current service recommendation boundary
 
 Deliver:
 
-- clearer pending-confirmation responses
-- explicit command path for confirming a previously accepted action
-- better messaging in chat and CLI help for recommendation lifecycle
+- evidence-gated service recommendations
+- preservation of service scope and identity through the full operator flow
+- regression coverage for process/service correlation and recommendation safety boundaries
 
 Accept when:
 
-- an operator can move from recommendation to execution without guessing the next command
-- no state-changing action runs without a visible confirmation step
+- no service recommendation or action is derived solely from process-name inference
+- `scope=user|system` survives summary, recommendation, and execution flows
 
-### Workstream 2: Service operations
+### Workstream 2: Structured session state and orchestration
 
 Status:
 
-- implemented for `restart_service` and `reload_service`
+- completed on 2026-03-18
 
 Deliver:
 
-- `reload_service`
-- improved verification after restart or reload
-- better service-oriented summaries in chat responses
+- structured session context for planners and recommendation builders
+- summary treated primarily as a rendering artifact
+- clearer boundaries between chat orchestration, execution, and recommendation syncing
 
 Accept when:
 
-- service actions return both preflight and post-action state
-- failures are actionable and auditable
+- high-risk recommendation logic no longer depends primarily on text summary parsing
+- hotspot files have narrower responsibilities
 
-### Workstream 3: Safe config edits
+### Workstream 3: Operator utility and approval UX
 
 Status:
 
-- implemented for managed targets
+- completed on 2026-03-18
 
 Deliver:
 
-- file read/write ownership model for a bounded set of paths
-- backup before write
-- validation hook before apply
-- atomic replace where feasible
+- higher-value read-only tools for diagnosis
+- clearer recommendation evidence and freshness presentation
+- lower-friction recommendation -> accept -> confirm -> execute flow
 
 Accept when:
 
-- a config change can be proposed, validated, and rolled back
-- the workflow leaves enough audit information to reconstruct the change
+- an operator can move through the main flows without guessing the next safe step
+- recommendations clearly show what evidence and freshness level support them
 
 ### Workstream 4: Hardening and release prep
 
 Status:
 
-- near complete
+- completed on 2026-03-18
 
 Deliver:
 
@@ -101,16 +113,13 @@ Accept when:
 
 ## Recommended implementation order
 
-1. alpha packaging baseline and release notes polish
-2. optional approval UX polish if release review exposes friction
+All four MVP closeout workstreams are complete for the narrow local alpha baseline.
 
 ## Recommended commit slices
 
-If the repository is initialized under git, keep commits small and single-purpose:
+The closeout slices that satisfied this plan were:
 
-1. `docs: align roadmap and project status`
-2. `feat(tools): add reload_service`
-3. `feat(app): improve approval flow for recommendation actions`
-4. `feat(config): add safe config write pipeline`
-5. `test(e2e): cover inspect to action workflows`
-6. `docs: prepare alpha release notes`
+1. `feat(tools): add higher-value read-only diagnostics`
+2. `feat(cli): improve recommendation evidence and approval rendering`
+3. `test(chat): cover the main operator journeys after utility expansion`
+4. `docs: align release and MVP closeout documents`

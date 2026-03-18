@@ -2,16 +2,19 @@
 
 Version target: `0.1.0a1` local CLI alpha baseline
 
-Snapshot date: 2026-03-17
+Snapshot date: 2026-03-18
 
 ## What this alpha includes
 
 - CLI-first conversational Linux agent
 - structured provider contract with `heuristic`, `ollama`, `openai`, and `auto`
 - local session memory and audit trail in SQLite
-- typed inspection tools for host, disk, memory, processes, service status, journal, and managed config reads
+- typed inspection tools for host, disk, memory, processes, process correlation, failed-service listing, service status, journal, and managed config reads
 - approval-gated mutation tools for service restart, service reload, config write, and config restore
 - recommendation lifecycle with explicit acceptance before action execution
+- a hardened service recommendation boundary that requires explicit service evidence and preserves `scope=user|system`
+- structured session context for high-risk follow-ups and recommendation generation
+- operator-facing recommendation evidence and next-step commands in both chat and CLI
 
 ## Local LLM baseline
 
@@ -61,6 +64,7 @@ Default managed targets:
 - no daemon/API layer
 - no generic shell execution surface in the agent core
 - no full production hardening yet
+- the alpha scope remains intentionally single-host and CLI-first
 
 ## Recommended operator baseline
 
@@ -69,6 +73,8 @@ export MC_PROVIDER=auto
 export MC_OLLAMA_BASE_URL=http://127.0.0.1:11435/api
 mc doctor
 mc chat --once "mostre o uso de memoria"
+mc tool process_to_unit --arg name=python3
+mc tool failed_services --arg scope=system --arg limit=5
 mc tool service_status --arg name=ollama-local.service --arg scope=user
 ```
 

@@ -39,9 +39,12 @@ The architecture favors strong boundaries:
   |
   v
 [Agent App]
-  |- Context assembly
+  |- Session context assembly
   |- Provider adapter
   |- Planner contract
+  |- Turn planning helpers
+  |- Turn rendering helpers
+  |- Recommendation view helpers
   |- Tool selection
   |
   v
@@ -68,7 +71,7 @@ The architecture favors strong boundaries:
 ## Request lifecycle
 
 1. User sends a message through the CLI.
-2. The agent builds context from the current session, local observations, freshness state, and available tools.
+2. The agent builds a structured session context from the current session, local observations, freshness state, and available tools.
 3. A provider produces a structured plan. The current scaffold uses a heuristic provider as the first safe implementation of that contract.
 4. The app resolves the requested tool by name.
 5. The policy engine evaluates the tool risk.
@@ -85,6 +88,8 @@ The default path is a typed tool, for example:
 - `system_info`
 - `disk_usage`
 - `memory_usage`
+- `process_to_unit`
+- `failed_services`
 - `service_status`
 - `read_journal`
 - `read_config_file`
@@ -140,13 +145,17 @@ The database must be local to the host and easy to inspect for debugging.
 
 Latest observations are session-scoped and TTL-bound. This lets the app distinguish between a fresh fact that can be summarized safely and a stale fact that should be refreshed through a typed tool before the planner relies on it.
 
+At runtime, the app now derives a first-class structured session context from those observations, tracked entities, and recommendation state. The compact summary remains useful for inspection and carry-forward state, but high-risk planner and recommendation decisions should prefer the structured context instead of reparsing summary text.
+
 ## Proactive guidance
 
-The app can derive deterministic session insights from the persisted summary. This allows MC to surface operational suggestions, such as disk pressure or unhealthy service state, without asking the user to restate all prior context.
+The app can derive deterministic session insights from structured session context plus observation freshness. This allows MC to surface operational suggestions, such as disk pressure or unhealthy service state, without asking the user to restate all prior context.
 
 These suggestions are then synchronized into a persistent recommendation queue, so the operator can track whether each item is still open, accepted, dismissed, or resolved.
 
 When an insight maps cleanly to a safe operational action, the recommendation can also carry a typed action envelope such as `restart_service(name=...)`. Execution still does not happen automatically: the recommendation must first be accepted, then the action must pass the same policy and confirmation gates as any direct tool invocation.
+
+For service-oriented actions, MC now requires explicit service evidence from the request, tracked context, or a matching service observation. A hot process alone is not enough to expose `restart_service`, and the tracked `systemd` scope is treated as part of the target identity.
 
 ## Evolution path
 
@@ -159,9 +168,10 @@ After the read-only CLI is stable, the next safe increments are:
 
 ## Current provider path
 
-The repository now supports two planning paths:
+The repository now supports three planning paths:
 
 - `heuristic`: local rules-based planning for offline development and bootstrap
 - `openai`: remote planning through the Responses API, constrained to a single required function that returns a structured plan
+- `ollama`: local structured planning through `/api/chat` with a strict JSON schema
 
 This keeps the execution boundary stable regardless of which planner is active.

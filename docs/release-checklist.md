@@ -2,6 +2,8 @@
 
 ## Alpha baseline
 
+Run this checklist only after the closeout milestones in `docs/mvp-evolution-plan.md` are satisfied for correctness, context handling, and operator flow quality.
+
 Before calling the narrow local CLI MVP ready for an alpha tag:
 
 1. run the automated baseline
@@ -10,16 +12,26 @@ Before calling the narrow local CLI MVP ready for an alpha tag:
 4. run a real-host smoke test for managed config editing
 5. run a real-host smoke test for `reconcile-timer install|remove` in `scope=user`
 6. confirm documentation matches the operator-visible commands
-7. confirm GitHub Actions CI is green on `main`
-8. capture release notes in `CHANGELOG.md`
+7. confirm `README.md`, `docs/status.md`, `docs/roadmap.md`, `docs/mvp-plan.md`, `docs/mvp-evolution-plan.md`, and `docs/mvp-closeout-backlog.md` are aligned
+8. confirm GitHub Actions CI is green on `main`
+9. capture release notes in `CHANGELOG.md`
 
 ## Automated baseline
 
 ```bash
+python3 -m ruff check .
+python3 -m mypy src
 PYTHONPATH=src python3 -m unittest discover -s tests
 python3 -m compileall src
-PYTHONPATH=src python3 -m master_control doctor
+PYTHONPATH=src python3 -m master_control --json doctor
 ```
+
+## Clean-environment install
+
+- prefer `python3 -m venv` when the host provides stdlib `venv`
+- if the host lacks `ensurepip/python3-venv`, use `python3 -m virtualenv` as the fallback
+- validate `pip install -e .` in that isolated environment
+- run `mc doctor` with isolated `MC_STATE_DIR` and `MC_DB_PATH`
 
 ## Real-host smoke tests
 
@@ -54,6 +66,12 @@ PYTHONPATH=src python3 -m master_control doctor
 - confirm it appears in `systemctl --user list-timers master-control-reconcile.timer --all`
 - remove it again with `mc reconcile-timer remove --scope user`
 - confirm the timer no longer appears in the user timer list
+
+### Operator-utility diagnostics
+
+- run `mc tool process_to_unit --arg name=<process-name>`
+- run `mc tool failed_services --arg scope=<system|user> --arg limit=<n>`
+- confirm both tools return structured output without requiring confirmation
 
 ## Release notes minimum
 

@@ -40,6 +40,7 @@ The final assistant message also consumes that `turn_decision`. This gives the o
 - explicit confirmation commands when the turn is waiting on approval
 - a clear `mc tools` hint when the runtime lacks the safe tool needed for the request
 - a direct interruption note when execution failed before completion
+- recommendation evidence summaries and next-step commands when the turn surfaces proactive guidance
 
 ## OpenAI provider
 
@@ -71,14 +72,17 @@ For OpenAI, this means the app can pass `previous_response_id` when the same ses
 
 MC also persists recent conversation messages locally and passes them back to the provider when no remote response chain is available. This keeps follow-up requests useful across local and remote providers.
 
-To avoid depending only on a short message window, MC also maintains a compact deterministic session summary with tracked entities and recent findings, such as:
+To avoid depending only on a short message window, MC also maintains a compact deterministic session summary and derives a first-class `SessionContext` before each planning or recommendation pass. That structured context carries tracked entities and recent findings such as:
 
 - tracked unit or service
+- tracked service scope
 - tracked filesystem path
 - last intent
-- recent memory, disk, service, log, and process observations
+- recent memory, disk, service, log, and process observations with freshness-backed state
 
-That same summary is also used to derive proactive suggestions and alerts per session, which can be shown directly in chat responses or inspected via the CLI.
+All providers receive the compact summary text and the structured session context. The heuristic provider consumes the structured context directly for high-risk follow-ups and diagnostic summaries. The LLM providers receive the same structured context as an explicit planning hint, while execution still remains local.
+
+The summary remains the compact carry-forward artifact, but the intended steady state is for summary text to stay useful for rendering and debugging, not to be the primary safety boundary.
 
 MC also persists session-scoped observations with TTL metadata. Before each planning pass, the app computes freshness for the latest host observations and passes that to the active provider. This gives all planners the same rule:
 
@@ -87,31 +91,43 @@ MC also persists session-scoped observations with TTL metadata. Before each plan
 
 The local heuristic planner already uses this actively for performance diagnosis, so repeated requests such as `o host esta lento` can refresh memory, processes, or service state when the previous observation window expired.
 
+With the closeout utility additions, that same planner can also use a dedicated `process_to_unit` step before `service_status` when it needs typed evidence for a process -> `systemd` relationship.
+
+For service-oriented follow-ups, the current trust rule is explicit:
+
+- performance diagnosis may refresh service state only when a service target is explicit in the request or already tracked in session context
+- hot-process observations alone do not create executable service recommendations
+- tracked `scope=user|system` is part of service identity and must survive follow-up, recommendation, and execution flows
+
 Operators can inspect the same freshness state directly through:
 
 - `mc observations --session-id <id>`
 - `mc observations --session-id <id> --stale-only`
 
-Recommendations also consume this same freshness state. If an alert depends on stale service, process, memory, or disk data, MC now prefers a refresh-oriented recommendation such as `service_status` or `top_processes` before it suggests a riskier follow-up action.
+Recommendations also consume this same freshness state together with the structured session context. If an alert depends on stale service, process, memory, or disk data, MC now prefers a refresh-oriented recommendation such as `service_status` or `top_processes` before it suggests a riskier follow-up action.
 
 The recommendation listing also exposes that confidence explicitly, so operators can inspect whether an item is backed by a fresh signal, a stale signal, or no current observation.
 
 That same confidence now affects ordering: recommendations backed by fresh signals are shown before stale ones in both `mc recommendations` and the chat-side session highlights.
+
+When a recommendation is actionable, the operator now also sees the next safe command directly in both CLI and chat-oriented render paths.
 
 Operators can also reconcile that queue explicitly without sending a new natural-language request:
 
 - `mc reconcile --session-id <id>`
 - `mc reconcile --all`
 
-This recomputes insights and recommendation state from the persisted summary plus current observation freshness, and records an audit event for the reconciliation pass.
+This recomputes insights and recommendation state from the persisted summary, current observations, and the derived structured session context, and records an audit event for the reconciliation pass.
 
 MC also persists those suggestions as explicit session recommendations, so follow-up operations can track recommendation lifecycle instead of recomputing meaning from raw chat alone.
 
 When a recommendation includes an executable action, that action remains provider-independent metadata. The provider proposes observations and plans; MC decides whether a recommendation can expose a typed action such as `restart_service`, and any execution still goes through local policy, confirmation, and audit.
 
+For service recommendations, executable actions now require explicit service evidence from the current request, tracked context, or a matching service observation. MC does not expose a restart action from a hot-process signal alone.
+
 The local heuristic provider also supports a small set of approval-gated actions directly, such as `restart_service`, `reload_service`, and safe reads of managed config paths. Those plans still execute through the same local confirmation boundary as every other tool.
 
-The app can also call a provider multiple times inside one user turn. Earlier tool results are summarized back into the planning context so the next planning pass can continue the diagnosis or stop and summarize.
+The app can also call a provider multiple times inside one user turn. Earlier tool results are summarized and reassembled into structured session context so the next planning pass can continue the diagnosis or stop and summarize.
 
 For `openai` and `ollama`, MC now also performs a dedicated final response synthesis step after tool execution. This keeps the planning contract strict while still letting the active model produce the operator-facing explanation from the actual observed results.
 

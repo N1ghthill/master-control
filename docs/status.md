@@ -1,14 +1,21 @@
 # Project Status
 
-Snapshot date: 2026-03-17
+Snapshot date: 2026-03-18
 
 ## Maturity
 
 - Stage: late alpha
-- Progress against the narrow MVP: roughly 90% to 95%
-- Primary gap: the core workflow is validated; the main remaining work is release hardening and alpha packaging hygiene
+- Progress against the narrow MVP: complete for the local alpha baseline
+- Primary gap: future work is now post-MVP: broader production hardening, service mode, and external interfaces
 - Provider integration note: the Ollama path is now validated against a real local server and installed model, not only tests and fake transports
 - Local model baseline: `qwen2.5:7b` is the current default profile for the alpha track
+- MVP closeout record: `docs/mvp-evolution-plan.md`
+- MVP closeout backlog record: `docs/mvp-closeout-backlog.md`
+- Milestone note: service recommendation trust hardening completed on 2026-03-18
+- Milestone note: structured session state and orchestration refactor completed on 2026-03-18
+- Milestone note: operator utility and approval UX completed on 2026-03-18
+- Milestone note: alpha hardening and release baseline completed on 2026-03-18
+- Narrow local CLI MVP closeout: completed on 2026-03-18
 
 ## What is already implemented
 
@@ -34,6 +41,8 @@ Snapshot date: 2026-03-17
 - explicit planning decisions (`needs_tools`, `complete`, `blocked`) across the provider contract and audit trail
 - typed decision kinds and final `turn_decision` classification for confirmation waits, missing tools, refreshes, and evidence-backed completion
 - deterministic final-message guidance driven by `turn_decision`
+- structured session context passed to providers for high-risk follow-ups and recommendations
+- turn-planning, turn-rendering, and recommendation-view seams extracted from the central app layer
 
 ### Linux inspection tools
 
@@ -41,7 +50,9 @@ Snapshot date: 2026-03-17
 - `disk_usage`
 - `memory_usage`
 - `top_processes`
+- `process_to_unit`
 - `service_status`
+- `failed_services`
 - `read_journal`
 - `read_config_file`
 
@@ -51,6 +62,7 @@ Snapshot date: 2026-03-17
 - local conversation history
 - provider continuation state for supported backends
 - compact deterministic session summaries
+- structured session context derived from tracked entities, observations, and freshness
 - session-scoped observations with TTL-based freshness state
 - deterministic session insights
 - persistent recommendation queue with lifecycle states
@@ -59,6 +71,8 @@ Snapshot date: 2026-03-17
 - recommendation ordering now prioritizes fresh signals over stale ones
 - explicit recommendation reconciliation is available through CLI and chat command paths
 - optional `systemd` timer installation is available for periodic `mc reconcile --all`
+- high-risk recommendation decisions no longer depend primarily on summary parsing
+- recommendation views expose evidence summaries, confidence, and next-step commands directly to the operator
 
 ### Safe mutations started
 
@@ -72,7 +86,7 @@ Snapshot date: 2026-03-17
 - explicit approval hints with next CLI and chat commands
 - recommendation actions that still pass through the same policy and audit path
 
-## What is still missing for the MVP
+## MVP closeout result
 
 The current MVP target is not "full Linux admin agent". It is a smaller milestone:
 
@@ -83,15 +97,19 @@ The current MVP target is not "full Linux admin agent". It is a smaller mileston
 - auditable recommendation workflow
 - a minimal but real mutation path with approval
 
-Remaining work to close that MVP:
+That narrow MVP closeout is now complete for the local alpha baseline.
 
-1. tighten release hygiene for a first tagged alpha
-2. decide whether to freeze the current narrow MVP as complete or add one more operator-friendly approval improvement before tagging
+Work that remains beyond this MVP closeout:
+
+1. broader post-alpha diagnostics beyond the current typed-tool set
+2. daemon/API and external interface work
+3. production hardening beyond the current single-host alpha scope
 
 Alpha release material now available:
 
 - `docs/alpha-validation-report.md`
 - `docs/alpha-release-notes.md`
+- `docs/mvp-evolution-plan.md`
 
 ## What is intentionally out of scope right now
 
@@ -106,14 +124,18 @@ Alpha release material now available:
 
 At this snapshot, the project is validated by:
 
+- `python3 -m ruff check .`
+- `python3 -m mypy src`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `python3 -m compileall src`
 - manual CLI smoke checks for chat, recommendations, and recommendation-triggered actions
 - manual CLI smoke checks for `reconcile-timer render|install|remove`
 - manual CLI smoke checks for managed config write with validation and backup
+- manual CLI smoke checks for `process_to_unit` and `failed_services`
 - automated coverage for observation freshness and stale-context refresh behavior
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on `systemd --user`
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
 - real-host validation of `reconcile-timer install|remove` on `systemd --user`
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
+- clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates

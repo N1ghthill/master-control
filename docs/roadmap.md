@@ -1,13 +1,18 @@
 # Roadmap
 
-Snapshot date: 2026-03-17
+Snapshot date: 2026-03-18
 
 ## Current stage
 
 - late alpha
 - foundation, read-only inspection, session memory, provider integration, recommendation tracking, and first mutation workflows are in place
-- MVP closeout now depends mostly on release hardening and packaging hygiene
+- service trust hardening is now in place for the current recommendation boundary
+- structured session state and orchestration refactor is now in place for the core decision paths
+- operator utility, approval UX, and alpha hardening are now closed for the narrow local CLI MVP
+- the local alpha baseline is ready for tagging on the validated host profile
 - the current local alpha profile is `qwen2.5:7b`
+- detailed sequencing and result targets live in `docs/mvp-evolution-plan.md`
+- the closed execution record lives in `docs/mvp-closeout-backlog.md`
 
 ## Phase 0: Foundation
 
@@ -62,7 +67,7 @@ Result:
 
 Status:
 
-- Complete for the narrow MVP slice, pending release hardening
+- Implemented for the current MVP slice; the current service trust boundary is hardened
 
 Deliverables:
 
@@ -80,48 +85,102 @@ Current state:
 - recommendation actions cannot execute until the recommendation is accepted
 - managed config read, write, validation, backup, and restore are implemented for bounded targets
 
-Remaining:
-
-- optional UX polish discovered during host validation
-
 Exit criteria:
 
 - no mutation happens without a visible policy decision
 - rollback paths exist for config changes
 
-## Phase 3: Memory and provider integration
+## Phase 3: MVP closeout
 
 Status:
 
-- In progress
-
-Deliverables:
-
-- session history storage
-- observation freshness model
-- provider adapters for local and remote LLMs
-- structured plan generation
-
-Exit criteria:
-
-- provider output is schema-bound
-- stale observations can be detected and refreshed
+- Completed on 2026-03-18
 
 Current state:
 
-- session history storage is implemented
-- observation freshness is now active in the operator flow
-- provider output is schema-bound
-- OpenAI, Ollama, and heuristic providers are wired to the same planning contract
-- the app can re-plan within the same turn using execution observations from earlier steps
-- session-scoped observations are persisted with TTL metadata and passed to planners as freshness context
-- stale recommendations now prefer refresh actions over risky follow-up actions
-- `qwen2.5:7b` is the current default local Ollama profile for the alpha track
-- periodic recommendation reconciliation can now be installed as an optional `systemd` timer
-- OpenAI and Ollama now synthesize the final operator-facing answer from executed tool results
-- planner outputs now carry an explicit decision state instead of relying only on empty/non-empty step arrays
-- the app now distinguishes planner intent from final turn outcome through typed `plan_decision` and `turn_decision`
-- the final message layer now uses that classification to surface deterministic operator guidance
+- the memory, recommendation, and provider foundations are in place
+- Workstreams 3A, 3B, 3C, and 3D are closed
+- the narrow local CLI MVP now has its intended operator utility, approval UX, and alpha release baseline
+- future work now moves to post-MVP phases, not back into closeout rework
+
+### Workstream 3A: Correctness and context hardening
+
+Status:
+
+- Completed on 2026-03-18 for the current service recommendation boundary
+
+Deliverables:
+
+- evidence-gated service recommendations
+- end-to-end preservation of service scope
+- regression tests for process/service correlation and scope handling
+
+Exit criteria:
+
+- no mutating service recommendation is derived from unsupported inference alone
+- service target identity is preserved through recommendation and execution paths
+
+### Workstream 3B: Structured session state and orchestration refactor
+
+Status:
+
+- Completed on 2026-03-18
+
+Deliverables:
+
+- structured session context for planners and recommendations
+- reduced dependence on text-parsed summary state
+- clearer app-layer boundaries
+
+Exit criteria:
+
+- high-risk recommendation decisions no longer depend primarily on summary parsing
+- hotspot files have narrower responsibilities
+
+### Workstream 3C: Operator utility and approval UX
+
+Status:
+
+- Completed on 2026-03-18
+
+Deliverables:
+
+- a small set of high-value read-only tools
+- clearer recommendation evidence and confirmation guidance
+- lower-friction recommendation lifecycle
+
+Exit criteria:
+
+- the main diagnostic journeys produce evidence-rich next steps
+- recommendation -> accept -> confirm -> execute remains explicit and auditable
+
+Result:
+
+- `process_to_unit` and `failed_services` were added to the typed read-only toolset
+- slow-host diagnosis can now chain memory -> processes -> process correlation -> service status when correlation evidence exists
+- recommendation and approval output now render evidence summaries and next-step commands directly
+
+### Workstream 3D: Alpha hardening and release baseline
+
+Status:
+
+- Completed on 2026-03-18
+
+Deliverables:
+
+- documentation synchronization
+- final validation rerun
+- clean-environment install and packaging sanity checks
+
+Exit criteria:
+
+- canonical documents describe the same MVP closeout order
+- release checklist is green for the intended alpha scope
+
+Result:
+
+- canonical docs were synchronized to the closed MVP state
+- automated baseline, real-host smokes, and clean-environment install validation were rerun successfully
 
 ## Phase 4: Service mode and external interfaces
 
@@ -141,9 +200,10 @@ Exit criteria:
 - interface layer is separate from execution core
 - all external interfaces reuse the same policy and audit paths
 
-## MVP closeout focus
+## Next roadmap focus
 
-The next careful steps are:
+The MVP closeout is complete. The next roadmap track is:
 
-1. prepare an alpha release baseline
-2. decide whether to freeze the narrow MVP or polish approval UX further
+1. service mode and external interfaces
+2. broader post-alpha hardening
+3. incremental operator utility beyond the narrow MVP baseline

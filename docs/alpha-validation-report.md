@@ -1,6 +1,6 @@
 # Alpha Validation Report
 
-Snapshot date: 2026-03-17
+Snapshot date: 2026-03-18
 
 ## Environment
 
@@ -15,12 +15,26 @@ Snapshot date: 2026-03-17
 
 Validated successfully:
 
+- `python3 -m ruff check .`
+- `python3 -m mypy src`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `python3 -m compileall src`
+- `PYTHONPATH=src python3 -m master_control --json doctor`
 
 Current automated suite size at this snapshot:
 
-- 43 tests
+- 92 tests
+
+Additional trust-boundary regressions now covered in the automated suite:
+
+- slow-host diagnosis does not infer a service action from the hottest process alone
+- service follow-ups preserve `scope=user|system`
+- service restart recommendations require explicit service evidence
+- stale service signals degrade to refresh-oriented recommendations instead of risky actions
+- service and log follow-ups can reuse structured session context without relying on summary text alone
+- diagnostic summaries can complete from fresh observations even when the compact summary is absent
+- slow-host diagnosis can use `process_to_unit` before `service_status` and still conclude within one turn
+- hot-process recommendations do not repeat process-correlation actions once the correlation already exists
 
 ## Provider validation
 
@@ -34,6 +48,12 @@ Real chat smokes completed:
 
 - `mostre o uso de memoria`
 - `o host esta lento`
+- `o host esta lento` now completes through memory, processes, process correlation, and service status when correlation evidence exists
+
+Current trust note for the heuristic path:
+
+- `o host esta lento` can now use a dedicated typed correlation step before a service lookup
+- service lookup still requires explicit service evidence, tracked service state, or typed process -> unit correlation
 
 ## Service operation validation
 
@@ -91,6 +111,41 @@ Observed behavior:
 - validation succeeded with `ini_parse`
 - restore returned the file to the original content
 
+## Additional operator-utility validation
+
+Validated successfully on this host:
+
+- `PYTHONPATH=src python3 -m master_control --json tool process_to_unit --arg name=python3`
+- `PYTHONPATH=src python3 -m master_control --json tool failed_services --arg scope=system --arg limit=5`
+
+Observed behavior:
+
+- `process_to_unit` returned a real user-scoped `systemd` unit correlation for `python3`
+- `failed_services` returned a real failed system-scoped unit on this host
+
+Operational conclusion:
+
+- the new read-only diagnostics are useful on a real host, not only in tests
+- they expand operator evidence without widening the mutation boundary
+
+## Clean-environment install validation
+
+Validated successfully:
+
+- `python3 -m virtualenv <tmp>/venv`
+- `<tmp>/venv/bin/pip install -e .`
+- `MC_STATE_DIR=<tmp>/state MC_DB_PATH=<tmp>/state/mc.sqlite3 MC_PROVIDER=heuristic <tmp>/venv/bin/mc doctor`
+
+Observed behavior:
+
+- editable install succeeded in the isolated environment
+- `mc doctor` bootstrapped a fresh state directory and reported the expected tool inventory
+
+Note:
+
+- on this host, stdlib `python3 -m venv` was unavailable because `ensurepip/python3-venv` is not installed
+- `python3 -m virtualenv` was used as the clean-environment fallback for the validation baseline
+
 ## Alpha assessment
 
 What is validated strongly enough for the narrow local alpha:
@@ -99,10 +154,17 @@ What is validated strongly enough for the narrow local alpha:
 - provider resolution
 - local Ollama integration
 - structured planning and execution
+- structured session context for the core high-risk planner and recommendation flows
+- read-only operator diagnostics for process correlation and failed-service listing
 - persistent session/audit flow
 - managed config workflow
 - user-scoped service workflow
+- service recommendation trust hardening for the current service/operator boundary
+- recommendation evidence and approval guidance for the main operator journeys
+- clean-environment install and bootstrap on the validated host profile
 
-What still remains before calling the milestone fully hardened:
+What remains outside this narrow local alpha baseline:
 
-- release packaging and release note polish
+- broader production hardening
+- daemon/API work and external interfaces
+- utility expansion beyond the narrow MVP scope

@@ -46,6 +46,8 @@ mc tool write_config_file --arg path=<managed-config-path> --arg content='[main]
 mc tool service_status --arg name=ollama-local.service --arg scope=user
 mc tool restart_service --arg name=ollama-local.service --arg scope=user --confirm
 mc tool top_processes --arg limit=5
+mc tool process_to_unit --arg name=python3
+mc tool failed_services --arg scope=system --arg limit=5
 mc chat --once "mostre o uso de memoria"
 mc chat --once "o host esta lento"
 mc chat --once "reinicie o servico nginx"
@@ -80,12 +82,19 @@ This repository currently contains:
 - An Ollama provider that uses `/api/chat` with schema-constrained JSON output
 - LLM-backed final response synthesis after tool execution for OpenAI and Ollama providers
 - explicit planner decisions (`needs_tools`, `complete`, `blocked`) plus typed decision kinds in the provider contract
-- Persistent session memory built from short history plus a compact deterministic session summary
+- Persistent session memory built from short history, a compact deterministic session summary, and a structured `SessionContext`
 - Session-scoped observations with TTL-based freshness, so stale diagnostic context can be refreshed automatically
-- Deterministic proactive suggestions derived from each session summary
+- Deterministic proactive suggestions derived from structured session context plus freshness-backed observations
 - A persistent recommendation queue per session with explicit status tracking and optional executable actions
 - Freshness-aware recommendations, so stale signals ask for refresh before they suggest risky actions
+- Service restart recommendations now require explicit service evidence; hot-process signals stay process-only until a service target is known
+- Service follow-ups and recommendations now preserve `scope=user|system` through the session flow
+- High-risk follow-up planning now reuses structured session context before it falls back to compact summary text or short history
+- Core turn-planning, turn-rendering, and recommendation-view helpers extracted from the app layer to reduce hotspot pressure
+- A read-only `process_to_unit` tool that can prove process -> `systemd` unit relationships for the current host
+- A read-only `failed_services` tool for fast inspection of failed units by scope
 - Approval hints that return the exact CLI and chat commands required to confirm risky actions
+- Recommendation views that now expose evidence summaries and the next safe command directly in chat and CLI
 - Managed config tools with allowlisted targets, backup, validation, atomic writes, and restore from backup
 - End-to-end test coverage for the main recommendation and config-edit workflows
 - Iterative per-turn planning so the agent can continue a diagnosis with fresh tool results
@@ -96,18 +105,33 @@ This repository currently contains:
 Current maturity:
 
 - late alpha
-- MVP candidate for the narrow local CLI-first milestone
-- roughly 90% to 95% of the narrow MVP defined for the local host milestone
+- narrow local CLI MVP closeout completed for the alpha baseline on 2026-03-18
+- the narrow local host milestone is now functionally complete and validated
+- service trust hardening for recommendation safety was completed on 2026-03-18
+- structured session state and orchestration refactor was completed on 2026-03-18
+- operator utility and approval UX were completed on 2026-03-18
+- alpha hardening and release baseline were completed on 2026-03-18
 - not yet ready to be treated as a production-ready host administration agent
 
 Recent real-host validation:
 
 - `service_status`, `reload_service`, and `restart_service` validated against both `systemd --user` and system scope
 - managed config read/write/restore validated on a real file under `<MC_STATE_DIR>/managed-configs/`
+- `process_to_unit --arg name=python3` validated on this host and returned a real user-scoped unit correlation
+- `failed_services --arg scope=system --arg limit=5` validated on this host and returned a real failed system unit
+- `mc chat --once "o host esta lento"` now completes a multi-step diagnostic through memory, processes, process correlation, and service status when correlation evidence exists
+- clean-environment install validated with `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
+
+MVP closeout record:
+
+- `docs/mvp-evolution-plan.md`
+- `docs/mvp-closeout-backlog.md`
 
 ## Documents
 
 - `docs/architecture.md`
+- `docs/mvp-closeout-backlog.md`
+- `docs/mvp-evolution-plan.md`
 - `docs/status.md`
 - `docs/mvp-plan.md`
 - `docs/providers.md`
