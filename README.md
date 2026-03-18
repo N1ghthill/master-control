@@ -130,6 +130,8 @@ MVP closeout record:
 ## Documents
 
 - `docs/architecture.md`
+- `docs/diagrams/master-control-flow.mmd`
+- `docs/diagrams/master-control-flow.svg`
 - `docs/mvp-closeout-backlog.md`
 - `docs/mvp-evolution-plan.md`
 - `docs/status.md`

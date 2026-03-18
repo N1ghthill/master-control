@@ -68,6 +68,15 @@ The architecture favors strong boundaries:
   |- audit_events
 ```
 
+## Canonical flow diagram
+
+The repository now includes a Mermaid source diagram and a rendered SVG for the main MC request flow:
+
+- `docs/diagrams/master-control-flow.mmd`
+- `docs/diagrams/master-control-flow.svg`
+
+![Master Control flow](diagrams/master-control-flow.svg)
+
 ## Request lifecycle
 
 1. User sends a message through the CLI.

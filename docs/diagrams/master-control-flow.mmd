@@ -1,0 +1,69 @@
+flowchart TD
+    user[Operator]
+    cli[CLI<br/>chat / tool / recommendations]
+
+    subgraph runtime[MC Runtime]
+        app[Agent App]
+        ctx[Session Context Builder]
+        provider[Provider Adapter<br/>heuristic / openai / ollama]
+        plan[Structured Plan<br/>plan_decision + tool steps]
+        policy[Policy Engine]
+        registry[Tool Registry]
+        exec[Executor / OS Adapters]
+        render[Turn Rendering]
+        insights[Session Insights]
+        recs[Recommendation Queue]
+    end
+
+    subgraph state[SQLite State]
+        sessions[(sessions)]
+        summaries[(session_summaries)]
+        observations[(observations)]
+        recommendations[(session_recommendations)]
+        audit[(audit_events)]
+        messages[(conversation_messages)]
+    end
+
+    host[Linux Host<br/>systemd / files / proc / journal]
+    reply[Operator Response<br/>answer / evidence / next command]
+    approval[Approval Gate<br/>accept / --confirm]
+
+    user --> cli --> app
+    app --> ctx
+    ctx --> sessions
+    ctx --> summaries
+    ctx --> observations
+    ctx --> recommendations
+    ctx --> messages
+
+    ctx --> provider
+    provider --> plan
+    plan -->|complete| render
+    plan -->|needs_tools| policy
+    plan -->|blocked| render
+
+    policy -->|allow| registry --> exec --> host
+    policy -->|needs confirmation| approval
+    approval -->|accepted| policy
+
+    host -->|tool results| app
+    app --> observations
+    app --> audit
+    app --> summaries
+    app --> messages
+
+    app --> insights --> recs --> recommendations
+    app --> render --> reply
+    recommendations --> render
+    observations --> render
+    audit --> render
+    reply --> cli --> user
+
+    classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
+    classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
+    classDef data fill:#fff5e6,stroke:#8a5a12,stroke-width:1px,color:#3b2608;
+    classDef edge fill:#f6f6f6,stroke:#555,stroke-width:1px,color:#222;
+
+    class user,cli,reply,approval entry;
+    class app,ctx,provider,plan,policy,registry,exec,render,insights,recs,host core;
+    class sessions,summaries,observations,recommendations,audit,messages data;
