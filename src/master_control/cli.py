@@ -143,6 +143,55 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="Force creation of a new session.",
     )
+
+    timer_parser = subparsers.add_parser(
+        "reconcile-timer",
+        help="Render or manage the systemd timer that runs `mc reconcile --all`.",
+    )
+    timer_subparsers = timer_parser.add_subparsers(dest="timer_command", required=True)
+
+    timer_render = timer_subparsers.add_parser("render", help="Render unit files without installing.")
+    timer_install = timer_subparsers.add_parser("install", help="Install and enable the reconcile timer.")
+    timer_remove = timer_subparsers.add_parser("remove", help="Disable and remove the reconcile timer.")
+
+    for subparser in (timer_render, timer_install, timer_remove):
+        subparser.add_argument(
+            "--scope",
+            choices=["user", "system"],
+            default="user",
+            help="systemd scope for the unit files.",
+        )
+        subparser.add_argument(
+            "--target-dir",
+            help="Override the unit directory. Useful for dry runs and tests.",
+        )
+
+    for subparser in (timer_render, timer_install):
+        subparser.add_argument(
+            "--on-calendar",
+            default="hourly",
+            help="systemd OnCalendar expression for the timer.",
+        )
+        subparser.add_argument(
+            "--randomized-delay",
+            default="5m",
+            help="systemd RandomizedDelaySec value.",
+        )
+        subparser.add_argument(
+            "--python",
+            help="Override the Python executable used in ExecStart.",
+        )
+
+    timer_install.add_argument(
+        "--skip-systemctl",
+        action="store_true",
+        help="Write unit files without running systemctl daemon-reload/enable.",
+    )
+    timer_remove.add_argument(
+        "--skip-systemctl",
+        action="store_true",
+        help="Remove unit files without running systemctl disable/daemon-reload.",
+    )
     return parser
 
 
@@ -198,6 +247,34 @@ def _format_recommendation_action(item: dict[str, object]) -> str | None:
         rendered_arguments = " ".join(f"{key}={value}" for key, value in arguments.items())
         return f"{tool_name} {rendered_arguments}"
     return tool_name
+
+
+def _render_timer_payload(payload: dict[str, object]) -> None:
+    print(f"scope={payload['scope']}")
+    service = payload.get("service")
+    timer = payload.get("timer")
+    service_path = payload.get("service_path")
+    timer_path = payload.get("timer_path")
+    if isinstance(service, dict):
+        service_path = service.get("path")
+    if isinstance(timer, dict):
+        timer_path = timer.get("path")
+    if isinstance(service_path, str):
+        print(f"service: {service_path}")
+    if isinstance(timer_path, str):
+        print(f"timer:   {timer_path}")
+    if "on_calendar" in payload:
+        print(f"schedule: {payload['on_calendar']} randomized={payload['randomized_delay']}")
+
+
+def _render_timer_units(payload: dict[str, object]) -> None:
+    _render_timer_payload(payload)
+    print()
+    print(f"# {payload['service']['name']}")
+    print(payload["service"]["content"], end="")
+    print()
+    print(f"# {payload['timer']['name']}")
+    print(payload["timer"]["content"], end="")
 
 
 def _run_chat(
@@ -447,6 +524,49 @@ def main(argv: Sequence[str] | None = None) -> int:
         except ValueError as exc:
             parser.error(str(exc))
             return 2
+
+    if args.command == "reconcile-timer":
+        try:
+            if args.timer_command == "render":
+                payload = app.render_reconcile_timer(
+                    scope=args.scope,
+                    on_calendar=args.on_calendar,
+                    randomized_delay=args.randomized_delay,
+                    target_dir=args.target_dir,
+                    python_executable=args.python,
+                )
+            elif args.timer_command == "install":
+                payload = app.install_reconcile_timer(
+                    scope=args.scope,
+                    on_calendar=args.on_calendar,
+                    randomized_delay=args.randomized_delay,
+                    target_dir=args.target_dir,
+                    python_executable=args.python,
+                    run_systemctl=not args.skip_systemctl,
+                )
+            elif args.timer_command == "remove":
+                payload = app.remove_reconcile_timer(
+                    scope=args.scope,
+                    target_dir=args.target_dir,
+                    run_systemctl=not args.skip_systemctl,
+                )
+            else:
+                parser.error("Unknown reconcile-timer command.")
+                return 2
+        except ValueError as exc:
+            parser.error(str(exc))
+            return 2
+
+        if args.json:
+            _print_json(payload)
+        elif args.timer_command == "render":
+            _render_timer_units(payload)
+        else:
+            _render_timer_payload(payload)
+            if args.timer_command == "remove":
+                removed = payload.get("removed_paths", [])
+                print(f"removed={len(removed)}")
+        return 0
 
     parser.error("Unknown command.")
     return 2

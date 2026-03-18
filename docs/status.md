@@ -54,6 +54,7 @@ Snapshot date: 2026-03-17
 - recommendation listings now expose signal freshness and confidence to the operator
 - recommendation ordering now prioritizes fresh signals over stale ones
 - explicit recommendation reconciliation is available through CLI and chat command paths
+- optional `systemd` timer installation is available for periodic `mc reconcile --all`
 
 ### Safe mutations started
 
@@ -104,8 +105,10 @@ At this snapshot, the project is validated by:
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `python3 -m compileall src`
 - manual CLI smoke checks for chat, recommendations, and recommendation-triggered actions
+- manual CLI smoke checks for `reconcile-timer render|install|remove`
 - manual CLI smoke checks for managed config write with validation and backup
 - automated coverage for observation freshness and stale-context refresh behavior
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on `systemd --user`
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
+- real-host validation of `reconcile-timer install|remove` on `systemd --user`
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`

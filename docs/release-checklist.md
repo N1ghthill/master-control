@@ -8,9 +8,10 @@ Before calling the narrow local CLI MVP ready for an alpha tag:
 2. validate provider resolution on the target host
 3. run a real-host smoke test for service actions
 4. run a real-host smoke test for managed config editing
-5. confirm documentation matches the operator-visible commands
-6. confirm GitHub Actions CI is green on `main`
-7. capture release notes in `CHANGELOG.md`
+5. run a real-host smoke test for `reconcile-timer install|remove` in `scope=user`
+6. confirm documentation matches the operator-visible commands
+7. confirm GitHub Actions CI is green on `main`
+8. capture release notes in `CHANGELOG.md`
 
 ## Automated baseline
 
@@ -45,6 +46,14 @@ PYTHONPATH=src python3 -m master_control doctor
 - write a valid replacement with `write_config_file --confirm`
 - confirm backup creation under `<MC_STATE_DIR>/config-backups/`
 - restore the prior version with `restore_config_backup --confirm`
+
+### Reconcile timer automation
+
+- render the units first with `mc reconcile-timer render`
+- install the user-scoped timer with `mc reconcile-timer install --scope user`
+- confirm it appears in `systemctl --user list-timers master-control-reconcile.timer --all`
+- remove it again with `mc reconcile-timer remove --scope user`
+- confirm the timer no longer appears in the user timer list
 
 ## Release notes minimum
 

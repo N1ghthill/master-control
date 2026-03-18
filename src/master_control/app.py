@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import shlex
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 
 from master_control.agent.observations import (
@@ -37,6 +38,11 @@ from master_control.providers.base import (
 )
 from master_control.providers.factory import build_provider
 from master_control.store.session_store import SessionStore
+from master_control.systemd_timer import (
+    install_reconcile_timer,
+    remove_reconcile_timer,
+    render_reconcile_units,
+)
 from master_control.tools.base import ToolError
 from master_control.tools.registry import ToolRegistry, build_default_registry
 
@@ -247,6 +253,70 @@ class MasterControlApp:
             "session_count": len(reconciled_sessions),
             "sessions": reconciled_sessions,
         }
+
+    def render_reconcile_timer(
+        self,
+        *,
+        scope: str = "user",
+        on_calendar: str = "hourly",
+        randomized_delay: str = "5m",
+        target_dir: str | None = None,
+        python_executable: str | None = None,
+    ) -> dict[str, object]:
+        units = render_reconcile_units(
+            self.settings,
+            scope=scope,
+            on_calendar=on_calendar,
+            randomized_delay=randomized_delay,
+            target_dir=Path(target_dir) if target_dir else None,
+            python_executable=python_executable,
+        )
+        return {
+            "scope": scope,
+            "service": units["service"].as_dict(),
+            "timer": units["timer"].as_dict(),
+            "on_calendar": on_calendar,
+            "randomized_delay": randomized_delay,
+        }
+
+    def install_reconcile_timer(
+        self,
+        *,
+        scope: str = "user",
+        on_calendar: str = "hourly",
+        randomized_delay: str = "5m",
+        target_dir: str | None = None,
+        python_executable: str | None = None,
+        run_systemctl: bool = True,
+    ) -> dict[str, object]:
+        self.bootstrap()
+        payload = install_reconcile_timer(
+            self.settings,
+            scope=scope,
+            on_calendar=on_calendar,
+            randomized_delay=randomized_delay,
+            target_dir=Path(target_dir) if target_dir else None,
+            python_executable=python_executable,
+            run_systemctl=run_systemctl,
+        )
+        self.store.record_audit_event("reconcile_timer_installed", payload)
+        return payload
+
+    def remove_reconcile_timer(
+        self,
+        *,
+        scope: str = "user",
+        target_dir: str | None = None,
+        run_systemctl: bool = True,
+    ) -> dict[str, object]:
+        self.bootstrap()
+        payload = remove_reconcile_timer(
+            scope=scope,
+            target_dir=Path(target_dir) if target_dir else None,
+            run_systemctl=run_systemctl,
+        )
+        self.store.record_audit_event("reconcile_timer_removed", payload)
+        return payload
 
     def update_recommendation_status(
         self,

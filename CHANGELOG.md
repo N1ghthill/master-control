@@ -21,6 +21,7 @@
 - iterative per-turn planning so the agent can continue a diagnosis with fresh tool results
 - provider health checks in `mc doctor`, including Ollama endpoint and model availability
 - session-scoped observation persistence with TTL-based freshness
+- `reconcile-timer render|install|remove` commands for optional periodic recommendation maintenance through `systemd`
 
 ### Changed
 
@@ -37,6 +38,7 @@
 - recommendation listings now expose signal freshness/confidence in the operator surface
 - recommendation ordering now prioritizes fresh signals over stale ones
 - recommendation state can now be reconciled explicitly without a new chat turn
+- recommendation maintenance can now be scheduled through generated `systemd` user or system units
 
 ### Notes
 

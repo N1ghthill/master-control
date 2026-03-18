@@ -366,6 +366,75 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertEqual(payload["mode"], "all")
             self.assertEqual(payload["session_count"], 2)
 
+    def test_render_reconcile_timer_is_dry_run(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            target_dir = state_dir / "units"
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+
+            payload = app.render_reconcile_timer(
+                target_dir=str(target_dir),
+                python_executable="/usr/bin/python3",
+            )
+
+            self.assertFalse(target_dir.exists())
+            self.assertFalse(settings.db_path.exists())
+            self.assertEqual(payload["scope"], "user")
+            self.assertEqual(payload["service"]["path"], str(target_dir / "master-control-reconcile.service"))
+            self.assertIn("ExecStart=/usr/bin/python3 -m master_control reconcile --all", payload["service"]["content"])
+            self.assertIn("Environment=MC_PROVIDER=noop", payload["service"]["content"])
+            self.assertIn("OnCalendar=hourly", payload["timer"]["content"])
+
+    def test_install_and_remove_reconcile_timer_record_audit_events(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            target_dir = state_dir / "units"
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+
+            install_payload = app.install_reconcile_timer(
+                target_dir=str(target_dir),
+                run_systemctl=False,
+                python_executable="/usr/bin/python3",
+            )
+
+            service_path = target_dir / "master-control-reconcile.service"
+            timer_path = target_dir / "master-control-reconcile.timer"
+            self.assertTrue(service_path.exists())
+            self.assertTrue(timer_path.exists())
+            self.assertEqual(install_payload["service"]["path"], str(service_path))
+            self.assertFalse(install_payload["run_systemctl"])
+
+            remove_payload = app.remove_reconcile_timer(
+                target_dir=str(target_dir),
+                run_systemctl=False,
+            )
+
+            self.assertFalse(service_path.exists())
+            self.assertFalse(timer_path.exists())
+            self.assertEqual(
+                sorted(remove_payload["removed_paths"]),
+                sorted([str(service_path), str(timer_path)]),
+            )
+
+            events = app.list_audit_events(limit=10)
+            event_types = [event["event_type"] for event in events]
+            self.assertIn("reconcile_timer_installed", event_types)
+            self.assertIn("reconcile_timer_removed", event_types)
+
     def test_registry_contains_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

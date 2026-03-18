@@ -117,6 +117,7 @@ Current state:
 - session-scoped observations are persisted with TTL metadata and passed to planners as freshness context
 - stale recommendations now prefer refresh actions over risky follow-up actions
 - `qwen2.5:7b` is the current default local Ollama profile for the alpha track
+- periodic recommendation reconciliation can now be installed as an optional `systemd` timer
 
 ## Phase 4: Service mode and external interfaces
 

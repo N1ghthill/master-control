@@ -57,6 +57,9 @@ mc recommendations --session-id 1
 mc recommendations --session-id 1 --status open
 mc reconcile --session-id 1
 mc reconcile --all
+mc reconcile-timer render
+mc reconcile-timer install --scope user
+mc reconcile-timer remove --scope user
 mc recommendation <id> accepted
 mc recommendation-run <id>
 mc recommendation-run <id> --confirm
@@ -86,6 +89,7 @@ This repository currently contains:
 - Iterative per-turn planning so the agent can continue a diagnosis with fresh tool results
 - Observation freshness injected into all planners, so stale memory/process/service context can trigger a refresh instead of a stale summary
 - Optional `scope=user` support for service tools, so the same typed workflow can operate on `systemd --user` units
+- Optional `systemd` timer management for periodic `mc reconcile --all`
 
 Current maturity:
 
@@ -214,6 +218,9 @@ Observation inspection:
 - `mc recommendations --session-id <id>` now shows confidence/freshness for the signal behind each recommendation
 - recommendation listings and chat highlights now prioritize fresh signals before stale ones
 - `mc reconcile --session-id <id>` recomputes recommendations from the current summary + freshness state without waiting for a new chat turn
+- `mc reconcile-timer render` shows the generated `systemd` service and timer units without touching disk
+- `mc reconcile-timer install --scope user` installs a periodic `systemd --user` timer that runs `mc reconcile --all`
+- `mc reconcile-timer remove --scope user` disables and removes that timer again
 
 Provider-specific optional knobs:
 

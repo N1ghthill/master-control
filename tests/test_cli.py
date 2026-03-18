@@ -269,6 +269,86 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertIn("Reconcile mode=single", output)
             self.assertIn(f"session={session_id}", output)
 
+    def test_reconcile_timer_render_outputs_units(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            target_dir = state_dir / "units"
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(
+                        [
+                            "reconcile-timer",
+                            "render",
+                            "--target-dir",
+                            str(target_dir),
+                            "--python",
+                            "/usr/bin/python3",
+                        ]
+                    )
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertFalse(target_dir.exists())
+            self.assertFalse((state_dir / "mc.sqlite3").exists())
+            self.assertIn("# master-control-reconcile.service", output)
+            self.assertIn("ExecStart=/usr/bin/python3 -m master_control reconcile --all", output)
+            self.assertIn("# master-control-reconcile.timer", output)
+
+    def test_reconcile_timer_install_and_remove_support_skip_systemctl(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            target_dir = state_dir / "units"
+            env = {
+                "MC_STATE_DIR": tmp_dir,
+                "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                "MC_PROVIDER": "heuristic",
+            }
+
+            install_stdout = io.StringIO()
+            with patch.dict(os.environ, env, clear=False):
+                with redirect_stdout(install_stdout):
+                    install_exit_code = main(
+                        [
+                            "reconcile-timer",
+                            "install",
+                            "--target-dir",
+                            str(target_dir),
+                            "--skip-systemctl",
+                        ]
+                    )
+
+            self.assertEqual(install_exit_code, 0)
+            self.assertTrue((target_dir / "master-control-reconcile.service").exists())
+            self.assertTrue((target_dir / "master-control-reconcile.timer").exists())
+            self.assertIn("scope=user", install_stdout.getvalue())
+
+            remove_stdout = io.StringIO()
+            with patch.dict(os.environ, env, clear=False):
+                with redirect_stdout(remove_stdout):
+                    remove_exit_code = main(
+                        [
+                            "reconcile-timer",
+                            "remove",
+                            "--target-dir",
+                            str(target_dir),
+                            "--skip-systemctl",
+                        ]
+                    )
+
+            self.assertEqual(remove_exit_code, 0)
+            self.assertFalse((target_dir / "master-control-reconcile.service").exists())
+            self.assertFalse((target_dir / "master-control-reconcile.timer").exists())
+            self.assertIn("removed=2", remove_stdout.getvalue())
+
 
 if __name__ == "__main__":
     unittest.main()

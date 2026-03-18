@@ -123,6 +123,8 @@ For the MVP, the recommended runtime is a host-level Python process. A future pr
 
 Container deployment is intentionally deferred because deep host integration, file access, and service management are harder to secure and reason about from a privileged container.
 
+For lightweight background upkeep on a single host, the repository can now also render and install an optional `systemd` timer that runs `mc reconcile --all`. This is intentionally bounded to recommendation maintenance, not arbitrary autonomous host mutation.
+
 ## Persistence model
 
 SQLite is enough for the first milestone:
