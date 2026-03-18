@@ -225,6 +225,66 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertEqual(recommendation["confidence"], "stale")
             self.assertEqual(recommendation["signal_freshness"]["observation_key"], "service")
 
+    def test_list_session_recommendations_prioritizes_fresh_items(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+            app.store.record_observation(
+                session_id,
+                "memory_usage",
+                "memory",
+                {"memory_used_percent": 20.0, "swap_used_percent": 0.0},
+                observed_at="2100-03-18T01:00:00Z",
+                ttl_seconds=300,
+            )
+            app.store.sync_session_recommendations(
+                session_id,
+                [
+                    {
+                        "dedupe_key": "service_state_refresh:nginx.service",
+                        "source_key": "service_state_refresh",
+                        "severity": "critical",
+                        "message": "Atualize o status do serviço antes de agir.",
+                        "action": {
+                            "kind": "run_tool",
+                            "tool_name": "service_status",
+                            "title": "Atualizar o status do serviço `nginx.service`.",
+                            "arguments": {"name": "nginx.service", "scope": "system"},
+                        },
+                    },
+                    {
+                        "dedupe_key": "memory_pressure:memory",
+                        "source_key": "memory_pressure",
+                        "severity": "warning",
+                        "message": "Há pressão de memória no host.",
+                    },
+                ],
+            )
+
+            payload = app.list_session_recommendations(session_id=session_id)
+
+            self.assertEqual(payload["recommendations"][0]["source_key"], "memory_pressure")
+            self.assertEqual(payload["recommendations"][0]["confidence"], "fresh")
+            self.assertEqual(payload["recommendations"][1]["source_key"], "service_state_refresh")
+            self.assertEqual(payload["recommendations"][1]["confidence"], "stale")
+
     def test_registry_contains_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

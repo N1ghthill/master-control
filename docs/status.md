@@ -52,6 +52,7 @@ Snapshot date: 2026-03-17
 - persistent recommendation queue with lifecycle states
 - recommendations that degrade to refresh actions when the underlying signal is stale
 - recommendation listings now expose signal freshness and confidence to the operator
+- recommendation ordering now prioritizes fresh signals over stale ones
 
 ### Safe mutations started
 

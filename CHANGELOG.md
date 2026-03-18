@@ -35,6 +35,7 @@
 - stale session observations can now trigger refresh-oriented planning instead of relying on old summaries
 - recommendations now degrade to refresh actions when the underlying signal is stale
 - recommendation listings now expose signal freshness/confidence in the operator surface
+- recommendation ordering now prioritizes fresh signals over stale ones
 
 ### Notes
 

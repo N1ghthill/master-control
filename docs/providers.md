@@ -65,6 +65,8 @@ Recommendations also consume this same freshness state. If an alert depends on s
 
 The recommendation listing also exposes that confidence explicitly, so operators can inspect whether an item is backed by a fresh signal, a stale signal, or no current observation.
 
+That same confidence now affects ordering: recommendations backed by fresh signals are shown before stale ones in both `mc recommendations` and the chat-side session highlights.
+
 MC also persists those suggestions as explicit session recommendations, so follow-up operations can track recommendation lifecycle instead of recomputing meaning from raw chat alone.
 
 When a recommendation includes an executable action, that action remains provider-independent metadata. The provider proposes observations and plans; MC decides whether a recommendation can expose a typed action such as `restart_service`, and any execution still goes through local policy, confirmation, and audit.

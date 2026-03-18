@@ -105,3 +105,29 @@ def _build_action(insight: SessionInsight) -> RecommendationAction | None:
 
 def observation_key_for_recommendation(source_key: str) -> str | None:
     return SOURCE_KEY_TO_OBSERVATION_KEY.get(source_key)
+
+
+def sort_recommendations(recommendations: list[dict[str, object]]) -> list[dict[str, object]]:
+    return sorted(recommendations, key=_recommendation_sort_key)
+
+
+def _recommendation_sort_key(item: dict[str, object]) -> tuple[int, int, int, int]:
+    status_rank = {
+        RECOMMENDATION_STATUS_OPEN: 0,
+        RECOMMENDATION_STATUS_ACCEPTED: 1,
+        RECOMMENDATION_STATUS_DISMISSED: 2,
+        RECOMMENDATION_STATUS_RESOLVED: 3,
+    }.get(str(item.get("status", "")), 9)
+    confidence_rank = {
+        "fresh": 0,
+        "unknown": 1,
+        "stale": 2,
+    }.get(str(item.get("confidence", "unknown")), 1)
+    severity_rank = {
+        "critical": 0,
+        "warning": 1,
+        "info": 2,
+    }.get(str(item.get("severity", "")), 3)
+    recommendation_id = item.get("id")
+    recency_rank = -int(recommendation_id) if isinstance(recommendation_id, int) else 0
+    return (status_rank, confidence_rank, severity_rank, recency_rank)

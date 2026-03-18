@@ -23,6 +23,7 @@ from master_control.agent.session_recommendations import (
     RECOMMENDATION_STATUSES,
     build_recommendation_candidates,
     observation_key_for_recommendation,
+    sort_recommendations,
 )
 from master_control.agent.session_summary import update_session_summary
 from master_control.config import Settings
@@ -193,6 +194,7 @@ class MasterControlApp:
             recommendations,
             observation_freshness,
         )
+        recommendations = sort_recommendations(recommendations)
         return {
             "session_id": resolved_session_id,
             "status_filter": status,
@@ -531,7 +533,11 @@ class MasterControlApp:
         self.store.upsert_session_summary(active_session_id, updated_summary)
         observation_freshness = planning_result.working_freshness
         insights = collect_session_insights_with_freshness(updated_summary, observation_freshness)
-        recommendation_sync = self._sync_session_recommendations(active_session_id, insights)
+        recommendation_sync = self._sync_session_recommendations(
+            active_session_id,
+            insights,
+            observation_freshness,
+        )
         final_message_with_recommendations = self._append_recommendations_to_message(
             final_message,
             recommendation_sync,
@@ -935,14 +941,39 @@ class MasterControlApp:
         self,
         session_id: int,
         insights: list[SessionInsight],
+        observation_freshness: tuple[ObservationFreshness, ...],
     ) -> RecommendationSyncResult:
         candidates = [item.as_dict() for item in build_recommendation_candidates(insights)]
         payload = self.store.sync_session_recommendations(session_id, candidates)
+        active = sort_recommendations(
+            self._enrich_recommendations_with_freshness(
+                list(payload["active"]),
+                observation_freshness,
+            )
+        )
+        new = sort_recommendations(
+            self._enrich_recommendations_with_freshness(
+                list(payload["new"]),
+                observation_freshness,
+            )
+        )
+        reopened = sort_recommendations(
+            self._enrich_recommendations_with_freshness(
+                list(payload["reopened"]),
+                observation_freshness,
+            )
+        )
+        auto_resolved = sort_recommendations(
+            self._enrich_recommendations_with_freshness(
+                list(payload["auto_resolved"]),
+                observation_freshness,
+            )
+        )
         return RecommendationSyncResult(
-            active=list(payload["active"]),
-            new=list(payload["new"]),
-            reopened=list(payload["reopened"]),
-            auto_resolved=list(payload["auto_resolved"]),
+            active=active,
+            new=new,
+            reopened=reopened,
+            auto_resolved=auto_resolved,
         )
 
     def _append_recommendations_to_message(

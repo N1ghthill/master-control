@@ -154,6 +154,77 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertIn("confidence=stale", output)
             self.assertIn("signal: service", output)
 
+    def test_recommendations_command_lists_fresh_before_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+            app.store.record_observation(
+                session_id,
+                "memory_usage",
+                "memory",
+                {"memory_used_percent": 20.0, "swap_used_percent": 0.0},
+                observed_at="2100-03-18T01:00:00Z",
+                ttl_seconds=300,
+            )
+            app.store.sync_session_recommendations(
+                session_id,
+                [
+                    {
+                        "dedupe_key": "service_state_refresh:nginx.service",
+                        "source_key": "service_state_refresh",
+                        "severity": "critical",
+                        "message": "Atualize o status do serviço antes de agir.",
+                        "action": {
+                            "kind": "run_tool",
+                            "tool_name": "service_status",
+                            "title": "Atualizar o status do serviço `nginx.service`.",
+                            "arguments": {"name": "nginx.service", "scope": "system"},
+                        },
+                    },
+                    {
+                        "dedupe_key": "memory_pressure:memory",
+                        "source_key": "memory_pressure",
+                        "severity": "warning",
+                        "message": "Há pressão de memória no host.",
+                    },
+                ],
+            )
+
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(["recommendations", "--session-id", str(session_id)])
+
+            output_lines = [line for line in stdout.getvalue().splitlines() if line.startswith("#")]
+            self.assertEqual(exit_code, 0)
+            self.assertIn("memory_pressure", output_lines[0])
+            self.assertIn("service_state_refresh", output_lines[1])
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -210,6 +210,7 @@ Observation inspection:
 - `mc observations --session-id <id> --stale-only` filters only stale observations
 - observations start appearing from new executions after the freshness model was introduced; older sessions are not backfilled
 - `mc recommendations --session-id <id>` now shows confidence/freshness for the signal behind each recommendation
+- recommendation listings and chat highlights now prioritize fresh signals before stale ones
 
 Provider-specific optional knobs:
 
