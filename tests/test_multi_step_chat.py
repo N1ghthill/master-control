@@ -138,6 +138,48 @@ class CorrelatedProcessUnitTool(Tool):
         }
 
 
+class CorrelatedScopeProcessUnitTool(Tool):
+    spec = ToolSpec(
+        name="process_to_unit",
+        description="Fake correlation tool with a user scope match that is not a service.",
+        risk=RiskLevel.READ_ONLY,
+        arguments=("name", "limit"),
+    )
+
+    def invoke(self, arguments):
+        return {
+            "status": "ok",
+            "query": {"name": arguments.get("name"), "limit": arguments.get("limit", 3)},
+            "matched_process_count": 1,
+            "resolved_count": 1,
+            "primary_match": {
+                "pid": 123,
+                "command": arguments.get("name", "python3"),
+                "unit": "ptyxis-session.scope",
+                "scope": "user",
+            },
+            "units": [
+                {
+                    "unit": "ptyxis-session.scope",
+                    "scope": "user",
+                    "pid_count": 1,
+                    "pids": [123],
+                    "commands": [arguments.get("name", "python3")],
+                }
+            ],
+            "correlations": [
+                {
+                    "pid": 123,
+                    "command": arguments.get("name", "python3"),
+                    "cpu_percent": 88.0,
+                    "unit": "ptyxis-session.scope",
+                    "scope": "user",
+                    "cgroup_path": "/user.slice/ptyxis-session.scope",
+                }
+            ],
+        }
+
+
 class MultiStepChatTest(unittest.TestCase):
     def test_heuristic_provider_diagnosis_does_not_infer_service_from_hot_process(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -220,6 +262,31 @@ class MultiStepChatTest(unittest.TestCase):
             self.assertEqual(payload["turn_decision"]["state"], "complete")
             self.assertEqual(payload["turn_decision"]["kind"], "evidence_sufficient")
             self.assertIn("nginx.service", payload["message"])
+
+    def test_heuristic_provider_does_not_treat_scope_correlation_as_service(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.registry.register(HighMemoryTool())
+            app.registry.register(HotProcessTool())
+            app.registry.register(CorrelatedScopeProcessUnitTool())
+            app.registry.register(HealthyServiceTool())
+
+            payload = app.chat("o host esta lento", new_session=True)
+
+            executed_tools = [item["tool"] for item in payload["executions"]]
+            self.assertEqual(executed_tools, ["memory_usage", "top_processes", "process_to_unit"])
+            self.assertEqual(payload["turn_decision"]["state"], "complete")
+            self.assertNotIn("service_status", executed_tools)
+            self.assertIn("ptyxis-session.scope", payload["message"])
+            self.assertNotIn("Falha em `service_status`", payload["message"])
 
 
 if __name__ == "__main__":

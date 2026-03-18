@@ -7,6 +7,7 @@ from pathlib import Path
 from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
 from master_control.agent.session_context import (
+    ConfigContext,
     ServiceContext,
     SessionContext,
     TrackedEntities,
@@ -169,6 +170,88 @@ class SessionContextTest(unittest.TestCase):
         self.assertIsNotNone(context.process_unit)
         self.assertEqual(context.process_unit.unit, "ollama-local.service")
         self.assertEqual(context.process_unit.scope, "user")
+        self.assertTrue(context.process_unit.attempted)
+        self.assertFalse(context.process_unit.no_match)
+
+    def test_build_session_context_preserves_process_correlation_no_match_state(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "process_to_unit",
+                    "key": "process_unit",
+                    "value": {
+                        "query": {"name": "python3", "limit": 3},
+                        "matched_process_count": 1,
+                        "resolved_count": 0,
+                        "primary_match": None,
+                        "units": [],
+                    },
+                    "observed_at": "2100-03-18T01:01:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        context = build_session_context(None, freshness)
+
+        self.assertIsNotNone(context.process_unit)
+        self.assertEqual(context.process_unit.query_name, "python3")
+        self.assertTrue(context.process_unit.attempted)
+        self.assertTrue(context.process_unit.no_match)
+        self.assertIsNone(context.process_unit.unit)
+
+    def test_build_session_context_extracts_failed_services_and_config_backup(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "failed_services",
+                    "key": "failed_services",
+                    "value": {
+                        "scope": "system",
+                        "units": [
+                            {
+                                "unit": "nginx.service",
+                                "active_state": "failed",
+                                "sub_state": "failed",
+                                "description": "Nginx service",
+                            },
+                            {
+                                "unit": "postgresql.service",
+                                "active_state": "failed",
+                                "sub_state": "failed",
+                            },
+                        ],
+                    },
+                    "observed_at": "2100-03-18T01:01:00Z",
+                    "expires_at": "2100-03-18T01:04:00Z",
+                },
+                {
+                    "source": "restore_config_backup",
+                    "key": "config",
+                    "value": {
+                        "path": "/etc/app.ini",
+                        "target": "managed_ini",
+                        "restored_from": "/tmp/old.bak",
+                        "rollback_backup_path": "/tmp/rollback.bak",
+                        "validation": {"kind": "ini_parse", "status": "ok"},
+                    },
+                    "observed_at": "2100-03-18T01:02:00Z",
+                    "expires_at": "2100-03-18T01:07:00Z",
+                },
+            )
+        )
+
+        context = build_session_context(None, freshness)
+
+        self.assertIsNotNone(context.failed_services)
+        self.assertEqual(context.failed_services.scope, "system")
+        self.assertEqual(context.failed_services.items[0].unit, "nginx.service")
+        self.assertEqual(context.failed_services.items[1].unit, "postgresql.service")
+        self.assertIsNotNone(context.config)
+        self.assertEqual(context.config.path, "/etc/app.ini")
+        self.assertEqual(context.config.target, "managed_ini")
+        self.assertEqual(context.config.validation_kind, "ini_parse")
+        self.assertEqual(context.config.backup_path, "/tmp/rollback.bak")
 
     def test_previous_response_id_is_reused_when_session_is_resumed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
@@ -296,6 +379,38 @@ class SessionContextTest(unittest.TestCase):
         self.assertEqual(
             response.plan.steps[0].arguments,
             {"name": "ollama-local.service", "scope": "user"},
+        )
+
+    def test_heuristic_provider_plans_config_rollback_from_structured_context(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="desfaça a última mudança",
+                available_tools=(
+                    ToolSpec(
+                        name="restore_config_backup",
+                        description="Restore a managed configuration backup.",
+                        risk=RiskLevel.PRIVILEGED,
+                        arguments=("path", "backup_path"),
+                    ),
+                ),
+                session_context=SessionContext(
+                    tracked=TrackedEntities(path="/etc/app.ini"),
+                    config=ConfigContext(
+                        path="/etc/app.ini",
+                        target="managed_ini",
+                        validation_kind="ini_parse",
+                        backup_path="/tmp/backup.bak",
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNotNone(response.plan)
+        self.assertEqual(response.plan.steps[0].tool_name, "restore_config_backup")
+        self.assertEqual(
+            response.plan.steps[0].arguments,
+            {"path": "/etc/app.ini", "backup_path": "/tmp/backup.bak"},
         )
 
 

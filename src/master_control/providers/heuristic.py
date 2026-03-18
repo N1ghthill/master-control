@@ -314,7 +314,7 @@ class HeuristicProvider:
         if _contains_any(normalized, ("recarregar", "recarregue", "reload")) and (
             "reload_service" in available_tools
         ):
-            service_name = _extract_service_name(message) or last_context.get("unit")
+            service_name = _extract_service_name(message) or _context_service_name(last_context)
             if service_name:
                 return _needs_tools_response(
                     f"Posso recarregar o serviço `{service_name}` com confirmação explícita.",
@@ -338,7 +338,7 @@ class HeuristicProvider:
         if _contains_any(normalized, ("reiniciar", "reinicie", "restart")) and (
             "restart_service" in available_tools
         ):
-            service_name = _extract_service_name(message) or last_context.get("unit")
+            service_name = _extract_service_name(message) or _context_service_name(last_context)
             if service_name:
                 return _needs_tools_response(
                     f"Posso reiniciar o serviço `{service_name}` com confirmação explícita.",
@@ -362,7 +362,7 @@ class HeuristicProvider:
         if _contains_any(normalized, ("servico", "serviço", "service", "status")) and (
             "service_status" in available_tools
         ):
-            service_name = _extract_service_name(message) or last_context.get("unit")
+            service_name = _extract_service_name(message) or _context_service_name(last_context)
             if service_name:
                 return _needs_tools_response(
                     f"Vou verificar o status do serviço `{service_name}`.",
@@ -405,7 +405,7 @@ class HeuristicProvider:
                 )
 
         if _looks_like_service_follow_up(normalized) and "service_status" in available_tools:
-            unit = last_context.get("unit")
+            unit = _context_service_name(last_context)
             if unit:
                 return _needs_tools_response(
                     f"Vou continuar a inspeção do serviço `{unit}`.",
@@ -442,6 +442,43 @@ class HeuristicProvider:
             return _blocked_response(
                 "Entendi que você quer inspecionar disco, mas a tool segura `disk_usage` não está disponível neste runtime.",
                 "The runtime does not expose disk_usage for this request.",
+                kind="missing_safe_tool",
+            )
+
+        if _looks_like_config_rollback_request(normalized) and (
+            "restore_config_backup" in available_tools
+        ):
+            config_context = session_context.config
+            if (
+                config_context is not None
+                and config_context.path
+                and config_context.backup_path
+            ):
+                return _needs_tools_response(
+                    f"Posso restaurar o último backup de `{config_context.path}` com confirmação explícita.",
+                    "Rolling back the last managed config change requires a typed restore step.",
+                    kind="inspection_request",
+                    intent="restore_config_backup",
+                    steps=(
+                        PlanStep(
+                            tool_name="restore_config_backup",
+                            rationale="Restore the last tracked managed backup for this file.",
+                            arguments={
+                                "path": config_context.path,
+                                "backup_path": config_context.backup_path,
+                            },
+                        ),
+                    ),
+                )
+            return _blocked_response(
+                "Ainda não encontrei um backup rastreado nesta sessão para executar esse rollback com segurança.",
+                "No tracked config backup is available in the current session context.",
+                kind="unsupported_request",
+            )
+        if _looks_like_config_rollback_request(normalized):
+            return _blocked_response(
+                "Entendi o pedido de rollback de configuração, mas a tool segura `restore_config_backup` não está disponível neste runtime.",
+                "The runtime does not expose restore_config_backup for this request.",
                 kind="missing_safe_tool",
             )
 
@@ -734,16 +771,38 @@ def _looks_like_service_follow_up(normalized: str) -> bool:
     )
 
 
+def _looks_like_config_rollback_request(normalized: str) -> bool:
+    return _contains_any(
+        normalized,
+        (
+            "rollback",
+            "restaure o ultimo backup",
+            "restaure o último backup",
+            "restaurar o ultimo backup",
+            "restaurar o último backup",
+            "desfaca a ultima mudanca",
+            "desfaça a última mudança",
+            "desfazer a ultima mudanca",
+            "desfazer a última mudança",
+            "volte a configuracao anterior",
+            "volte a configuração anterior",
+        ),
+    )
+
+
 def _guess_service_name_from_context(
     session_context: SessionContext,
     context: dict[str, str],
 ) -> str | None:
-    unit = context.get("unit")
+    unit = _context_service_name(context)
     if unit:
         return unit
     if session_context.service is not None:
         return session_context.service.name
-    if session_context.process_unit is not None:
+    if (
+        session_context.process_unit is not None
+        and _looks_like_service_unit(session_context.process_unit.unit)
+    ):
         return session_context.process_unit.unit
     return None
 
@@ -754,6 +813,19 @@ def _guess_process_name_from_context(session_context: SessionContext) -> str | N
     if session_context.process_unit is not None:
         return session_context.process_unit.query_name
     return None
+
+
+def _context_service_name(context: dict[str, str]) -> str | None:
+    unit = context.get("unit")
+    if _looks_like_service_unit(unit):
+        return unit
+    return None
+
+
+def _looks_like_service_unit(value: str | None) -> bool:
+    if not value:
+        return False
+    return "." not in value or value.endswith(".service")
 
 
 def _build_diagnostic_summary(session_context: SessionContext) -> str:

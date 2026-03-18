@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import os
 from collections.abc import Mapping
 from typing import Any
 
@@ -21,6 +22,7 @@ class TopProcessesTool(Tool):
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         limit = get_int_argument(arguments, "limit", default=5, min_value=1, max_value=20)
         assert limit is not None
+        collector_pid = os.getpid()
 
         try:
             result = self.runner.run(
@@ -46,24 +48,58 @@ class TopProcessesTool(Tool):
                 "processes": [],
             }
 
-        processes: list[dict[str, object]] = []
-        for line in result.stdout.splitlines()[:limit]:
-            parts = line.split(None, maxsplit=4)
-            if len(parts) != 5:
+        parsed_processes: list[dict[str, object]] = []
+        excluded_process_count = 0
+        for line in result.stdout.splitlines():
+            item = _parse_process_line(line)
+            if item is None:
                 continue
-            pid, ppid, cpu, mem, command = parts
-            processes.append(
-                {
-                    "pid": int(pid),
-                    "ppid": int(ppid),
-                    "cpu_percent": float(cpu),
-                    "memory_percent": float(mem),
-                    "command": command,
-                }
-            )
+            if _should_exclude_process(item, collector_pid=collector_pid):
+                excluded_process_count += 1
+                continue
+            parsed_processes.append(item)
+            if len(parsed_processes) >= limit:
+                break
 
         return {
             "status": "ok",
             "limit": limit,
-            "processes": processes,
+            "excluded_process_count": excluded_process_count,
+            "processes": parsed_processes,
         }
+
+
+def _parse_process_line(line: str) -> dict[str, object] | None:
+    parts = line.split(None, maxsplit=4)
+    if len(parts) != 5:
+        return None
+    raw_pid, raw_ppid, raw_cpu, raw_mem, command = parts
+    try:
+        pid = int(raw_pid)
+        ppid = int(raw_ppid)
+        cpu_percent = float(raw_cpu)
+        memory_percent = float(raw_mem)
+    except ValueError:
+        return None
+    return {
+        "pid": pid,
+        "ppid": ppid,
+        "cpu_percent": cpu_percent,
+        "memory_percent": memory_percent,
+        "command": command,
+    }
+
+
+def _should_exclude_process(
+    item: dict[str, object],
+    *,
+    collector_pid: int,
+) -> bool:
+    pid = item.get("pid")
+    ppid = item.get("ppid")
+    command = item.get("command")
+    if pid == collector_pid:
+        return True
+    if ppid == collector_pid:
+        return True
+    return command == "ps"
