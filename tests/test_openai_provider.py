@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from master_control.config import Settings
+from master_control.agent.observations import build_observation_freshness
 from master_control.providers.base import ConversationMessage, ProviderError, ProviderRequest
 from master_control.providers.openai_responses import OpenAIResponsesProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
@@ -81,6 +82,17 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
                     ConversationMessage(role="assistant", content="Posso verificar memória ou disco."),
                 ),
                 session_summary="tracked_unit: ssh\nlast_intent: inspect_logs",
+                observation_freshness=build_observation_freshness(
+                    (
+                        {
+                            "source": "memory_usage",
+                            "key": "memory",
+                            "value": {"memory_used_percent": 12.0},
+                            "observed_at": "2026-03-17T20:00:00Z",
+                            "expires_at": "2026-03-17T20:05:00Z",
+                        },
+                    )
+                ),
             )
 
             response = provider.plan(request)
@@ -97,6 +109,8 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertEqual(captured_payload["input"][2]["content"], "mostre o uso de memoria")
             self.assertIn("Local session summary:", captured_payload["instructions"])
             self.assertIn("tracked_unit: ssh", captured_payload["instructions"])
+            self.assertIn("Observation freshness:", captured_payload["instructions"])
+            self.assertIn("memory", captured_payload["instructions"])
 
     def test_provider_requires_api_key(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

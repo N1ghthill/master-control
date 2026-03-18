@@ -7,6 +7,7 @@ from dataclasses import dataclass
 from typing import Any, Callable
 
 from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
 from master_control.providers.base import ProviderError, ProviderRequest, ProviderResponse
 from master_control.tools.base import ToolSpec
@@ -182,6 +183,15 @@ class OpenAIResponsesProvider:
                 [
                     "Local session summary:",
                     request.session_summary,
+                ]
+            )
+        freshness_block = format_observation_freshness(request.observation_freshness)
+        if freshness_block:
+            sections.extend(
+                [
+                    "Observation freshness:",
+                    freshness_block,
+                    "If a relevant observation is stale, prefer refreshing it with the matching read-only tool before relying on it.",
                 ]
             )
         if request.system_prompt:

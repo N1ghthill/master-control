@@ -5,6 +5,12 @@ import shlex
 from dataclasses import dataclass
 from typing import Any
 
+from master_control.agent.observations import (
+    ObservationFreshness,
+    build_observation_envelopes,
+    build_observation_freshness,
+    observation_key_for_tool,
+)
 from master_control.agent.recommendation_sync import RecommendationSyncResult
 from master_control.agent.session_insights import SessionInsight, collect_session_insights
 from master_control.agent.planner import ExecutionPlan
@@ -39,6 +45,7 @@ class PlanningLoopResult:
     provider_response: ProviderResponse
     executions: list[dict[str, object]]
     working_summary: str | None
+    working_freshness: tuple[ObservationFreshness, ...]
     response_id: str | None
 
 
@@ -136,6 +143,27 @@ class MasterControlApp:
             "session_id": resolved_session_id,
             "summary_text": summary_text,
             "insights": [insight.as_dict() for insight in insights],
+        }
+
+    def list_session_observations(
+        self,
+        session_id: int | None = None,
+        *,
+        stale_only: bool = False,
+    ) -> dict[str, object]:
+        self.bootstrap()
+        resolved_session_id = self._resolve_session_id(session_id)
+        observations = list(self._load_observation_freshness(resolved_session_id))
+        if stale_only:
+            observations = [item for item in observations if item.stale]
+        stale_count = sum(1 for item in observations if item.stale)
+        return {
+            "session_id": resolved_session_id,
+            "stale_only": stale_only,
+            "total_count": len(observations),
+            "stale_count": stale_count,
+            "fresh_count": len(observations) - stale_count,
+            "observations": [item.as_dict() for item in observations],
         }
 
     def list_session_recommendations(
@@ -327,6 +355,14 @@ class MasterControlApp:
             **context_payload,
             "result": result,
         }
+        session_id = context_payload.get("session_id")
+        if isinstance(session_id, int):
+            self._record_execution_observations(
+                session_id=session_id,
+                tool_name=tool.spec.name,
+                arguments=argument_payload,
+                result=result,
+            )
         self.store.record_audit_event(
             "tool_execution",
             {
@@ -426,6 +462,7 @@ class MasterControlApp:
         active_session_id = self._prepare_chat_session(session_id=session_id, new_session=new_session)
         conversation_history = self._load_conversation_history(active_session_id)
         session_summary = self._load_session_summary(active_session_id)
+        observation_freshness = self._load_observation_freshness(active_session_id)
         self.store.append_conversation_message(active_session_id, "user", user_input)
 
         try:
@@ -434,6 +471,7 @@ class MasterControlApp:
                 session_id=active_session_id,
                 conversation_history=conversation_history,
                 session_summary=session_summary,
+                observation_freshness=observation_freshness,
             )
         except ProviderError as exc:
             error_message = f"Provider `{self.provider.name}` falhou: {exc}"
@@ -495,6 +533,9 @@ class MasterControlApp:
             "plan": plan_payload,
             "provider_metadata": planning_result.provider_response.metadata,
             "session_summary": updated_summary,
+            "observation_freshness": [
+                item.as_dict() for item in planning_result.working_freshness
+            ],
             "insights": [insight.as_dict() for insight in insights],
             "recommendations": recommendation_sync.as_dict(),
             "executions": planning_result.executions,
@@ -507,9 +548,11 @@ class MasterControlApp:
         session_id: int,
         conversation_history: list[ConversationMessage],
         session_summary: str | None,
+        observation_freshness: tuple[ObservationFreshness, ...],
     ) -> PlanningLoopResult:
         available_tools = tuple(self.list_tools())
         working_summary = session_summary
+        working_freshness = observation_freshness
         accumulated_executions: list[dict[str, object]] = []
         executed_signatures: set[str] = set()
         previous_response_id = self.previous_provider_response_id
@@ -523,6 +566,7 @@ class MasterControlApp:
                 available_tools=available_tools,
                 conversation_history=tuple(conversation_history),
                 session_summary=working_summary,
+                observation_freshness=working_freshness,
                 previous_response_id=previous_response_id,
                 system_prompt=self._build_turn_planning_prompt(
                     user_input=user_input,
@@ -540,6 +584,7 @@ class MasterControlApp:
                 user_input=user_input,
                 conversation_history=conversation_history,
                 session_summary=working_summary,
+                observation_freshness=working_freshness,
                 provider_response=provider_response,
                 plan_payload=plan_payload,
                 iteration=iteration,
@@ -562,6 +607,7 @@ class MasterControlApp:
                 executions=new_executions,
                 assistant_message=provider_response.message,
             )
+            working_freshness = self._load_observation_freshness(session_id)
 
             if any(not execution.get("ok") for execution in new_executions):
                 break
@@ -570,6 +616,7 @@ class MasterControlApp:
             provider_response=last_provider_response,
             executions=accumulated_executions,
             working_summary=working_summary,
+            working_freshness=working_freshness,
             response_id=previous_response_id,
         )
 
@@ -592,6 +639,10 @@ class MasterControlApp:
         if isinstance(summary_text, str) and summary_text.strip():
             return summary_text
         return None
+
+    def _load_observation_freshness(self, session_id: int) -> tuple[ObservationFreshness, ...]:
+        rows = self.store.list_latest_observations(session_id)
+        return build_observation_freshness(rows)
 
     def _resolve_session_id(self, session_id: int | None) -> int:
         if session_id is not None:
@@ -768,6 +819,23 @@ class MasterControlApp:
             return f"{tool_name}({argument_text}) -> path={result.get('path')}"
         return f"{tool_name}({argument_text}) -> ok"
 
+    def _record_execution_observations(
+        self,
+        *,
+        session_id: int,
+        tool_name: str,
+        arguments: dict[str, object],
+        result: dict[str, object],
+    ) -> None:
+        for envelope in build_observation_envelopes(tool_name, arguments, result):
+            self.store.record_observation(
+                session_id,
+                envelope.source,
+                envelope.key,
+                envelope.value,
+                ttl_seconds=envelope.ttl_seconds,
+            )
+
     def _record_provider_error(
         self,
         *,
@@ -798,11 +866,14 @@ class MasterControlApp:
         user_input: str,
         conversation_history: list[ConversationMessage],
         session_summary: str | None,
+        observation_freshness: tuple[ObservationFreshness, ...],
         provider_response: ProviderResponse,
         plan_payload: dict[str, object] | None,
         iteration: int,
         accumulated_executions: list[dict[str, object]],
     ) -> None:
+        stale_observation_keys = sorted({item.key for item in observation_freshness if item.stale})
+        planned_refresh_keys = self._collect_planned_refresh_keys(provider_response.plan)
         self.store.record_audit_event(
             "plan_generated",
             {
@@ -817,10 +888,23 @@ class MasterControlApp:
                 "provider_metadata": provider_response.metadata,
                 "response_id": provider_response.response_id,
                 "plan": plan_payload,
+                "stale_observation_keys": stale_observation_keys,
+                "planned_refresh_keys": planned_refresh_keys,
                 "iteration": iteration,
                 "prior_execution_count": len(accumulated_executions),
             },
         )
+
+    def _collect_planned_refresh_keys(self, plan: ExecutionPlan | None) -> list[str]:
+        if plan is None:
+            return []
+        keys: list[str] = []
+        for step in plan.steps:
+            observation_key = observation_key_for_tool(step.tool_name)
+            if observation_key is None or observation_key in keys:
+                continue
+            keys.append(observation_key)
+        return keys
 
     def _render_chat_response(
         self,

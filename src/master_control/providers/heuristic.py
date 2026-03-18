@@ -4,6 +4,7 @@ import re
 import unicodedata
 
 from master_control.agent.planner import ExecutionPlan, PlanStep
+from master_control.agent.observations import ObservationFreshness
 from master_control.agent.session_summary import parse_session_summary
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
 
@@ -30,11 +31,15 @@ class HeuristicProvider:
         service_scope = _extract_service_scope(normalized)
         last_context = _extract_context(request.conversation_history, request.session_summary)
         summary_map = parse_session_summary(request.session_summary)
+        freshness_map = {item.key: item for item in request.observation_freshness}
 
         if _contains_any(normalized, ("diagnostico", "diagnosticar", "lento", "lentidao", "slow")):
-            if "memory_usage" in available_tools and "memory" not in summary_map:
+            if "memory_usage" in available_tools and _needs_refresh(freshness_map, "memory"):
+                message_text = "Vou começar verificando a memória do sistema."
+                if "memory" in freshness_map and freshness_map["memory"].stale:
+                    message_text = "Vou atualizar os dados de memória antes de continuar o diagnóstico."
                 return ProviderResponse(
-                    message="Vou começar verificando a memória do sistema.",
+                    message=message_text,
                     plan=ExecutionPlan(
                         intent="diagnose_performance",
                         steps=(
@@ -46,9 +51,12 @@ class HeuristicProvider:
                     ),
                 )
 
-            if "top_processes" in available_tools and "processes" not in summary_map:
+            if "top_processes" in available_tools and _needs_refresh(freshness_map, "processes"):
+                message_text = "Agora vou verificar os processos com maior uso de CPU."
+                if "processes" in freshness_map and freshness_map["processes"].stale:
+                    message_text = "Vou atualizar a lista de processos antes de seguir com o diagnóstico."
                 return ProviderResponse(
-                    message="Agora vou verificar os processos com maior uso de CPU.",
+                    message=message_text,
                     plan=ExecutionPlan(
                         intent="diagnose_performance",
                         steps=(
@@ -65,10 +73,15 @@ class HeuristicProvider:
             if (
                 "service_status" in available_tools
                 and candidate_service
-                and "service" not in summary_map
+                and _needs_refresh(freshness_map, "service")
             ):
+                message_text = f"Vou correlacionar isso com o estado do serviço `{candidate_service}`."
+                if "service" in freshness_map and freshness_map["service"].stale:
+                    message_text = (
+                        f"Vou atualizar o estado do serviço `{candidate_service}` antes de concluir."
+                    )
                 return ProviderResponse(
-                    message=f"Vou correlacionar isso com o estado do serviço `{candidate_service}`.",
+                    message=message_text,
                     plan=ExecutionPlan(
                         intent="diagnose_performance",
                         steps=(
@@ -510,3 +523,13 @@ def _build_diagnostic_summary(summary_map: dict[str, str]) -> str:
         return "Ainda preciso coletar mais sinais antes de concluir o diagnóstico."
 
     return "Resumo do diagnóstico: " + " | ".join(fragments) + "."
+
+
+def _needs_refresh(
+    freshness_map: dict[str, ObservationFreshness],
+    key: str,
+) -> bool:
+    entry = freshness_map.get(key)
+    if entry is None:
+        return True
+    return entry.stale

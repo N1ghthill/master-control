@@ -4,6 +4,7 @@ from dataclasses import dataclass, field
 from typing import Protocol
 
 from master_control.agent.planner import ExecutionPlan
+from master_control.agent.observations import ObservationFreshness
 from master_control.tools.base import ToolSpec
 
 
@@ -20,6 +21,7 @@ class ProviderRequest:
     available_tools: tuple[ToolSpec, ...]
     conversation_history: tuple[ConversationMessage, ...] = ()
     session_summary: str | None = None
+    observation_freshness: tuple[ObservationFreshness, ...] = ()
     previous_response_id: str | None = None
     system_prompt: str | None = None
 

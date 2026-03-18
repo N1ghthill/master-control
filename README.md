@@ -50,6 +50,8 @@ mc chat --once "mostre o uso de memoria"
 mc chat --once "o host esta lento"
 mc chat --once "reinicie o servico nginx"
 mc sessions --limit 5
+mc observations --session-id 1
+mc observations --session-id 1 --stale-only
 mc insights --session-id 1
 mc recommendations --session-id 1
 mc recommendation <id> accepted
@@ -71,12 +73,14 @@ This repository currently contains:
 - An OpenAI provider that uses the Responses API to return structured plans via function calling
 - An Ollama provider that uses `/api/chat` with schema-constrained JSON output
 - Persistent session memory built from short history plus a compact deterministic session summary
+- Session-scoped observations with TTL-based freshness, so stale diagnostic context can be refreshed automatically
 - Deterministic proactive suggestions derived from each session summary
 - A persistent recommendation queue per session with explicit status tracking and optional executable actions
 - Approval hints that return the exact CLI and chat commands required to confirm risky actions
 - Managed config tools with allowlisted targets, backup, validation, atomic writes, and restore from backup
 - End-to-end test coverage for the main recommendation and config-edit workflows
 - Iterative per-turn planning so the agent can continue a diagnosis with fresh tool results
+- Observation freshness injected into all planners, so stale memory/process/service context can trigger a refresh instead of a stale summary
 - Optional `scope=user` support for service tools, so the same typed workflow can operate on `systemd --user` units
 
 Current maturity:
@@ -197,6 +201,12 @@ mc doctor
 GitHub Actions baseline:
 
 - `.github/workflows/ci.yml` runs editable install, unit tests, `compileall`, and an offline-safe `mc doctor` smoke on Python 3.13
+
+Observation inspection:
+
+- `mc observations --session-id <id>` shows the latest stored observations and freshness for a session
+- `mc observations --session-id <id> --stale-only` filters only stale observations
+- observations start appearing from new executions after the freshness model was introduced; older sessions are not backfilled
 
 Provider-specific optional knobs:
 

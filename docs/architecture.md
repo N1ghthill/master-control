@@ -68,7 +68,7 @@ The architecture favors strong boundaries:
 ## Request lifecycle
 
 1. User sends a message through the CLI.
-2. The agent builds context from the current session, local observations, and available tools.
+2. The agent builds context from the current session, local observations, freshness state, and available tools.
 3. A provider produces a structured plan. The current scaffold uses a heuristic provider as the first safe implementation of that contract.
 4. The app resolves the requested tool by name.
 5. The policy engine evaluates the tool risk.
@@ -135,6 +135,8 @@ SQLite is enough for the first milestone:
 - `audit_events`: policy evaluations, tool executions, errors
 
 The database must be local to the host and easy to inspect for debugging.
+
+Latest observations are session-scoped and TTL-bound. This lets the app distinguish between a fresh fact that can be summarized safely and a stale fact that should be refreshed through a typed tool before the planner relies on it.
 
 ## Proactive guidance
 

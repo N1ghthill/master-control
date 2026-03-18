@@ -3,7 +3,14 @@ from __future__ import annotations
 import json
 import sqlite3
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
+
+from master_control.agent.observations import (
+    compute_expires_at,
+    deserialize_observation_value,
+    serialize_observation_value,
+)
 
 
 SCHEMA = """
@@ -57,11 +64,13 @@ CREATE TABLE IF NOT EXISTS conversation_messages (
 
 CREATE TABLE IF NOT EXISTS observations (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
+    session_id INTEGER,
     source TEXT NOT NULL,
     key TEXT NOT NULL,
     value TEXT NOT NULL,
     observed_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
-    expires_at TEXT
+    expires_at TEXT,
+    FOREIGN KEY(session_id) REFERENCES sessions(id)
 );
 
 CREATE TABLE IF NOT EXISTS audit_events (
@@ -82,6 +91,7 @@ class SessionStore:
         with closing(sqlite3.connect(self.path)) as connection:
             connection.executescript(SCHEMA)
             self._migrate_schema(connection)
+            self._ensure_indexes(connection)
             connection.commit()
 
     def _migrate_schema(self, connection: sqlite3.Connection) -> None:
@@ -94,6 +104,21 @@ class SessionStore:
                 "action_tool_name": "TEXT",
                 "action_arguments_json": "TEXT",
             },
+        )
+        self._ensure_columns(
+            connection,
+            "observations",
+            {
+                "session_id": "INTEGER",
+            },
+        )
+
+    def _ensure_indexes(self, connection: sqlite3.Connection) -> None:
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_observations_session_key_id
+            ON observations(session_id, key, id DESC)
+            """
         )
 
     def _ensure_columns(
@@ -216,6 +241,71 @@ class SessionStore:
             "summary_text": summary_text,
             "updated_at": updated_at,
         }
+
+    def record_observation(
+        self,
+        session_id: int,
+        source: str,
+        key: str,
+        value: dict[str, object],
+        *,
+        observed_at: str | None = None,
+        ttl_seconds: int | None = None,
+    ) -> None:
+        observed_at_value = observed_at or datetime.now(UTC).isoformat().replace("+00:00", "Z")
+        expires_at_value = compute_expires_at(
+            observed_at=datetime.fromisoformat(observed_at_value.replace("Z", "+00:00")),
+            ttl_seconds=ttl_seconds,
+        )
+        with closing(sqlite3.connect(self.path)) as connection:
+            connection.execute(
+                """
+                INSERT INTO observations (session_id, source, key, value, observed_at, expires_at)
+                VALUES (?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    session_id,
+                    source,
+                    key,
+                    serialize_observation_value(value),
+                    observed_at_value,
+                    expires_at_value,
+                ),
+            )
+            connection.commit()
+
+    def list_latest_observations(self, session_id: int) -> list[dict[str, object]]:
+        with closing(sqlite3.connect(self.path)) as connection:
+            cursor = connection.execute(
+                """
+                SELECT o.source, o.key, o.value, o.observed_at, o.expires_at
+                FROM observations AS o
+                INNER JOIN (
+                    SELECT key, MAX(id) AS max_id
+                    FROM observations
+                    WHERE session_id = ?
+                    GROUP BY key
+                ) AS latest
+                    ON latest.max_id = o.id
+                WHERE o.session_id = ?
+                ORDER BY o.id DESC
+                """,
+                (session_id, session_id),
+            )
+            rows = cursor.fetchall()
+
+        observations: list[dict[str, object]] = []
+        for source, key, value, observed_at, expires_at in rows:
+            observations.append(
+                {
+                    "source": source,
+                    "key": key,
+                    "value": deserialize_observation_value(value),
+                    "observed_at": observed_at,
+                    "expires_at": expires_at,
+                }
+            )
+        return observations
 
     def upsert_session_summary(self, session_id: int, summary_text: str) -> None:
         with closing(sqlite3.connect(self.path)) as connection:

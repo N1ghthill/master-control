@@ -95,6 +95,91 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertEqual(events[0]["event_type"], "tool_execution")
             self.assertEqual(events[0]["payload"]["tool"], "system_info")
 
+    def test_run_tool_records_session_observation(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+
+            payload = app.run_tool(
+                "memory_usage",
+                audit_context={"source": "tool_command", "session_id": session_id},
+            )
+            observations = app.list_session_observations(session_id=session_id)
+
+            self.assertTrue(payload["ok"])
+            self.assertEqual(observations["total_count"], 1)
+            self.assertEqual(observations["observations"][0]["key"], "memory")
+
+    def test_plan_generated_audit_includes_stale_refresh_keys(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "\n".join(
+                    [
+                        "memory: memory 42.0% used, swap 0.0% used",
+                        "processes: nginx(5.0%), sshd(1.0%)",
+                        "service: nginx: active=active, sub=running",
+                    ]
+                ),
+            )
+            old_time = "2026-03-17T00:00:00Z"
+            app.store.record_observation(
+                session_id,
+                "memory_usage",
+                "memory",
+                {"memory_used_percent": 42.0, "swap_used_percent": 0.0},
+                observed_at=old_time,
+                ttl_seconds=300,
+            )
+            app.store.record_observation(
+                session_id,
+                "top_processes",
+                "processes",
+                {"processes": [{"command": "nginx", "cpu_percent": 5.0}]},
+                observed_at=old_time,
+                ttl_seconds=120,
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx", "scope": "system", "activestate": "active", "substate": "running"},
+                observed_at=old_time,
+                ttl_seconds=180,
+            )
+
+            app.chat("o host esta lento", session_id=session_id)
+            events = app.list_audit_events(limit=20)
+            plan_events = [event for event in events if event["event_type"] == "plan_generated"]
+
+            self.assertTrue(
+                any(
+                    "memory" in event["payload"].get("stale_observation_keys", [])
+                    and "memory" in event["payload"].get("planned_refresh_keys", [])
+                    for event in plan_events
+                )
+            )
+
     def test_registry_contains_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

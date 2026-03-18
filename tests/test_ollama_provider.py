@@ -6,6 +6,7 @@ import unittest
 from pathlib import Path
 
 from master_control.config import Settings
+from master_control.agent.observations import build_observation_freshness
 from master_control.providers.base import ConversationMessage, ProviderRequest
 from master_control.providers.ollama_chat import OllamaChatProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
@@ -73,6 +74,17 @@ class OllamaChatProviderTest(unittest.TestCase):
                     ConversationMessage(role="assistant", content="Posso verificar memória ou disco."),
                 ),
                 session_summary="tracked_unit: ssh\nlast_intent: inspect_logs",
+                observation_freshness=build_observation_freshness(
+                    (
+                        {
+                            "source": "service_status",
+                            "key": "service",
+                            "value": {"service": "ssh", "scope": "system"},
+                            "observed_at": "2026-03-17T20:00:00Z",
+                            "expires_at": "2026-03-17T20:03:00Z",
+                        },
+                    )
+                ),
             )
 
             response = provider.plan(request)
@@ -84,6 +96,8 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertFalse(captured_payload["stream"])
             self.assertEqual(captured_payload["messages"][0]["role"], "system")
             self.assertIn("Local session summary:", captured_payload["messages"][0]["content"])
+            self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
+            self.assertIn("service", captured_payload["messages"][0]["content"])
 
 
 if __name__ == "__main__":

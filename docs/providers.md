@@ -49,6 +49,18 @@ To avoid depending only on a short message window, MC also maintains a compact d
 
 That same summary is also used to derive proactive suggestions and alerts per session, which can be shown directly in chat responses or inspected via the CLI.
 
+MC also persists session-scoped observations with TTL metadata. Before each planning pass, the app computes freshness for the latest host observations and passes that to the active provider. This gives all planners the same rule:
+
+- fresh observations may be summarized and reused
+- stale observations should be refreshed through the matching typed tool before the planner relies on them
+
+The local heuristic planner already uses this actively for performance diagnosis, so repeated requests such as `o host esta lento` can refresh memory, processes, or service state when the previous observation window expired.
+
+Operators can inspect the same freshness state directly through:
+
+- `mc observations --session-id <id>`
+- `mc observations --session-id <id> --stale-only`
+
 MC also persists those suggestions as explicit session recommendations, so follow-up operations can track recommendation lifecycle instead of recomputing meaning from raw chat alone.
 
 When a recommendation includes an executable action, that action remains provider-independent metadata. The provider proposes observations and plans; MC decides whether a recommendation can expose a typed action such as `restart_service`, and any execution still goes through local policy, confirmation, and audit.

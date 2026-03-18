@@ -20,6 +20,7 @@
 - Ollama provider for local structured planning
 - iterative per-turn planning so the agent can continue a diagnosis with fresh tool results
 - provider health checks in `mc doctor`, including Ollama endpoint and model availability
+- session-scoped observation persistence with TTL-based freshness
 
 ### Changed
 
@@ -31,6 +32,7 @@
 - the default Ollama profile for the alpha track is now `qwen2.5:7b`
 - service tools now support `scope=user` for `systemd --user` operations and validation
 - alpha release docs now include a real-host validation report and release notes baseline
+- stale session observations can now trigger refresh-oriented planning instead of relying on old summaries
 
 ### Notes
 

@@ -47,6 +47,7 @@ Snapshot date: 2026-03-17
 - local conversation history
 - provider continuation state for supported backends
 - compact deterministic session summaries
+- session-scoped observations with TTL-based freshness state
 - deterministic session insights
 - persistent recommendation queue with lifecycle states
 
@@ -100,6 +101,7 @@ At this snapshot, the project is validated by:
 - `python3 -m compileall src`
 - manual CLI smoke checks for chat, recommendations, and recommendation-triggered actions
 - manual CLI smoke checks for managed config write with validation and backup
+- automated coverage for observation freshness and stale-context refresh behavior
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on `systemd --user`
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`

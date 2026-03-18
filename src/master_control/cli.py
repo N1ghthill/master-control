@@ -46,6 +46,21 @@ def build_parser() -> argparse.ArgumentParser:
         help="Target session id. Defaults to the latest known session.",
     )
 
+    observations_parser = subparsers.add_parser(
+        "observations",
+        help="Show stored observations and freshness for a session.",
+    )
+    observations_parser.add_argument(
+        "--session-id",
+        type=int,
+        help="Target session id. Defaults to the latest known session.",
+    )
+    observations_parser.add_argument(
+        "--stale-only",
+        action="store_true",
+        help="Show only stale observations.",
+    )
+
     recommendations_parser = subparsers.add_parser(
         "recommendations",
         help="Show tracked recommendations for a session.",
@@ -130,6 +145,29 @@ def _parse_kv_arguments(items: list[str]) -> dict[str, str]:
             raise ValueError("Argument keys cannot be empty.")
         arguments[key] = value.strip()
     return arguments
+
+
+def _format_observation_duration(seconds: object) -> str:
+    if not isinstance(seconds, int):
+        return "-"
+    if seconds < 60:
+        return f"{seconds}s"
+    minutes, rem = divmod(seconds, 60)
+    if minutes < 60:
+        return f"{minutes}m{rem:02d}s"
+    hours, minutes = divmod(minutes, 60)
+    return f"{hours}h{minutes:02d}m"
+
+
+def _render_observation_target(item: dict[str, object]) -> str | None:
+    value = item.get("value")
+    if not isinstance(value, dict):
+        return None
+    for key in ("service", "path", "unit"):
+        target = value.get(key)
+        if isinstance(target, str) and target:
+            return target
+    return None
 
 
 def _run_chat(
@@ -231,6 +269,39 @@ def main(argv: Sequence[str] | None = None) -> int:
             parser.error(str(exc))
             return 2
         _print_json(payload)
+        return 0
+
+    if args.command == "observations":
+        try:
+            payload = app.list_session_observations(
+                session_id=args.session_id,
+                stale_only=args.stale_only,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+            return 2
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"Session {payload['session_id']} observations")
+            print(
+                f"total={payload['total_count']} fresh={payload['fresh_count']} stale={payload['stale_count']}"
+            )
+            if not payload["observations"]:
+                if payload["stale_only"]:
+                    print("No stale observations matched this session.")
+                else:
+                    print("No stored observations for this session yet.")
+                return 0
+            for item in payload["observations"]:
+                status = "stale" if item["stale"] else "fresh"
+                target = _render_observation_target(item)
+                target_text = f" target={target}" if target else ""
+                print(
+                    f"{item['key']}: {status} age={_format_observation_duration(item['age_seconds'])} "
+                    f"ttl={_format_observation_duration(item['ttl_seconds'])} "
+                    f"source={item['source']}{target_text}"
+                )
         return 0
 
     if args.command == "recommendations":

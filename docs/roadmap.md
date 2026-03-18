@@ -110,11 +110,12 @@ Exit criteria:
 Current state:
 
 - session history storage is implemented
+- observation freshness is now active in the operator flow
 - provider output is schema-bound
 - OpenAI, Ollama, and heuristic providers are wired to the same planning contract
 - the app can re-plan within the same turn using execution observations from earlier steps
+- session-scoped observations are persisted with TTL metadata and passed to planners as freshness context
 - `qwen2.5:7b` is the current default local Ollama profile for the alpha track
-- observation freshness storage exists, but the freshness model is not yet active in the operator flow
 
 ## Phase 4: Service mode and external interfaces
 
