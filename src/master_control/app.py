@@ -640,10 +640,11 @@ class MasterControlApp:
             else None
         )
         plan_decision = planning_result.provider_response.resolved_decision().as_dict()
-        turn_decision = self._classify_turn_decision(
+        resolved_turn_decision = self._classify_turn_decision(
             planning_result.provider_response,
             planning_result.executions,
-        ).as_dict()
+        )
+        turn_decision = resolved_turn_decision.as_dict()
         final_response = self._build_final_chat_response(
             planning_result.provider_response,
             planning_result.executions,
@@ -678,8 +679,13 @@ class MasterControlApp:
             insights,
             observation_freshness,
         )
-        final_message_with_recommendations = self._append_recommendations_to_message(
+        message_with_turn_guidance = self._apply_turn_decision_guidance(
             final_response.message,
+            planning_result.executions,
+            resolved_turn_decision,
+        )
+        final_message_with_recommendations = self._append_recommendations_to_message(
+            message_with_turn_guidance,
             recommendation_sync,
         )
         self.store.append_conversation_message(
@@ -1216,6 +1222,66 @@ class MasterControlApp:
             response_id=synthesis_response.response_id or previous_response_id,
             metadata=synthesis_response.metadata,
         )
+
+    def _apply_turn_decision_guidance(
+        self,
+        message: str,
+        executions: list[dict[str, object]],
+        turn_decision: PlanningDecision,
+    ) -> str:
+        if turn_decision.state == "blocked" and turn_decision.kind == "awaiting_confirmation":
+            pending_execution = next(
+                (
+                    execution
+                    for execution in executions
+                    if execution.get("pending_confirmation")
+                ),
+                None,
+            )
+            if isinstance(pending_execution, dict):
+                approval = pending_execution.get("approval")
+                if isinstance(approval, dict):
+                    cli_command = approval.get("cli_command")
+                    chat_command = approval.get("chat_command")
+                    if (
+                        isinstance(cli_command, str)
+                        and cli_command
+                        and cli_command in message
+                    ) or (
+                        isinstance(chat_command, str)
+                        and chat_command
+                        and chat_command in message
+                    ):
+                        return f"{message}\n\nAção pendente de confirmação explícita."
+                    command_parts: list[str] = []
+                    if isinstance(cli_command, str) and cli_command.strip():
+                        command_parts.append(f"CLI: `{cli_command}`")
+                    if isinstance(chat_command, str) and chat_command.strip():
+                        command_parts.append(f"Chat: `{chat_command}`")
+                    if command_parts:
+                        return (
+                            f"{message}\n\nAção pendente de confirmação explícita. "
+                            + " ".join(command_parts)
+                        )
+            return f"{message}\n\nAção pendente de confirmação explícita."
+
+        if turn_decision.state == "blocked" and turn_decision.kind == "missing_safe_tool":
+            return (
+                f"{message}\n\nEste runtime não expõe a tool segura necessária para esse pedido. "
+                "Use `mc tools` para conferir as capabilities disponíveis."
+            )
+
+        if turn_decision.state == "blocked" and turn_decision.kind == "execution_failed":
+            return (
+                f"{message}\n\nO turno foi interrompido porque uma execução falhou antes da conclusão."
+            )
+
+        if turn_decision.state == "needs_tools" and turn_decision.kind == "refresh_required":
+            return (
+                f"{message}\n\nO agente ainda precisa atualizar sinais do host antes de concluir."
+            )
+
+        return message
 
     def _collect_rendered_execution_summaries(
         self,

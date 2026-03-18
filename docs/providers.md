@@ -35,6 +35,12 @@ After execution, MC also derives a `turn_decision` for the final payload and aud
 - `execution_failed`
 - `evidence_sufficient`
 
+The final assistant message also consumes that `turn_decision`. This gives the operator deterministic next-step guidance even if the provider message is vague, for example:
+
+- explicit confirmation commands when the turn is waiting on approval
+- a clear `mc tools` hint when the runtime lacks the safe tool needed for the request
+- a direct interruption note when execution failed before completion
+
 ## OpenAI provider
 
 The OpenAI integration uses the `Responses API` with a single required function tool named `submit_plan`.

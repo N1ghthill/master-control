@@ -33,6 +33,7 @@ Snapshot date: 2026-03-17
 - LLM-backed final response synthesis for OpenAI and Ollama after tool execution
 - explicit planning decisions (`needs_tools`, `complete`, `blocked`) across the provider contract and audit trail
 - typed decision kinds and final `turn_decision` classification for confirmation waits, missing tools, refreshes, and evidence-backed completion
+- deterministic final-message guidance driven by `turn_decision`
 
 ### Linux inspection tools
 

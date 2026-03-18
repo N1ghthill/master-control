@@ -121,6 +121,7 @@ Current state:
 - OpenAI and Ollama now synthesize the final operator-facing answer from executed tool results
 - planner outputs now carry an explicit decision state instead of relying only on empty/non-empty step arrays
 - the app now distinguishes planner intent from final turn outcome through typed `plan_decision` and `turn_decision`
+- the final message layer now uses that classification to surface deterministic operator guidance
 
 ## Phase 4: Service mode and external interfaces
 

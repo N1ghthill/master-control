@@ -225,6 +225,7 @@ Observation inspection:
 - `mc reconcile-timer remove --scope user` disables and removes that timer again
 - when `openai` or `ollama` is active, MC now asks the model for a final operator-facing synthesis after tool execution instead of relying only on local templates
 - chat JSON payloads now expose both `plan_decision` and `turn_decision`, so the caller can distinguish what the planner requested from what actually happened in the turn
+- the final chat message now adds deterministic guidance when the turn ends in `awaiting_confirmation`, `missing_safe_tool`, `execution_failed`, or `refresh_required`
 
 Provider-specific optional knobs:
 

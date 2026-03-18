@@ -126,6 +126,7 @@ class ChatFlowTest(unittest.TestCase):
             self.assertTrue(payload["executions"][0]["pending_confirmation"])
             self.assertEqual(payload["turn_decision"]["state"], "blocked")
             self.assertEqual(payload["turn_decision"]["kind"], "awaiting_confirmation")
+            self.assertIn("Ação pendente de confirmação explícita.", payload["message"])
             self.assertIn("mc tool restart_service", payload["message"])
             self.assertIn("/tool restart_service", payload["message"])
 
@@ -205,6 +206,7 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["plan_decision"]["kind"], "missing_safe_tool")
             self.assertEqual(payload["turn_decision"]["kind"], "missing_safe_tool")
             self.assertIn("memory_usage", payload["message"])
+            self.assertIn("mc tools", payload["message"])
 
     def test_heuristic_provider_ignores_assistant_log_output_when_reusing_context(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
