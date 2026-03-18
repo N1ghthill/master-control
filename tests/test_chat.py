@@ -399,6 +399,47 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "failed_services")
             self.assertEqual(payload["executions"][0]["tool"], "failed_services")
             self.assertIn("nginx.service", payload["message"])
+            self.assertEqual(
+                payload["recommendations"]["active"][0]["action"]["tool_name"],
+                "service_status",
+            )
+
+    def test_chat_plans_config_rollback_from_recent_managed_backup(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            managed_root = state_dir / "managed-configs"
+            managed_root.mkdir(parents=True, exist_ok=True)
+            config_path = managed_root / "service.ini"
+            config_path.write_text("[service]\nmode=old\n", encoding="utf-8")
+
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+
+            written = app.run_tool(
+                "write_config_file",
+                {"path": str(config_path), "content": "[service]\nmode=new\n"},
+                confirmed=True,
+                audit_context={"source": "test", "session_id": session_id},
+            )
+
+            payload = app.chat("desfaça a última mudança", session_id=session_id)
+
+            self.assertTrue(written["ok"])
+            self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "restore_config_backup")
+            self.assertEqual(payload["plan"]["steps"][0]["arguments"]["path"], str(config_path))
+            self.assertEqual(
+                payload["plan"]["steps"][0]["arguments"]["backup_path"],
+                written["result"]["backup_path"],
+            )
+            self.assertTrue(payload["executions"][0]["pending_confirmation"])
 
 
 if __name__ == "__main__":

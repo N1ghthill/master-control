@@ -40,16 +40,16 @@ def build_tool_result_view(
         )
 
     if tool_name == "disk_usage":
-        path = _string_or_none(result.get("path"), default="/")
+        path = _string_or_default(result.get("path"), "/")
         used_percent = result.get("used_percent")
         rendered_summary = (
             "Disco em {path}: {used_percent}% usado ({used} usados de {total}, {free} livres)."
         ).format(
             path=path,
             used_percent=used_percent,
-            used=_human_bytes(int(result["used_bytes"])),
-            total=_human_bytes(int(result["total_bytes"])),
-            free=_human_bytes(int(result["free_bytes"])),
+            used=_human_bytes(_coerce_int(result.get("used_bytes"))),
+            total=_human_bytes(_coerce_int(result.get("total_bytes"))),
+            free=_human_bytes(_coerce_int(result.get("free_bytes"))),
         )
         summary_updates = {"tracked_path": path}
         if used_percent is not None:
@@ -63,7 +63,7 @@ def build_tool_result_view(
     if tool_name == "memory_usage":
         memory_used_percent = result.get("memory_used_percent")
         swap_used_percent = result.get("swap_used_percent")
-        summary_updates: dict[str, str] = {}
+        summary_updates = {}
         if memory_used_percent is not None and swap_used_percent is not None:
             summary_updates["memory"] = (
                 f"memory {memory_used_percent}% used, swap {swap_used_percent}% used"
@@ -78,17 +78,17 @@ def build_tool_result_view(
                 "Swap usada: {swap_percent}% ({swap_used} de {swap_total})."
             ).format(
                 mem_percent=memory_used_percent,
-                mem_used=_human_bytes(int(result["memory_used_bytes"])),
-                mem_total=_human_bytes(int(result["memory_total_bytes"])),
+                mem_used=_human_bytes(_coerce_int(result.get("memory_used_bytes"))),
+                mem_total=_human_bytes(_coerce_int(result.get("memory_total_bytes"))),
                 swap_percent=swap_used_percent,
-                swap_used=_human_bytes(int(result["swap_used_bytes"])),
-                swap_total=_human_bytes(int(result["swap_total_bytes"])),
+                swap_used=_human_bytes(_coerce_int(result.get("swap_used_bytes"))),
+                swap_total=_human_bytes(_coerce_int(result.get("swap_total_bytes"))),
             ),
             summary_updates=summary_updates,
         )
 
     if tool_name == "top_processes":
-        status = _string_or_none(result.get("status"), default="ok")
+        status = _string_or_default(result.get("status"), "ok")
         if status != "ok":
             reason = _string_or_none(result.get("reason"), default="motivo desconhecido")
             return ToolResultView(
@@ -104,8 +104,8 @@ def build_tool_result_view(
                 ),
             )
 
-        processes = result.get("processes")
-        if not isinstance(processes, list) or not processes:
+        processes = _dedupe_process_rows(result.get("processes"), limit=5)
+        if not processes:
             return ToolResultView(
                 planner_summary=f"{tool_name}({argument_text}) -> no_processes",
                 rendered_summary="Nenhum processo relevante foi retornado.",
@@ -113,8 +113,6 @@ def build_tool_result_view(
         items = []
         commands: list[str] = []
         for item in processes[:3]:
-            if not isinstance(item, dict):
-                continue
             command = item.get("command")
             cpu = item.get("cpu_percent")
             if isinstance(command, str):
@@ -138,7 +136,7 @@ def build_tool_result_view(
         )
 
     if tool_name == "process_to_unit":
-        status = _string_or_none(result.get("status"), default="ok")
+        status = _string_or_default(result.get("status"), "ok")
         if status != "ok":
             reason = _string_or_none(result.get("reason"), default="motivo desconhecido")
             return ToolResultView(
@@ -155,7 +153,7 @@ def build_tool_result_view(
             )
 
         primary_match = result.get("primary_match")
-        summary_updates: dict[str, str] = {}
+        summary_updates = {}
         if isinstance(primary_match, dict):
             unit = _string_or_none(primary_match.get("unit"))
             command = _string_or_none(primary_match.get("command"), default="processo")
@@ -195,12 +193,15 @@ def build_tool_result_view(
         return ToolResultView(
             planner_summary=f"{tool_name}({argument_text}) -> no_unit_match",
             rendered_summary="Nao encontrei um unit systemd claro para o processo inspecionado.",
-        )
+            )
 
     if tool_name == "service_status":
-        status = _string_or_none(result.get("status"), default="ok")
+        status = _string_or_default(result.get("status"), "ok")
         if status != "ok":
-            service = _string_or_none(result.get("service"), default=str(arguments.get("name", "serviço")))
+            service = _string_or_default(
+                result.get("service"),
+                _argument_string(arguments, "name", "serviço"),
+            )
             scope = _string_or_none(result.get("scope"))
             reason = _string_or_none(result.get("reason"), default="motivo desconhecido")
             scope_text = f" ({scope})" if scope else ""
@@ -216,7 +217,10 @@ def build_tool_result_view(
                 ),
             )
 
-        service = _string_or_none(result.get("service"), default=str(arguments.get("name", "serviço")))
+        service = _string_or_default(
+            result.get("service"),
+            _argument_string(arguments, "name", "serviço"),
+        )
         scope = _string_or_none(result.get("scope"))
         active = _string_or_none(result.get("activestate"), default="desconhecido")
         sub = _string_or_none(result.get("substate"), default="desconhecido")
@@ -239,7 +243,7 @@ def build_tool_result_view(
         )
 
     if tool_name == "read_journal":
-        status = _string_or_none(result.get("status"), default="ok")
+        status = _string_or_default(result.get("status"), "ok")
         if status != "ok":
             reason = _string_or_none(result.get("reason"), default="motivo desconhecido")
             return ToolResultView(
@@ -255,7 +259,7 @@ def build_tool_result_view(
         entries = result.get("entries", [])
         unit = _string_or_none(result.get("unit"))
         returned_lines = result.get("returned_lines")
-        summary_updates: dict[str, str] = {}
+        summary_updates = {}
         tracked_unit = unit or "system"
         summary_updates["tracked_unit"] = tracked_unit
         if returned_lines is not None:
@@ -279,7 +283,7 @@ def build_tool_result_view(
         )
 
     if tool_name == "failed_services":
-        status = _string_or_none(result.get("status"), default="ok")
+        status = _string_or_default(result.get("status"), "ok")
         scope = _string_or_none(result.get("scope"))
         if status != "ok":
             reason = _string_or_none(result.get("reason"), default="motivo desconhecido")
@@ -303,7 +307,7 @@ def build_tool_result_view(
                 rendered_summary=f"Nenhum serviço em falha foi encontrado{f' ({scope})' if scope else ''}.",
             )
 
-        summary_updates: dict[str, str] = {}
+        summary_updates = {}
         if len(units) == 1 and isinstance(units[0], dict):
             unit = _string_or_none(units[0].get("unit"))
             active_state = _string_or_none(units[0].get("active_state"))
@@ -332,9 +336,9 @@ def build_tool_result_view(
         )
 
     if tool_name == "read_config_file":
-        path = _string_or_none(result.get("path"), default=str(arguments.get("path", "arquivo")))
-        line_count = result.get("line_count", 0)
-        target = _string_or_none(result.get("target"), default="managed")
+        path = _string_or_default(result.get("path"), _argument_string(arguments, "path", "arquivo"))
+        line_count = _coerce_int(result.get("line_count"))
+        target = _string_or_default(result.get("target"), "managed")
         content = _string_or_none(result.get("content"))
         excerpt = _build_config_excerpt(content)
         planner_parts = [f"path={path}", f"target={target}", f"lines={line_count}"]
@@ -349,15 +353,16 @@ def build_tool_result_view(
             summary_updates={
                 "tracked_path": path,
                 "config": f"{tool_name}: {path}",
+                "config_target": target,
             },
         )
 
     if tool_name == "write_config_file":
-        path = _string_or_none(result.get("path"), default=str(arguments.get("path", "arquivo")))
+        path = _string_or_default(result.get("path"), _argument_string(arguments, "path", "arquivo"))
         backup_path = _string_or_none(result.get("backup_path"))
         changed = bool(result.get("changed", False))
         validation = result.get("validation")
-        validation_kind = validation.get("kind") if isinstance(validation, dict) else None
+        validation_kind = _string_or_none(validation.get("kind")) if isinstance(validation, dict) else None
         planner_summary = (
             f"{tool_name}({argument_text}) -> path={path}, changed={str(changed).lower()}"
         )
@@ -369,29 +374,54 @@ def build_tool_result_view(
             rendered_summary = f"Arquivo `{path}` atualizado com backup em `{backup_path}`."
         else:
             rendered_summary = f"Arquivo `{path}` criado e validado."
+        summary_updates = {
+            "tracked_path": path,
+            "config": f"{tool_name}: {path}",
+            "config_target": _string_or_default(result.get("target"), "managed"),
+        }
+        if validation_kind:
+            summary_updates["config_validation"] = validation_kind
+        if backup_path:
+            summary_updates["last_backup_path"] = backup_path
         return ToolResultView(
             planner_summary=planner_summary,
             rendered_summary=rendered_summary,
-            summary_updates={
-                "tracked_path": path,
-                "config": f"{tool_name}: {path}",
-            },
+            summary_updates=summary_updates,
         )
 
     if tool_name == "restore_config_backup":
-        path = _string_or_none(result.get("path"), default=str(arguments.get("path", "arquivo")))
+        path = _string_or_default(result.get("path"), _argument_string(arguments, "path", "arquivo"))
         restored_from = _string_or_none(result.get("restored_from"), default="backup desconhecido")
+        config_target = _string_or_none(result.get("target"))
+        rollback_backup_path = _string_or_none(result.get("rollback_backup_path"))
+        validation = result.get("validation")
+        validation_kind = _string_or_none(validation.get("kind")) if isinstance(validation, dict) else None
+        rendered_summary = f"Arquivo `{path}` restaurado a partir de `{restored_from}`."
+        if rollback_backup_path:
+            rendered_summary = (
+                f"{rendered_summary} Backup de rollback atual em `{rollback_backup_path}`."
+            )
+        summary_updates = {
+            "tracked_path": path,
+            "config": f"{tool_name}: {path}",
+        }
+        if config_target:
+            summary_updates["config_target"] = config_target
+        if validation_kind:
+            summary_updates["config_validation"] = validation_kind
+        if rollback_backup_path:
+            summary_updates["last_backup_path"] = rollback_backup_path
         return ToolResultView(
             planner_summary=f"{tool_name}({argument_text}) -> path={path}, restored_from={restored_from}",
-            rendered_summary=f"Arquivo `{path}` restaurado a partir de `{restored_from}`.",
-            summary_updates={
-                "tracked_path": path,
-                "config": f"{tool_name}: {path}",
-            },
+            rendered_summary=rendered_summary,
+            summary_updates=summary_updates,
         )
 
     if tool_name == "restart_service":
-        service = _string_or_none(result.get("service"), default=str(arguments.get("name", "serviço")))
+        service = _string_or_default(
+            result.get("service"),
+            _argument_string(arguments, "name", "serviço"),
+        )
         scope = _string_or_none(result.get("scope"))
         post_restart = result.get("post_restart")
         summary_updates = {"tracked_unit": service}
@@ -418,7 +448,10 @@ def build_tool_result_view(
         )
 
     if tool_name == "reload_service":
-        service = _string_or_none(result.get("service"), default=str(arguments.get("name", "serviço")))
+        service = _string_or_default(
+            result.get("service"),
+            _argument_string(arguments, "name", "serviço"),
+        )
         scope = _string_or_none(result.get("scope"))
         post_reload = result.get("post_reload")
         summary_updates = {"tracked_unit": service}
@@ -467,6 +500,49 @@ def _string_or_none(value: object, *, default: str | None = None) -> str | None:
     if isinstance(value, str) and value:
         return value
     return default
+
+
+def _string_or_default(value: object, default: str) -> str:
+    resolved = _string_or_none(value)
+    return resolved if resolved is not None else default
+
+
+def _argument_string(arguments: dict[str, object], key: str, default: str) -> str:
+    value = arguments.get(key)
+    return _string_or_default(value, default)
+
+
+def _coerce_int(value: object, *, default: int = 0) -> int:
+    if isinstance(value, bool):
+        return default
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError:
+            return default
+    return default
+
+
+def _dedupe_process_rows(value: object, *, limit: int) -> list[dict[str, object]]:
+    if not isinstance(value, list):
+        return []
+    seen_commands: set[str] = set()
+    rows: list[dict[str, object]] = []
+    for item in value:
+        if not isinstance(item, dict):
+            continue
+        command = _string_or_none(item.get("command"))
+        if command is None or command in seen_commands:
+            continue
+        seen_commands.add(command)
+        rows.append(item)
+        if len(rows) >= limit:
+            break
+    return rows
 
 
 def _build_config_excerpt(content: str | None) -> str | None:

@@ -118,6 +118,8 @@ class ProcessUnitContext:
     pid: int | None = None
     unit: str | None = None
     scope: str | None = None
+    attempted: bool = False
+    no_match: bool = False
     stale: bool | None = None
 
     def as_dict(self) -> dict[str, object]:
@@ -130,6 +132,10 @@ class ProcessUnitContext:
             payload["unit"] = self.unit
         if self.scope:
             payload["scope"] = self.scope
+        if self.attempted:
+            payload["attempted"] = self.attempted
+        if self.no_match:
+            payload["no_match"] = self.no_match
         if self.stale is not None:
             payload["stale"] = self.stale
         return payload
@@ -153,6 +159,64 @@ class LogContext:
 
 
 @dataclass(frozen=True, slots=True)
+class FailedServiceEntryContext:
+    unit: str
+    active_state: str | None = None
+    sub_state: str | None = None
+    description: str | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {"unit": self.unit}
+        if self.active_state:
+            payload["active_state"] = self.active_state
+        if self.sub_state:
+            payload["sub_state"] = self.sub_state
+        if self.description:
+            payload["description"] = self.description
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class FailedServicesContext:
+    scope: str | None = None
+    items: tuple[FailedServiceEntryContext, ...] = ()
+    stale: bool | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if self.scope:
+            payload["scope"] = self.scope
+        if self.items:
+            payload["items"] = [item.as_dict() for item in self.items]
+        if self.stale is not None:
+            payload["stale"] = self.stale
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
+class ConfigContext:
+    path: str | None = None
+    target: str | None = None
+    validation_kind: str | None = None
+    backup_path: str | None = None
+    stale: bool | None = None
+
+    def as_dict(self) -> dict[str, object]:
+        payload: dict[str, object] = {}
+        if self.path:
+            payload["path"] = self.path
+        if self.target:
+            payload["target"] = self.target
+        if self.validation_kind:
+            payload["validation_kind"] = self.validation_kind
+        if self.backup_path:
+            payload["backup_path"] = self.backup_path
+        if self.stale is not None:
+            payload["stale"] = self.stale
+        return payload
+
+
+@dataclass(frozen=True, slots=True)
 class SessionContext:
     tracked: TrackedEntities = field(default_factory=TrackedEntities)
     last_intent: str | None = None
@@ -162,6 +226,8 @@ class SessionContext:
     processes: ProcessesContext | None = None
     process_unit: ProcessUnitContext | None = None
     logs: LogContext | None = None
+    failed_services: FailedServicesContext | None = None
+    config: ConfigContext | None = None
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {}
@@ -194,6 +260,14 @@ class SessionContext:
             logs = self.logs.as_dict()
             if logs:
                 payload["logs"] = logs
+        if self.failed_services is not None:
+            failed_services = self.failed_services.as_dict()
+            if failed_services:
+                payload["failed_services"] = failed_services
+        if self.config is not None:
+            config = self.config.as_dict()
+            if config:
+                payload["config"] = config
         return payload
 
 
@@ -210,12 +284,16 @@ def build_session_context(
     processes = _build_processes_context(summary, freshness_by_key.get("processes"))
     process_unit = _build_process_unit_context(freshness_by_key.get("process_unit"))
     logs = _build_logs_context(freshness_by_key.get("logs"))
+    failed_services = _build_failed_services_context(freshness_by_key.get("failed_services"))
+    config = _build_config_context(summary, freshness_by_key.get("config"))
 
     tracked_scope = _valid_scope(summary.get("tracked_scope"))
     if tracked_scope is None and service is not None:
         tracked_scope = service.scope
     if tracked_scope is None and process_unit is not None:
         tracked_scope = process_unit.scope
+    if tracked_scope is None and failed_services is not None:
+        tracked_scope = failed_services.scope
 
     tracked_unit = _non_empty(summary.get("tracked_unit"))
     if tracked_unit is None and service is not None:
@@ -224,6 +302,8 @@ def build_session_context(
         tracked_unit = process_unit.unit
     if tracked_unit is None and logs is not None:
         tracked_unit = logs.unit
+    if tracked_unit is None and failed_services is not None and len(failed_services.items) == 1:
+        tracked_unit = failed_services.items[0].unit
 
     tracked_path = _non_empty(summary.get("tracked_path"))
     if tracked_path is None:
@@ -231,6 +311,8 @@ def build_session_context(
         tracked_path = _extract_path_from_freshness(config_freshness)
     if tracked_path is None and disk is not None:
         tracked_path = disk.path
+    if tracked_path is None and config is not None:
+        tracked_path = config.path
 
     return SessionContext(
         tracked=TrackedEntities(unit=tracked_unit, scope=tracked_scope, path=tracked_path),
@@ -241,6 +323,8 @@ def build_session_context(
         processes=processes,
         process_unit=process_unit,
         logs=logs,
+        failed_services=failed_services,
+        config=config,
     )
 
 
@@ -380,6 +464,79 @@ def _build_logs_context(freshness: ObservationFreshness | None) -> LogContext | 
     return LogContext(unit=unit, returned_lines=returned_lines, stale=freshness.stale)
 
 
+def _build_failed_services_context(
+    freshness: ObservationFreshness | None,
+) -> FailedServicesContext | None:
+    if freshness is None:
+        return None
+    scope = _valid_scope(freshness.value.get("scope"))
+    units_value = freshness.value.get("units")
+    items: list[FailedServiceEntryContext] = []
+    seen_units: set[str] = set()
+    if isinstance(units_value, list):
+        for raw_item in units_value[:5]:
+            if not isinstance(raw_item, dict):
+                continue
+            unit = _non_empty(raw_item.get("unit"))
+            if unit is None or unit in seen_units:
+                continue
+            seen_units.add(unit)
+            items.append(
+                FailedServiceEntryContext(
+                    unit=unit,
+                    active_state=_non_empty(raw_item.get("active_state")),
+                    sub_state=_non_empty(raw_item.get("sub_state")),
+                    description=_non_empty(raw_item.get("description")),
+                )
+            )
+    if scope is None and not items:
+        return None
+    return FailedServicesContext(scope=scope, items=tuple(items), stale=freshness.stale)
+
+
+def _build_config_context(
+    summary: dict[str, str],
+    freshness: ObservationFreshness | None,
+) -> ConfigContext | None:
+    if freshness is not None:
+        path = _non_empty(freshness.value.get("path"))
+        target = _non_empty(freshness.value.get("target"))
+        validation_kind = None
+        validation = freshness.value.get("validation")
+        if isinstance(validation, dict):
+            validation_kind = _non_empty(validation.get("kind"))
+        backup_path = _non_empty(freshness.value.get("backup_path"))
+        rollback_backup_path = _non_empty(freshness.value.get("rollback_backup_path"))
+        restored_from = _non_empty(freshness.value.get("restored_from"))
+        resolved_backup_path = rollback_backup_path or backup_path or restored_from
+        if (
+            path is not None
+            or target is not None
+            or validation_kind is not None
+            or resolved_backup_path is not None
+        ):
+            return ConfigContext(
+                path=path,
+                target=target,
+                validation_kind=validation_kind,
+                backup_path=resolved_backup_path,
+                stale=freshness.stale,
+            )
+
+    path = _non_empty(summary.get("tracked_path"))
+    target = _non_empty(summary.get("config_target"))
+    validation_kind = _non_empty(summary.get("config_validation"))
+    backup_path = _non_empty(summary.get("last_backup_path"))
+    if path is None and target is None and validation_kind is None and backup_path is None:
+        return None
+    return ConfigContext(
+        path=path,
+        target=target,
+        validation_kind=validation_kind,
+        backup_path=backup_path,
+    )
+
+
 def _build_process_unit_context(
     freshness: ObservationFreshness | None,
 ) -> ProcessUnitContext | None:
@@ -392,8 +549,17 @@ def _build_process_unit_context(
     if isinstance(query, dict):
         query_name = _non_empty(query.get("name"))
         query_pid = _as_int(query.get("pid"))
+    resolved_count = _as_int(freshness.value.get("resolved_count"))
     if not isinstance(primary_match, dict):
-        return None
+        if query_name is None and query_pid is None:
+            return None
+        return ProcessUnitContext(
+            query_name=query_name,
+            pid=query_pid,
+            attempted=True,
+            no_match=resolved_count == 0,
+            stale=freshness.stale,
+        )
     unit = _non_empty(primary_match.get("unit"))
     scope = _valid_scope(primary_match.get("scope"))
     pid = _as_int(primary_match.get("pid")) or query_pid
@@ -404,6 +570,8 @@ def _build_process_unit_context(
         pid=pid,
         unit=unit,
         scope=scope,
+        attempted=True,
+        no_match=unit is None and resolved_count == 0,
         stale=freshness.stale,
     )
 
@@ -411,20 +579,26 @@ def _build_process_unit_context(
 def _extract_process_items(value: object) -> tuple[ProcessEntryContext, ...]:
     if not isinstance(value, list):
         return ()
-    items: list[ProcessEntryContext] = []
+    items_by_command: dict[str, ProcessEntryContext] = {}
     for item in value[:3]:
         if not isinstance(item, dict):
             continue
         command = _non_empty(item.get("command"))
         if command is None:
             continue
-        items.append(
-            ProcessEntryContext(
-                command=command,
-                cpu_percent=_as_float(item.get("cpu_percent")),
-            )
+        next_entry = ProcessEntryContext(
+            command=command,
+            cpu_percent=_as_float(item.get("cpu_percent")),
         )
-    return tuple(items)
+        existing = items_by_command.get(command)
+        if existing is None:
+            items_by_command[command] = next_entry
+            continue
+        existing_cpu = existing.cpu_percent
+        next_cpu = next_entry.cpu_percent
+        if existing_cpu is None or (next_cpu is not None and next_cpu > existing_cpu):
+            items_by_command[command] = next_entry
+    return tuple(items_by_command.values())
 
 
 def _extract_path_from_freshness(freshness: ObservationFreshness | None) -> str | None:

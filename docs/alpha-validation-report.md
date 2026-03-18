@@ -18,23 +18,30 @@ Validated successfully:
 - `python3 -m ruff check .`
 - `python3 -m mypy src`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
+- `PYTHONPATH=src python3 -m pytest -q`
 - `python3 -m compileall src`
 - `PYTHONPATH=src python3 -m master_control --json doctor`
 
 Current automated suite size at this snapshot:
 
-- 92 tests
+- 115 tests
 
 Additional trust-boundary regressions now covered in the automated suite:
 
 - slow-host diagnosis does not infer a service action from the hottest process alone
+- top-process selection filters collector noise from the current MC process tree and transient `ps` helper processes
 - service follow-ups preserve `scope=user|system`
 - service restart recommendations require explicit service evidence
 - stale service signals degrade to refresh-oriented recommendations instead of risky actions
 - service and log follow-ups can reuse structured session context without relying on summary text alone
 - diagnostic summaries can complete from fresh observations even when the compact summary is absent
 - slow-host diagnosis can use `process_to_unit` before `service_status` and still conclude within one turn
-- hot-process recommendations do not repeat process-correlation actions once the correlation already exists
+- hot-process recommendations can move from typed process correlation into `service_status` when the correlated unit is a valid service target
+- hot-process recommendations do not repeat process-correlation actions once a no-match state is already known
+- non-service `systemd` scope correlations do not trigger a `service_status` lookup
+- failed-service listings can generate a direct `service_status` follow-up recommendation
+- recent managed config backups can generate rollback recommendations and natural-language rollback planning
+- operator-facing top-process rendering collapses repeated commands so the slow-host lead is less noisy
 
 ## Provider validation
 
@@ -49,11 +56,14 @@ Real chat smokes completed:
 - `mostre o uso de memoria`
 - `o host esta lento`
 - `o host esta lento` now completes through memory, processes, process correlation, and service status when correlation evidence exists
+- `o host esta lento` no longer promotes the transient `ps` collector artifact as the hottest actionable process on this host
+- `o host esta lento` no longer escalates a non-service `systemd` scope correlation into `service_status`
 
 Current trust note for the heuristic path:
 
 - `o host esta lento` can now use a dedicated typed correlation step before a service lookup
-- service lookup still requires explicit service evidence, tracked service state, or typed process -> unit correlation
+- service lookup still requires explicit service evidence, tracked service state, or typed process -> service-unit correlation
+- correlations to non-service units such as `.scope` remain evidence, but are no longer treated as valid service targets
 
 ## Service operation validation
 

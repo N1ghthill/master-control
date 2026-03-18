@@ -150,6 +150,8 @@ MVP closeout record:
 - `docs/diagrams/master-control-flow.svg`
 - `docs/mvp-closeout-backlog.md`
 - `docs/mvp-evolution-plan.md`
+- `docs/post-mvp-evolution-plan.md`
+- `docs/operator-workflows.md`
 - `docs/status.md`
 - `docs/mvp-plan.md`
 - `docs/providers.md`

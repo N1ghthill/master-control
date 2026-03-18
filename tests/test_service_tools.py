@@ -12,6 +12,7 @@ from master_control.tools.read_journal import ReadJournalTool
 from master_control.tools.reload_service import ReloadServiceTool
 from master_control.tools.restart_service import RestartServiceTool
 from master_control.tools.service_status import ServiceStatusTool
+from master_control.tools.top_processes import TopProcessesTool
 
 
 class StubRunner:
@@ -32,6 +33,32 @@ class StubRunner:
 
 
 class ServiceToolsTest(unittest.TestCase):
+    def test_top_processes_filters_collector_noise(self) -> None:
+        runner = StubRunner(
+            [
+                CommandResult(
+                    returncode=0,
+                    stdout=(
+                        " 100 1 99.0 0.1 python3\n"
+                        " 101 100 88.0 0.0 ps\n"
+                        " 200 1 77.0 1.2 nginx\n"
+                        " 300 1 55.0 0.7 postgres\n"
+                    ),
+                    stderr="",
+                    truncated_stdout=False,
+                    truncated_stderr=False,
+                )
+            ]
+        )
+        tool = TopProcessesTool(runner)
+
+        with patch("master_control.tools.top_processes.os.getpid", return_value=100):
+            payload = tool.invoke({"limit": "2"})
+
+        self.assertEqual(payload["status"], "ok")
+        self.assertEqual(payload["excluded_process_count"], 2)
+        self.assertEqual([item["command"] for item in payload["processes"]], ["nginx", "postgres"])
+
     def test_process_to_unit_correlates_name_matches_with_systemd_unit(self) -> None:
         runner = StubRunner(
             [

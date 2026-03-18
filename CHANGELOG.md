@@ -37,9 +37,16 @@
 - the narrow local CLI MVP closeout is now complete for the alpha baseline
 - slow-host diagnosis can now chain memory, processes, process correlation, and service status when correlation evidence exists
 - hot-process follow-up logic no longer relies on guessed service identity and can use typed correlation evidence instead
+- hot-process selection now filters collector noise from transient `ps` helper processes before recommendations are derived
+- process-correlation no-match state now persists through session context so the recommendation layer does not repeat failed correlation attempts
+- heuristic service follow-ups no longer treat non-service `systemd` units such as `.scope` as valid `service_status` targets
+- operator-facing top-process rendering now collapses repeated commands so slow-host output is less noisy
+- failed-service observations can now drive a direct `service_status` follow-up recommendation
+- managed config summary/context now preserves target, validation, and backup metadata for later rollback
+- natural-language rollback follow-ups can now plan `restore_config_backup` from tracked session context
 - recommendation and approval rendering now expose evidence summaries, freshness, target identity, and next-step commands
 - MVP closeout documents were rewritten as completion records instead of leaving an active milestone backlog behind
-- alpha validation now includes clean-environment install via `virtualenv`, real-host operator-utility smokes, and 92 automated tests
+- alpha validation now includes clean-environment install via `virtualenv`, real-host operator-utility smokes, workflow guidance docs, and 115 automated tests
 - project documentation now reflects the current alpha stage instead of the initial scaffold stage
 - roadmap now separates completed foundation work from the remaining MVP closeout work
 - the project now reads as a late-alpha MVP candidate rather than an early scaffold

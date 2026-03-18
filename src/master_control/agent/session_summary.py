@@ -17,11 +17,14 @@ SUMMARY_ORDER = (
     "disk",
     "service",
     "config",
+    "config_target",
+    "config_validation",
+    "last_backup_path",
     "logs",
     "processes",
     "last_assistant_reply",
 )
-MAX_SUMMARY_LINES = 10
+MAX_SUMMARY_LINES = 13
 MAX_VALUE_CHARS = 180
 
 
@@ -110,7 +113,8 @@ def _apply_execution_summary(
     resolved_arguments = arguments if isinstance(arguments, dict) else {}
     view = build_tool_result_view(tool_name, resolved_arguments, result)
     for key, value in view.summary_updates.items():
-        summary[key] = _truncate(value)
+        if isinstance(value, str) and value:
+            summary[key] = _truncate(value)
 
 
 def _extract_tracked_unit(tool_name: str, arguments: dict[str, object]) -> str | None:

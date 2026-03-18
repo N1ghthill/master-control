@@ -7,6 +7,7 @@ from pathlib import Path
 from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
 from master_control.agent.session_context import (
+    ConfigContext,
     ProcessEntryContext,
     ProcessesContext,
     ProcessUnitContext,
@@ -193,7 +194,7 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].action_tool_name, "process_to_unit")
         self.assertEqual(insights[0].action_arguments, {"name": "python3", "limit": "3"})
 
-    def test_collect_session_insights_hot_process_does_not_repeat_known_correlation(self) -> None:
+    def test_collect_session_insights_hot_process_known_correlation_proposes_service_follow_up(self) -> None:
         insights = collect_session_insights_from_context(
             SessionContext(
                 tracked=TrackedEntities(unit="ollama-local.service", scope="user"),
@@ -213,8 +214,122 @@ class SessionInsightsTest(unittest.TestCase):
 
         self.assertEqual(len(insights), 1)
         self.assertEqual(insights[0].key, "hot_process")
-        self.assertIsNone(insights[0].action_tool_name)
+        self.assertEqual(insights[0].action_tool_name, "service_status")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "ollama-local.service", "scope": "user"},
+        )
         self.assertIn("ollama-local.service", insights[0].message)
+
+    def test_collect_session_insights_hot_process_with_service_correlation_proposes_status(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(unit="nginx.service", scope="system"),
+                processes=ProcessesContext(
+                    items=(ProcessEntryContext(command="nginx", cpu_percent=91.2),),
+                    stale=False,
+                ),
+                process_unit=ProcessUnitContext(
+                    query_name="nginx",
+                    unit="nginx.service",
+                    scope="system",
+                    attempted=True,
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "hot_process")
+        self.assertEqual(insights[0].action_tool_name, "service_status")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "nginx.service", "scope": "system"},
+        )
+
+    def test_collect_session_insights_hot_process_does_not_repeat_known_no_match(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(),
+                processes=ProcessesContext(
+                    items=(ProcessEntryContext(command="python3", cpu_percent=91.2),),
+                    stale=False,
+                ),
+                process_unit=ProcessUnitContext(
+                    query_name="python3",
+                    attempted=True,
+                    no_match=True,
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "hot_process")
+        self.assertIsNone(insights[0].action_tool_name)
+        self.assertIn("não houve um unit claro", insights[0].message)
+
+    def test_collect_session_insights_failed_services_proposes_service_detail(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "failed_services",
+                    "key": "failed_services",
+                    "value": {
+                        "scope": "system",
+                        "units": [
+                            {
+                                "unit": "nginx.service",
+                                "active_state": "failed",
+                                "sub_state": "failed",
+                            },
+                            {
+                                "unit": "postgresql.service",
+                                "active_state": "failed",
+                                "sub_state": "failed",
+                            },
+                        ],
+                    },
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_with_freshness(None, freshness)
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "failed_service_detected")
+        self.assertEqual(insights[0].action_tool_name, "service_status")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "nginx.service", "scope": "system"},
+        )
+
+    def test_collect_session_insights_config_backup_proposes_restore(self) -> None:
+        insights = collect_session_insights_from_context(
+            SessionContext(
+                tracked=TrackedEntities(path="/etc/app.ini"),
+                config=ConfigContext(
+                    path="/etc/app.ini",
+                    target="managed_ini",
+                    validation_kind="ini_parse",
+                    backup_path="/tmp/app.bak",
+                    stale=False,
+                ),
+            ),
+            (),
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "config_backup_available")
+        self.assertEqual(insights[0].action_tool_name, "restore_config_backup")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"path": "/etc/app.ini", "backup_path": "/tmp/app.bak"},
+        )
 
     def test_collect_session_insights_without_service_evidence_does_not_propose_restart(self) -> None:
         insights = collect_session_insights("service: nginx.service: active=failed, sub=failed")
