@@ -225,6 +225,50 @@ class CliObservationCommandTest(unittest.TestCase):
             self.assertIn("memory_pressure", output_lines[0])
             self.assertIn("service_state_refresh", output_lines[1])
 
+    def test_reconcile_command_renders_summary(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "service: nginx.service: active=failed, sub=failed",
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-18T01:00:00Z",
+                ttl_seconds=180,
+            )
+
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(state_dir / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with redirect_stdout(stdout):
+                    exit_code = main(["reconcile", "--session-id", str(session_id)])
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Reconcile mode=single", output)
+            self.assertIn(f"session={session_id}", output)
+
 
 if __name__ == "__main__":
     unittest.main()

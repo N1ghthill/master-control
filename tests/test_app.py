@@ -285,6 +285,87 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertEqual(payload["recommendations"][1]["source_key"], "service_state_refresh")
             self.assertEqual(payload["recommendations"][1]["confidence"], "stale")
 
+    def test_reconcile_recommendations_updates_session_state(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "service: nginx.service: active=failed, sub=failed",
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-17T20:00:00Z",
+                ttl_seconds=180,
+            )
+            app.store.sync_session_recommendations(
+                session_id,
+                [
+                    {
+                        "dedupe_key": "service_state:nginx.service",
+                        "source_key": "service_state",
+                        "severity": "critical",
+                        "message": "O serviço está falhando.",
+                        "action": {
+                            "kind": "run_tool",
+                            "tool_name": "restart_service",
+                            "title": "Reiniciar o serviço `nginx.service`.",
+                            "arguments": {"name": "nginx.service"},
+                        },
+                    }
+                ],
+            )
+
+            payload = app.reconcile_recommendations(session_id=session_id)
+            recommendations = app.list_session_recommendations(session_id=session_id)
+            events = app.list_audit_events(limit=10)
+
+            self.assertEqual(payload["mode"], "single")
+            self.assertEqual(payload["sessions"][0]["session_id"], session_id)
+            self.assertEqual(payload["sessions"][0]["new_count"], 1)
+            self.assertEqual(payload["sessions"][0]["auto_resolved_count"], 1)
+            self.assertEqual(
+                recommendations["recommendations"][0]["source_key"],
+                "service_state_refresh",
+            )
+            self.assertTrue(
+                any(event["event_type"] == "recommendations_reconciled" for event in events)
+            )
+
+    def test_reconcile_recommendations_can_scan_all_sessions(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="none",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            app.bootstrap()
+            first_session = app.store.create_session()
+            second_session = app.store.create_session()
+            app.store.upsert_session_summary(first_session, "memory: memory 95.0% used, swap 20.0% used")
+            app.store.upsert_session_summary(second_session, "service: nginx.service: active=failed, sub=failed")
+
+            payload = app.reconcile_recommendations(all_sessions=True)
+
+            self.assertEqual(payload["mode"], "all")
+            self.assertEqual(payload["session_count"], 2)
+
     def test_registry_contains_core_tools(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

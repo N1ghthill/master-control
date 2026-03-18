@@ -36,6 +36,7 @@
 - recommendations now degrade to refresh actions when the underlying signal is stale
 - recommendation listings now expose signal freshness/confidence in the operator surface
 - recommendation ordering now prioritizes fresh signals over stale ones
+- recommendation state can now be reconciled explicitly without a new chat turn
 
 ### Notes
 

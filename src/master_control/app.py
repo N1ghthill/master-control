@@ -14,7 +14,6 @@ from master_control.agent.observations import (
 from master_control.agent.recommendation_sync import RecommendationSyncResult
 from master_control.agent.session_insights import (
     SessionInsight,
-    collect_session_insights,
     collect_session_insights_with_freshness,
 )
 from master_control.agent.planner import ExecutionPlan
@@ -199,6 +198,54 @@ class MasterControlApp:
             "session_id": resolved_session_id,
             "status_filter": status,
             "recommendations": recommendations,
+        }
+
+    def reconcile_recommendations(
+        self,
+        *,
+        session_id: int | None = None,
+        all_sessions: bool = False,
+    ) -> dict[str, object]:
+        self.bootstrap()
+        if all_sessions and session_id is not None:
+            raise ValueError("Cannot use session_id and all_sessions at the same time.")
+
+        if all_sessions:
+            session_ids = [int(item["session_id"]) for item in self.store.list_sessions(limit=10_000)]
+        else:
+            session_ids = [self._resolve_session_id(session_id)]
+
+        reconciled_sessions: list[dict[str, object]] = []
+        for resolved_session_id in session_ids:
+            summary_text = self._load_session_summary(resolved_session_id)
+            observation_freshness = self._load_observation_freshness(resolved_session_id)
+            insights = collect_session_insights_with_freshness(summary_text, observation_freshness)
+            sync = self._sync_session_recommendations(
+                resolved_session_id,
+                insights,
+                observation_freshness,
+            )
+            payload = {
+                "session_id": resolved_session_id,
+                "insight_count": len(insights),
+                "observation_count": len(observation_freshness),
+                "stale_observation_count": sum(1 for item in observation_freshness if item.stale),
+                "active_count": len(sync.active),
+                "new_count": len(sync.new),
+                "reopened_count": len(sync.reopened),
+                "auto_resolved_count": len(sync.auto_resolved),
+                "recommendations": sync.as_dict(),
+            }
+            self.store.record_audit_event(
+                "recommendations_reconciled",
+                payload,
+            )
+            reconciled_sessions.append(payload)
+
+        return {
+            "mode": "all" if all_sessions else "single",
+            "session_count": len(reconciled_sessions),
+            "sessions": reconciled_sessions,
         }
 
     def update_recommendation_status(
@@ -1202,7 +1249,7 @@ class MasterControlApp:
 
         if lowered in {"/help", "help"}:
             return (
-                "Commands: /help, /doctor, /tools, /audit, /insights, /recommendations, "
+                "Commands: /help, /doctor, /tools, /audit, /insights, /recommendations, /reconcile, "
                 "/recommendation <id> <status>, /recommendation-run <id> [confirm], "
                 "/tool <name> [key=value ...] [confirm]. "
                 "Natural-language requests are routed through the configured provider."
@@ -1228,6 +1275,13 @@ class MasterControlApp:
         if lowered == "/recommendations":
             try:
                 payload = self.list_session_recommendations()
+            except ValueError as exc:
+                return str(exc)
+            return json.dumps(payload, indent=2, sort_keys=True)
+
+        if lowered == "/reconcile":
+            try:
+                payload = self.reconcile_recommendations()
             except ValueError as exc:
                 return str(exc)
             return json.dumps(payload, indent=2, sort_keys=True)

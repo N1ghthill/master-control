@@ -55,6 +55,8 @@ mc observations --session-id 1 --stale-only
 mc insights --session-id 1
 mc recommendations --session-id 1
 mc recommendations --session-id 1 --status open
+mc reconcile --session-id 1
+mc reconcile --all
 mc recommendation <id> accepted
 mc recommendation-run <id>
 mc recommendation-run <id> --confirm
@@ -211,6 +213,7 @@ Observation inspection:
 - observations start appearing from new executions after the freshness model was introduced; older sessions are not backfilled
 - `mc recommendations --session-id <id>` now shows confidence/freshness for the signal behind each recommendation
 - recommendation listings and chat highlights now prioritize fresh signals before stale ones
+- `mc reconcile --session-id <id>` recomputes recommendations from the current summary + freshness state without waiting for a new chat turn
 
 Provider-specific optional knobs:
 

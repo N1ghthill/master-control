@@ -76,6 +76,22 @@ def build_parser() -> argparse.ArgumentParser:
         help="Filter recommendations by status.",
     )
 
+    reconcile_parser = subparsers.add_parser(
+        "reconcile",
+        help="Recompute recommendation state from summaries and observation freshness.",
+    )
+    reconcile_group = reconcile_parser.add_mutually_exclusive_group()
+    reconcile_group.add_argument(
+        "--session-id",
+        type=int,
+        help="Target session id. Defaults to the latest known session.",
+    )
+    reconcile_group.add_argument(
+        "--all",
+        action="store_true",
+        help="Reconcile all known sessions.",
+    )
+
     recommendation_parser = subparsers.add_parser(
         "recommendation",
         help="Update the status of a recommendation.",
@@ -354,6 +370,32 @@ def main(argv: Sequence[str] | None = None) -> int:
                 action_text = _format_recommendation_action(item)
                 if action_text:
                     print(f"action: {action_text}")
+        return 0
+
+    if args.command == "reconcile":
+        try:
+            payload = app.reconcile_recommendations(
+                session_id=args.session_id,
+                all_sessions=args.all,
+            )
+        except ValueError as exc:
+            parser.error(str(exc))
+            return 2
+        if args.json:
+            _print_json(payload)
+        else:
+            print(f"Reconcile mode={payload['mode']} sessions={payload['session_count']}")
+            for item in payload["sessions"]:
+                print(
+                    f"session={item['session_id']} "
+                    f"insights={item['insight_count']} "
+                    f"observations={item['observation_count']} "
+                    f"stale={item['stale_observation_count']} "
+                    f"active={item['active_count']} "
+                    f"new={item['new_count']} "
+                    f"reopened={item['reopened_count']} "
+                    f"resolved={item['auto_resolved_count']}"
+                )
         return 0
 
     if args.command == "recommendation":

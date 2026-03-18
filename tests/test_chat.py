@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import tempfile
 import unittest
 from pathlib import Path
@@ -205,6 +206,25 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["plan"]["steps"][0]["tool_name"], "read_journal")
             self.assertEqual(payload["plan"]["steps"][0]["arguments"]["unit"], "ssh")
             self.assertEqual(payload["plan"]["steps"][0]["arguments"]["lines"], 2)
+
+    def test_chat_command_reconcile_returns_payload_for_current_session(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir)
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=state_dir,
+                db_path=state_dir / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings)
+            payload = app.chat("mostre o uso de memoria", new_session=True)
+
+            rendered = app.handle_message("/reconcile")
+            parsed = json.loads(rendered)
+
+            self.assertEqual(parsed["mode"], "single")
+            self.assertEqual(parsed["sessions"][0]["session_id"], payload["session_id"])
 
 
 if __name__ == "__main__":

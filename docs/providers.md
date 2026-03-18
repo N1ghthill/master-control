@@ -67,6 +67,13 @@ The recommendation listing also exposes that confidence explicitly, so operators
 
 That same confidence now affects ordering: recommendations backed by fresh signals are shown before stale ones in both `mc recommendations` and the chat-side session highlights.
 
+Operators can also reconcile that queue explicitly without sending a new natural-language request:
+
+- `mc reconcile --session-id <id>`
+- `mc reconcile --all`
+
+This recomputes insights and recommendation state from the persisted summary plus current observation freshness, and records an audit event for the reconciliation pass.
+
 MC also persists those suggestions as explicit session recommendations, so follow-up operations can track recommendation lifecycle instead of recomputing meaning from raw chat alone.
 
 When a recommendation includes an executable action, that action remains provider-independent metadata. The provider proposes observations and plans; MC decides whether a recommendation can expose a typed action such as `restart_service`, and any execution still goes through local policy, confirmation, and audit.

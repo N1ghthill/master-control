@@ -53,6 +53,7 @@ Snapshot date: 2026-03-17
 - recommendations that degrade to refresh actions when the underlying signal is stale
 - recommendation listings now expose signal freshness and confidence to the operator
 - recommendation ordering now prioritizes fresh signals over stale ones
+- explicit recommendation reconciliation is available through CLI and chat command paths
 
 ### Safe mutations started
 
