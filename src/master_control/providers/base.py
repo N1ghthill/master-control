@@ -27,6 +27,15 @@ class ProviderRequest:
 
 
 @dataclass(frozen=True, slots=True)
+class SynthesisRequest:
+    user_message: str
+    planning_message: str
+    execution_observations: tuple[str, ...] = ()
+    rendered_results: tuple[str, ...] = ()
+    previous_response_id: str | None = None
+
+
+@dataclass(frozen=True, slots=True)
 class ProviderResponse:
     message: str
     plan: ExecutionPlan | None = None

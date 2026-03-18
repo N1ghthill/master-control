@@ -82,6 +82,14 @@ The local heuristic provider also supports a small set of approval-gated actions
 
 The app can also call a provider multiple times inside one user turn. Earlier tool results are summarized back into the planning context so the next planning pass can continue the diagnosis or stop and summarize.
 
+For `openai` and `ollama`, MC now also performs a dedicated final response synthesis step after tool execution. This keeps the planning contract strict while still letting the active model produce the operator-facing explanation from the actual observed results.
+
+That synthesis layer follows the same safety rules:
+
+- it receives only the executed-tool evidence and local rendered summaries
+- it cannot trigger tools directly
+- if synthesis fails, MC falls back to the local deterministic rendering path and records the provider error in audit
+
 ## Environment variables
 
 Core selection:

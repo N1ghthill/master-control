@@ -7,7 +7,7 @@ from pathlib import Path
 
 from master_control.config import Settings
 from master_control.agent.observations import build_observation_freshness
-from master_control.providers.base import ConversationMessage, ProviderRequest
+from master_control.providers.base import ConversationMessage, ProviderRequest, SynthesisRequest
 from master_control.providers.ollama_chat import OllamaChatProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
 
@@ -98,6 +98,72 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertIn("Local session summary:", captured_payload["messages"][0]["content"])
             self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
             self.assertIn("service", captured_payload["messages"][0]["content"])
+
+    def test_provider_can_synthesize_final_response(self) -> None:
+        captured_payload: dict[str, object] = {}
+
+        def fake_transport(
+            url: str,
+            payload: dict[str, object],
+            headers: dict[str, str],
+            timeout_s: float,
+        ) -> TransportResponse:
+            del url, headers, timeout_s
+            captured_payload.update(payload)
+            body = {
+                "model": "qwen2.5:7b",
+                "done": True,
+                "message": {
+                    "role": "assistant",
+                    "content": json.dumps(
+                        {
+                            "message": "A memória está alta e os processos quentes já foram identificados.",
+                        }
+                    ),
+                },
+            }
+            return TransportResponse(
+                status_code=200,
+                body=json.dumps(body),
+                headers={},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="ollama",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+                ollama_model="qwen2.5:7b",
+            )
+            provider = OllamaChatProvider(settings, transport=fake_transport)
+
+            response = provider.synthesize(
+                SynthesisRequest(
+                    user_message="o host esta lento",
+                    planning_message="Vou verificar a memória e os processos.",
+                    execution_observations=("memory_usage({}) -> memory=92.0%, swap=10.0%",),
+                    rendered_results=(
+                        "Memória usada: 92.0% (92 B de 100 B). Swap usada: 10.0% (10 B de 100 B).",
+                    ),
+                )
+            )
+
+            self.assertEqual(
+                response.message,
+                "A memória está alta e os processos quentes já foram identificados.",
+            )
+            self.assertEqual(response.metadata["purpose"], "response_synthesis")
+            self.assertEqual(captured_payload["format"]["required"], ["message"])
+            self.assertIn(
+                "response synthesis layer",
+                captured_payload["messages"][0]["content"],
+            )
+            self.assertIn(
+                "Rendered tool results:",
+                captured_payload["messages"][1]["content"],
+            )
 
 
 if __name__ == "__main__":

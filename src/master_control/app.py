@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import shlex
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
@@ -35,6 +35,7 @@ from master_control.providers.base import (
     ProviderError,
     ProviderRequest,
     ProviderResponse,
+    SynthesisRequest,
 )
 from master_control.providers.factory import build_provider
 from master_control.store.session_store import SessionStore
@@ -58,6 +59,13 @@ class PlanningLoopResult:
     working_summary: str | None
     working_freshness: tuple[ObservationFreshness, ...]
     response_id: str | None
+
+
+@dataclass(frozen=True, slots=True)
+class FinalChatResponse:
+    message: str
+    response_id: str | None = None
+    metadata: dict[str, object] = field(default_factory=dict)
 
 
 class MasterControlApp:
@@ -625,27 +633,36 @@ class MasterControlApp:
                 "error": str(exc),
             }
 
-        self.previous_provider_response_id = planning_result.response_id
-        self.store.update_session_provider_state(
-            active_session_id,
-            self.provider.name,
-            planning_result.response_id,
-        )
         plan_payload = (
             planning_result.provider_response.plan.as_dict()
             if planning_result.provider_response.plan
             else None
         )
-        final_message = self._render_chat_response(
+        final_response = self._build_final_chat_response(
             planning_result.provider_response,
             planning_result.executions,
+            user_input=user_input,
+            session_id=active_session_id,
+            conversation_history=conversation_history,
+            session_summary=planning_result.working_summary,
+            previous_response_id=planning_result.response_id,
         )
+        final_provider_response_id = final_response.response_id or planning_result.response_id
+        self.previous_provider_response_id = final_provider_response_id
+        self.store.update_session_provider_state(
+            active_session_id,
+            self.provider.name,
+            final_provider_response_id,
+        )
+        provider_metadata = dict(planning_result.provider_response.metadata)
+        if final_response.metadata:
+            provider_metadata["synthesis"] = final_response.metadata
         updated_summary = update_session_summary(
             planning_result.working_summary,
             user_input=user_input,
             plan=planning_result.provider_response.plan,
             executions=[],
-            assistant_message=final_message,
+            assistant_message=final_response.message,
         )
         self.store.upsert_session_summary(active_session_id, updated_summary)
         observation_freshness = planning_result.working_freshness
@@ -656,7 +673,7 @@ class MasterControlApp:
             observation_freshness,
         )
         final_message_with_recommendations = self._append_recommendations_to_message(
-            final_message,
+            final_response.message,
             recommendation_sync,
         )
         self.store.append_conversation_message(
@@ -669,7 +686,7 @@ class MasterControlApp:
             "session_id": active_session_id,
             "message": final_message_with_recommendations,
             "plan": plan_payload,
-            "provider_metadata": planning_result.provider_response.metadata,
+            "provider_metadata": provider_metadata,
             "session_summary": updated_summary,
             "observation_freshness": [item.as_dict() for item in observation_freshness],
             "insights": [insight.as_dict() for insight in insights],
@@ -980,11 +997,13 @@ class MasterControlApp:
         conversation_history: list[ConversationMessage],
         session_summary: str | None,
         error: str,
+        phase: str = "planning",
     ) -> None:
         self.store.record_audit_event(
             "provider_error",
             {
                 "source": "chat",
+                "phase": phase,
                 "session_id": session_id,
                 "configured_provider": self.settings.provider,
                 "provider_backend": self.provider.name,
@@ -1048,11 +1067,67 @@ class MasterControlApp:
         executions: list[dict[str, object]],
     ) -> str:
         sections = [provider_response.message]
-        rendered_results = [self._render_execution_summary(execution) for execution in executions]
-        rendered_results = [item for item in rendered_results if item]
+        rendered_results = self._collect_rendered_execution_summaries(executions)
         if rendered_results:
             sections.extend(rendered_results)
         return "\n\n".join(sections)
+
+    def _build_final_chat_response(
+        self,
+        provider_response: ProviderResponse,
+        executions: list[dict[str, object]],
+        *,
+        user_input: str,
+        session_id: int,
+        conversation_history: list[ConversationMessage],
+        session_summary: str | None,
+        previous_response_id: str | None,
+    ) -> FinalChatResponse:
+        fallback_message = self._render_chat_response(provider_response, executions)
+        if not executions:
+            return FinalChatResponse(message=fallback_message, response_id=previous_response_id)
+
+        synthesize = getattr(self.provider, "synthesize", None)
+        if not callable(synthesize):
+            return FinalChatResponse(message=fallback_message, response_id=previous_response_id)
+
+        request = SynthesisRequest(
+            user_message=user_input,
+            planning_message=provider_response.message,
+            execution_observations=tuple(
+                self._summarize_execution_for_planner(execution) for execution in executions
+            ),
+            rendered_results=tuple(self._collect_rendered_execution_summaries(executions)),
+            previous_response_id=previous_response_id,
+        )
+        try:
+            synthesis_response = synthesize(request)
+        except ProviderError as exc:
+            self._record_provider_error(
+                session_id=session_id,
+                user_input=user_input,
+                conversation_history=conversation_history,
+                session_summary=session_summary,
+                error=str(exc),
+                phase="synthesis",
+            )
+            return FinalChatResponse(message=fallback_message, response_id=previous_response_id)
+
+        synthesized_message = synthesis_response.message.strip()
+        if not synthesized_message:
+            return FinalChatResponse(message=fallback_message, response_id=previous_response_id)
+        return FinalChatResponse(
+            message=synthesized_message,
+            response_id=synthesis_response.response_id or previous_response_id,
+            metadata=synthesis_response.metadata,
+        )
+
+    def _collect_rendered_execution_summaries(
+        self,
+        executions: list[dict[str, object]],
+    ) -> list[str]:
+        rendered_results = [self._render_execution_summary(execution) for execution in executions]
+        return [item for item in rendered_results if item]
 
     def _sync_session_recommendations(
         self,

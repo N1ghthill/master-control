@@ -9,13 +9,19 @@ from typing import Any, Callable
 from master_control.agent.planner import ExecutionPlan, PlanStep
 from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
-from master_control.providers.base import ProviderError, ProviderRequest, ProviderResponse
+from master_control.providers.base import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+    SynthesisRequest,
+)
 from master_control.tools.base import ToolSpec
 
 
 OPENAI_PLAN_FUNCTION_NAME = "submit_plan"
 OPENAI_USER_AGENT = "master-control/0.1.0a1"
 DEFAULT_MAX_OUTPUT_TOKENS = 1200
+DEFAULT_SYNTHESIS_MAX_OUTPUT_TOKENS = 700
 ALLOWED_ARGUMENT_VALUE_SCHEMAS: list[dict[str, str]] = [
     {"type": "string"},
     {"type": "integer"},
@@ -105,6 +111,35 @@ class OpenAIResponsesProvider:
             metadata=metadata,
         )
 
+    def synthesize(self, request: SynthesisRequest) -> ProviderResponse:
+        if not self.api_key:
+            raise ProviderError("OPENAI_API_KEY is not set for the OpenAI provider.")
+
+        payload = self._build_synthesis_payload(request)
+        headers = self._build_headers()
+        endpoint = f"{self.base_url}/responses"
+        response = self.transport(endpoint, payload, headers, self.timeout_s)
+
+        try:
+            body = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("OpenAI provider returned invalid JSON.") from exc
+
+        message = self._extract_output_text(body)
+        request_id = response.headers.get("x-request-id")
+        metadata = {
+            "model": body.get("model", self.model),
+            "request_id": request_id,
+            "usage": body.get("usage"),
+            "purpose": "response_synthesis",
+        }
+        return ProviderResponse(
+            message=message,
+            plan=None,
+            response_id=body.get("id"),
+            metadata=metadata,
+        )
+
     def _build_payload(self, request: ProviderRequest) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self.model,
@@ -119,6 +154,25 @@ class OpenAIResponsesProvider:
             "metadata": {
                 "application": "master-control",
                 "purpose": "tool_planning",
+            },
+        }
+        if request.previous_response_id:
+            payload["previous_response_id"] = request.previous_response_id
+        if self.reasoning_effort:
+            payload["reasoning"] = {"effort": self.reasoning_effort}
+        return payload
+
+    def _build_synthesis_payload(self, request: SynthesisRequest) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "model": self.model,
+            "input": self._build_synthesis_input_messages(request),
+            "instructions": self._build_synthesis_instructions(),
+            "store": self.store,
+            "max_output_tokens": DEFAULT_SYNTHESIS_MAX_OUTPUT_TOKENS,
+            "text": {"verbosity": "low"},
+            "metadata": {
+                "application": "master-control",
+                "purpose": "response_synthesis",
             },
         }
         if request.previous_response_id:
@@ -144,6 +198,42 @@ class OpenAIResponsesProvider:
             }
         )
         return messages
+
+    def _build_synthesis_input_messages(
+        self,
+        request: SynthesisRequest,
+    ) -> list[dict[str, object]]:
+        sections = [
+            "Original user request:",
+            request.user_message,
+        ]
+        if request.planning_message.strip():
+            sections.extend(
+                [
+                    "Latest planning message:",
+                    request.planning_message,
+                ]
+            )
+        if request.execution_observations:
+            sections.extend(
+                [
+                    "Execution observations:",
+                    *[f"- {item}" for item in request.execution_observations],
+                ]
+            )
+        if request.rendered_results:
+            sections.extend(
+                [
+                    "Rendered tool results:",
+                    *[f"- {item}" for item in request.rendered_results],
+                ]
+            )
+        return [
+            {
+                "role": "user",
+                "content": "\n".join(sections),
+            }
+        ]
 
     def _build_headers(self) -> dict[str, str]:
         headers = {
@@ -197,6 +287,19 @@ class OpenAIResponsesProvider:
         if request.system_prompt:
             sections.append(request.system_prompt)
         return "\n".join(sections)
+
+    def _build_synthesis_instructions(self) -> str:
+        return "\n".join(
+            [
+                "You are the response synthesis layer for Master Control, a Linux agent with controlled execution.",
+                "Write a concise operator-facing answer in the same language as the user.",
+                "Use only the supplied execution observations and rendered tool results.",
+                "Do not invent values, states, or actions that are not present in the evidence.",
+                "If a tool requires confirmation, make it clear that the action has not run yet.",
+                "If a tool failed, state that clearly and avoid over-claiming.",
+                "Prefer one or two short paragraphs. Use bullets only when the result is inherently list-shaped.",
+            ]
+        )
 
     def _build_plan_function_schema(self, available_tools: tuple[ToolSpec, ...]) -> dict[str, object]:
         return {
@@ -261,6 +364,35 @@ class OpenAIResponsesProvider:
                 return item
 
         raise ProviderError("OpenAI provider did not return the submit_plan function call.")
+
+    def _extract_output_text(self, body: dict[str, object]) -> str:
+        output_text = body.get("output_text")
+        if isinstance(output_text, str) and output_text.strip():
+            return output_text.strip()
+
+        output = body.get("output")
+        if not isinstance(output, list):
+            raise ProviderError("OpenAI provider response is missing output items.")
+
+        chunks: list[str] = []
+        for item in output:
+            if not isinstance(item, dict):
+                continue
+            if item.get("type") != "message":
+                continue
+            content = item.get("content")
+            if not isinstance(content, list):
+                continue
+            for part in content:
+                if not isinstance(part, dict):
+                    continue
+                text = part.get("text")
+                if isinstance(text, str) and text.strip():
+                    chunks.append(text.strip())
+
+        if not chunks:
+            raise ProviderError("OpenAI provider did not return synthesized output text.")
+        return "\n".join(chunks)
 
     def _build_plan(self, intent: str, steps_payload: list[object]) -> ExecutionPlan | None:
         if not steps_payload:

@@ -7,7 +7,12 @@ from pathlib import Path
 
 from master_control.config import Settings
 from master_control.agent.observations import build_observation_freshness
-from master_control.providers.base import ConversationMessage, ProviderError, ProviderRequest
+from master_control.providers.base import (
+    ConversationMessage,
+    ProviderError,
+    ProviderRequest,
+    SynthesisRequest,
+)
 from master_control.providers.openai_responses import OpenAIResponsesProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
 
@@ -190,6 +195,79 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertEqual(captured_payload["previous_response_id"], "resp_prev")
             self.assertEqual(len(captured_payload["input"]), 1)
             self.assertEqual(captured_payload["input"][0]["content"], "e agora?")
+
+    def test_provider_can_synthesize_final_response(self) -> None:
+        captured_payload: dict[str, object] = {}
+
+        def fake_transport(
+            url: str,
+            payload: dict[str, object],
+            headers: dict[str, str],
+            timeout_s: float,
+        ) -> TransportResponse:
+            del url, headers, timeout_s
+            captured_payload.update(payload)
+            body = {
+                "id": "resp_syn_1",
+                "model": "gpt-5.4",
+                "output": [
+                    {
+                        "type": "message",
+                        "content": [
+                            {
+                                "type": "output_text",
+                                "text": "A memória está sob pressão e o serviço segue ativo.",
+                            }
+                        ],
+                    }
+                ],
+                "usage": {
+                    "input_tokens": 120,
+                    "output_tokens": 18,
+                    "total_tokens": 138,
+                },
+            }
+            return TransportResponse(
+                status_code=200,
+                body=json.dumps(body),
+                headers={"x-request-id": "req_syn_1"},
+            )
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="openai",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+                openai_api_key="test-key",
+            )
+            provider = OpenAIResponsesProvider(settings, transport=fake_transport)
+
+            response = provider.synthesize(
+                SynthesisRequest(
+                    user_message="o host esta lento",
+                    planning_message="Vou verificar a memória e depois os processos.",
+                    execution_observations=(
+                        "memory_usage({}) -> memory=92.0%, swap=10.0%",
+                        'top_processes({"limit": 5}) -> nginx(88.0%), python(20.0%)',
+                    ),
+                    rendered_results=(
+                        "Memória usada: 92.0% (92 B de 100 B). Swap usada: 10.0% (10 B de 100 B).",
+                        "Top processos por CPU: nginx (88.0% CPU), python (20.0% CPU).",
+                    ),
+                    previous_response_id="resp_prev",
+                )
+            )
+
+            self.assertEqual(response.message, "A memória está sob pressão e o serviço segue ativo.")
+            self.assertEqual(response.response_id, "resp_syn_1")
+            self.assertEqual(response.metadata["purpose"], "response_synthesis")
+            self.assertEqual(captured_payload["previous_response_id"], "resp_prev")
+            self.assertNotIn("tools", captured_payload)
+            self.assertIn("Execution observations:", captured_payload["input"][0]["content"])
+            self.assertIn("Rendered tool results:", captured_payload["input"][0]["content"])
+            self.assertIn("response synthesis layer", captured_payload["instructions"])
 
 
 if __name__ == "__main__":

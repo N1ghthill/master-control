@@ -118,6 +118,7 @@ Current state:
 - stale recommendations now prefer refresh actions over risky follow-up actions
 - `qwen2.5:7b` is the current default local Ollama profile for the alpha track
 - periodic recommendation reconciliation can now be installed as an optional `systemd` timer
+- OpenAI and Ollama now synthesize the final operator-facing answer from executed tool results
 
 ## Phase 4: Service mode and external interfaces
 

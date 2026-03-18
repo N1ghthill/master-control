@@ -30,6 +30,7 @@ Snapshot date: 2026-03-17
 - structured execution plans instead of free-form tool calls
 - iterative per-turn planning loop that can continue a diagnosis using fresh tool outputs
 - provider health reporting in `mc doctor`, including local Ollama endpoint and model availability
+- LLM-backed final response synthesis for OpenAI and Ollama after tool execution
 
 ### Linux inspection tools
 

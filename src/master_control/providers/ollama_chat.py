@@ -9,7 +9,12 @@ from typing import Any, Callable
 from master_control.agent.planner import ExecutionPlan, PlanStep
 from master_control.agent.observations import format_observation_freshness
 from master_control.config import Settings
-from master_control.providers.base import ProviderError, ProviderRequest, ProviderResponse
+from master_control.providers.base import (
+    ProviderError,
+    ProviderRequest,
+    ProviderResponse,
+    SynthesisRequest,
+)
 from master_control.tools.base import ToolSpec
 
 
@@ -105,12 +110,84 @@ class OllamaChatProvider:
             metadata=metadata,
         )
 
+    def synthesize(self, request: SynthesisRequest) -> ProviderResponse:
+        payload = self._build_synthesis_payload(request)
+        headers = self._build_headers()
+        endpoint = f"{self.base_url}/chat"
+        response = self.transport(endpoint, payload, headers, self.timeout_s)
+
+        try:
+            body = json.loads(response.body)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("Ollama provider returned invalid JSON.") from exc
+
+        message_payload = body.get("message")
+        if not isinstance(message_payload, dict):
+            raise ProviderError("Ollama provider response is missing the assistant message.")
+        content = message_payload.get("content")
+        if not isinstance(content, str):
+            raise ProviderError("Ollama provider returned non-text content.")
+
+        try:
+            parsed = json.loads(content)
+        except json.JSONDecodeError as exc:
+            raise ProviderError("Ollama provider returned invalid synthesis JSON.") from exc
+
+        message = parsed.get("message")
+        if not isinstance(message, str) or not message.strip():
+            raise ProviderError("Ollama provider returned an empty synthesis message.")
+
+        metadata = {
+            "model": body.get("model", self.model),
+            "done": body.get("done"),
+            "done_reason": body.get("done_reason"),
+            "eval_count": body.get("eval_count"),
+            "prompt_eval_count": body.get("prompt_eval_count"),
+            "purpose": "response_synthesis",
+        }
+        return ProviderResponse(
+            message=message.strip(),
+            plan=None,
+            response_id=None,
+            metadata=metadata,
+        )
+
     def _build_payload(self, request: ProviderRequest) -> dict[str, object]:
         payload: dict[str, object] = {
             "model": self.model,
             "messages": self._build_messages(request),
             "stream": False,
             "format": self._build_response_schema(request.available_tools),
+            "options": dict(DEFAULT_OLLAMA_OPTIONS),
+        }
+        if self.keep_alive:
+            payload["keep_alive"] = self.keep_alive
+        return payload
+
+    def _build_synthesis_payload(self, request: SynthesisRequest) -> dict[str, object]:
+        payload: dict[str, object] = {
+            "model": self.model,
+            "messages": [
+                {
+                    "role": "system",
+                    "content": self._build_synthesis_instructions(),
+                },
+                {
+                    "role": "user",
+                    "content": self._build_synthesis_user_message(request),
+                },
+            ],
+            "stream": False,
+            "format": {
+                "type": "object",
+                "additionalProperties": False,
+                "properties": {
+                    "message": {
+                        "type": "string",
+                    }
+                },
+                "required": ["message"],
+            },
             "options": dict(DEFAULT_OLLAMA_OPTIONS),
         }
         if self.keep_alive:
@@ -185,6 +262,47 @@ class OllamaChatProvider:
             )
         if request.system_prompt:
             sections.append(request.system_prompt)
+        return "\n".join(sections)
+
+    def _build_synthesis_instructions(self) -> str:
+        return "\n".join(
+            [
+                "You are the response synthesis layer for Master Control, a Linux agent with controlled execution.",
+                "Return a JSON object with a single `message` field.",
+                "Write a concise operator-facing answer in the same language as the user.",
+                "Use only the supplied execution observations and rendered tool results.",
+                "Do not invent values, states, or actions that are not present in the evidence.",
+                "If an action still needs confirmation, state that clearly.",
+                "If a tool failed, state that clearly.",
+            ]
+        )
+
+    def _build_synthesis_user_message(self, request: SynthesisRequest) -> str:
+        sections = [
+            "Original user request:",
+            request.user_message,
+        ]
+        if request.planning_message.strip():
+            sections.extend(
+                [
+                    "Latest planning message:",
+                    request.planning_message,
+                ]
+            )
+        if request.execution_observations:
+            sections.extend(
+                [
+                    "Execution observations:",
+                    *[f"- {item}" for item in request.execution_observations],
+                ]
+            )
+        if request.rendered_results:
+            sections.extend(
+                [
+                    "Rendered tool results:",
+                    *[f"- {item}" for item in request.rendered_results],
+                ]
+            )
         return "\n".join(sections)
 
     def _build_response_schema(self, available_tools: tuple[ToolSpec, ...]) -> dict[str, object]:

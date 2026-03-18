@@ -78,6 +78,7 @@ This repository currently contains:
 - A heuristic provider that turns natural language into explicit tool plans
 - An OpenAI provider that uses the Responses API to return structured plans via function calling
 - An Ollama provider that uses `/api/chat` with schema-constrained JSON output
+- LLM-backed final response synthesis after tool execution for OpenAI and Ollama providers
 - Persistent session memory built from short history plus a compact deterministic session summary
 - Session-scoped observations with TTL-based freshness, so stale diagnostic context can be refreshed automatically
 - Deterministic proactive suggestions derived from each session summary
@@ -221,6 +222,7 @@ Observation inspection:
 - `mc reconcile-timer render` shows the generated `systemd` service and timer units without touching disk
 - `mc reconcile-timer install --scope user` installs a periodic `systemd --user` timer that runs `mc reconcile --all`
 - `mc reconcile-timer remove --scope user` disables and removes that timer again
+- when `openai` or `ollama` is active, MC now asks the model for a final operator-facing synthesis after tool execution instead of relying only on local templates
 
 Provider-specific optional knobs:
 
