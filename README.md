@@ -152,6 +152,7 @@ MVP closeout record:
 - `docs/mvp-evolution-plan.md`
 - `docs/post-mvp-evolution-plan.md`
 - `docs/operator-workflows.md`
+- `docs/beta-readiness-gate.md`
 - `docs/status.md`
 - `docs/mvp-plan.md`
 - `docs/providers.md`
