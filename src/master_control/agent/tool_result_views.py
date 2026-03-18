@@ -104,7 +104,7 @@ def build_tool_result_view(
                 ),
             )
 
-        processes = _dedupe_process_rows(result.get("processes"), limit=5)
+        processes = _group_process_rows(result.get("processes"), limit=5)
         if not processes:
             return ToolResultView(
                 planner_summary=f"{tool_name}({argument_text}) -> no_processes",
@@ -121,7 +121,7 @@ def build_tool_result_view(
         planner_summary = f"{tool_name}({argument_text}) -> {', '.join(items)}"
         rendered_summary = "Top processos por CPU: {}.".format(
             ", ".join(
-                f"{item['command']} ({item['cpu_percent']}% CPU)"
+                _render_grouped_process(item)
                 for item in processes[: min(5, len(processes))]
                 if isinstance(item, dict)
                 and isinstance(item.get("command"), str)
@@ -527,22 +527,43 @@ def _coerce_int(value: object, *, default: int = 0) -> int:
     return default
 
 
-def _dedupe_process_rows(value: object, *, limit: int) -> list[dict[str, object]]:
+def _group_process_rows(value: object, *, limit: int) -> list[dict[str, object]]:
     if not isinstance(value, list):
         return []
-    seen_commands: set[str] = set()
-    rows: list[dict[str, object]] = []
+    rows_by_command: dict[str, dict[str, object]] = {}
+    ordered_commands: list[str] = []
     for item in value:
         if not isinstance(item, dict):
             continue
         command = _string_or_none(item.get("command"))
-        if command is None or command in seen_commands:
+        if command is None:
             continue
-        seen_commands.add(command)
-        rows.append(item)
-        if len(rows) >= limit:
-            break
-    return rows
+        existing = rows_by_command.get(command)
+        if existing is None:
+            if len(ordered_commands) >= limit:
+                continue
+            grouped_item = dict(item)
+            grouped_item["occurrences"] = 1
+            rows_by_command[command] = grouped_item
+            ordered_commands.append(command)
+            continue
+        existing["occurrences"] = _coerce_int(existing.get("occurrences"), default=1) + 1
+        existing_cpu = existing.get("cpu_percent")
+        next_cpu = item.get("cpu_percent")
+        if isinstance(existing_cpu, (int, float)) and isinstance(next_cpu, (int, float)):
+            if next_cpu > existing_cpu:
+                existing["cpu_percent"] = next_cpu
+        elif isinstance(next_cpu, (int, float)):
+            existing["cpu_percent"] = next_cpu
+    return [rows_by_command[command] for command in ordered_commands[:limit]]
+
+
+def _render_grouped_process(item: dict[str, object]) -> str:
+    command = _string_or_default(item.get("command"), "processo")
+    cpu_percent = item.get("cpu_percent")
+    occurrences = _coerce_int(item.get("occurrences"), default=1)
+    repeated_text = f" x{occurrences}" if occurrences > 1 else ""
+    return f"{command}{repeated_text} ({cpu_percent}% CPU)"
 
 
 def _build_config_excerpt(content: str | None) -> str | None:

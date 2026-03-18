@@ -113,6 +113,7 @@ class SessionContextTest(unittest.TestCase):
                     "value": {
                         "processes": [
                             {"command": "python3", "cpu_percent": 91.2},
+                            {"command": "python3", "cpu_percent": 88.0},
                             {"command": "ollama", "cpu_percent": 14.0},
                         ]
                     },
@@ -165,6 +166,7 @@ class SessionContextTest(unittest.TestCase):
         self.assertEqual(context.service.active_state, "failed")
         self.assertIsNotNone(context.processes)
         self.assertEqual(context.processes.items[0].command, "python3")
+        self.assertEqual(context.processes.items[0].occurrences, 2)
         self.assertEqual(context.disk.path, "/")
         self.assertEqual(context.disk.used_percent, 87.0)
         self.assertIsNotNone(context.process_unit)

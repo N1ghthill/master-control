@@ -24,7 +24,7 @@ Validated successfully:
 
 Current automated suite size at this snapshot:
 
-- 120 tests
+- 122 tests
 
 Additional trust-boundary regressions now covered in the automated suite:
 
@@ -36,6 +36,7 @@ Additional trust-boundary regressions now covered in the automated suite:
 - service and log follow-ups can reuse structured session context without relying on summary text alone
 - diagnostic summaries can complete from fresh observations even when the compact summary is absent
 - slow-host diagnosis can use `process_to_unit` before `service_status` and still conclude within one turn
+- slow-host diagnosis can prefer a nearby service-relevant process over generic interpreter noise before `process_to_unit`
 - hot-process recommendations can move from typed process correlation into `service_status` when the correlated unit is a valid service target
 - hot-process recommendations do not repeat process-correlation actions once a no-match state is already known
 - non-service `systemd` scope correlations do not trigger a `service_status` lookup

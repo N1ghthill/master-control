@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 
 from master_control.agent.observations import ObservationFreshness, format_duration
+from master_control.agent.process_leads import select_process_lead
 from master_control.agent.session_context import (
     ConfigContext,
     ServiceContext,
@@ -219,8 +220,11 @@ def collect_session_insights_from_context(
         if stale_refresh is not None:
             insights.append(stale_refresh)
         else:
-            top = processes_context.items[0]
-            if top.cpu_percent is not None and top.cpu_percent >= 80:
+            top = select_process_lead(
+                processes_context,
+                tracked=session_context.tracked,
+            )
+            if top is not None and top.cpu_percent is not None and top.cpu_percent >= 80:
                 correlated_unit = None
                 correlation_attempted = False
                 correlation_no_match = False
@@ -242,13 +246,10 @@ def collect_session_insights_from_context(
                         f"Correlacionar o processo `{top.command}` com um unit do systemd."
                     )
                     process_action_arguments = {"name": top.command, "limit": "3"}
-                message = (
-                    f"O processo `{top.command}` apareceu com CPU alta ({top.cpu_percent:.1f}%). "
-                    "Vale correlacionar isso com logs ou status do serviço relacionado."
-                )
+                message = _build_hot_process_message(processes_context, top)
                 if correlated_unit:
                     message = (
-                        f"O processo `{top.command}` apareceu com CPU alta ({top.cpu_percent:.1f}%). "
+                        f"{_build_hot_process_message(processes_context, top)} "
                         f"Ele já foi correlacionado com `{correlated_unit}`."
                     )
                     if _looks_like_service_unit(correlated_unit):
@@ -269,7 +270,7 @@ def collect_session_insights_from_context(
                             process_action_arguments = service_action_arguments
                 elif correlation_attempted and correlation_no_match:
                     message = (
-                        f"O processo `{top.command}` apareceu com CPU alta ({top.cpu_percent:.1f}%). "
+                        f"{_build_hot_process_message(processes_context, top)} "
                         "Já tentei correlacioná-lo com systemd nesta sessão, mas não houve um unit claro."
                     )
                 insights.append(
@@ -477,6 +478,30 @@ def _build_service_follow_up_arguments(
         if scope not in {"system", "user"} or service_context.scope in {None, scope}:
             return {}
     return _with_scope_argument({"name": unit}, scope)
+
+
+def _build_hot_process_message(
+    processes: SessionContext | object,
+    lead: object,
+) -> str:
+    command = getattr(lead, "command", None)
+    cpu_percent = getattr(lead, "cpu_percent", None)
+    if not isinstance(command, str) or not isinstance(cpu_percent, float):
+        return "Um processo apareceu com CPU alta."
+
+    items = getattr(processes, "items", ())
+    if isinstance(items, tuple) and items:
+        first = items[0]
+        top_command = getattr(first, "command", None)
+        if isinstance(top_command, str) and top_command != command:
+            return (
+                f"Entre os processos quentes, `{command}` parece o melhor próximo alvo "
+                f"({cpu_percent:.1f}% CPU) para correlação com logs ou status de serviço."
+            )
+    return (
+        f"O processo `{command}` apareceu com CPU alta ({cpu_percent:.1f}%). "
+        "Vale correlacionar isso com logs ou status do serviço relacionado."
+    )
 
 
 def _build_service_logs_follow_up_insight(

@@ -45,6 +45,7 @@ class ToolResultViewsTest(unittest.TestCase):
         )
 
         self.assertEqual(view.rendered_summary.count("python3"), 1)
+        self.assertIn("python3 x2", view.rendered_summary)
         self.assertEqual(view.summary_updates["processes"], "python3(91.0%), nginx(30.0%)")
 
     def test_config_write_and_restore_update_summary_context(self) -> None:

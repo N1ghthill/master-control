@@ -50,6 +50,7 @@ Snapshot date: 2026-03-18
 - turn-planning, turn-rendering, and recommendation-view seams extracted from the central app layer
 - heuristic slow-host diagnosis now ignores non-service `systemd` correlations when deciding whether a `service_status` step is valid
 - rendered hot-process output now collapses repeated commands so slow-host diagnosis is less noisy in operator-facing output
+- slow-host lead selection can now prefer a nearby service-relevant process over generic interpreter noise before running `process_to_unit`
 
 ### Linux inspection tools
 
@@ -82,6 +83,7 @@ Snapshot date: 2026-03-18
 - high-risk recommendation decisions no longer depend primarily on summary parsing
 - recommendation views expose evidence summaries, confidence, and next-step commands directly to the operator
 - process-correlation no-match state is now preserved in session context so hot-process recommendations do not repeat failed correlation attempts
+- grouped process context now preserves repeated-command counts from fresh `top_processes` observations
 - failed-service observations can now drive a direct `service_status` follow-up recommendation
 - unhealthy-service recommendations now request `read_journal` when matching log evidence is missing or stale
 - recent managed config backups now stay visible in session context so rollback can be planned from natural-language follow-ups
@@ -156,4 +158,4 @@ At this snapshot, the project is validated by:
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
 - clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
-- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 120 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`
+- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 122 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`
