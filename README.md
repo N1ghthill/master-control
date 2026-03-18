@@ -33,12 +33,13 @@ tests/                 Automated tests
 
 ## Flow diagrams
 
-The main end-to-end flow is available directly here, and the detailed operational diagrams live under `docs/diagrams/`.
+The repository front page uses a compact overview. Detailed operational diagrams live under `docs/diagrams/`.
 
-![Master Control flow](docs/diagrams/master-control-flow.svg)
+![Master Control overview](docs/diagrams/readme-overview.svg)
 
 Detailed views:
 
+- `docs/diagrams/master-control-flow.svg`
 - `docs/diagrams/chat-planning-flow.svg`
 - `docs/diagrams/recommendation-approval-flow.svg`
 - `docs/diagrams/state-audit-flow.svg`

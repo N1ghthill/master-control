@@ -1,0 +1,26 @@
+flowchart LR
+    user[Operator]
+    cli[CLI]
+    provider[Planner Provider<br/>heuristic / openai / ollama]
+    policy[Policy Engine]
+    tools[Typed Tools]
+    host[Linux Host]
+    state[SQLite State<br/>sessions / observations / audit / recommendations]
+    reply[Answer + evidence + next command]
+
+    user --> cli --> provider --> policy --> tools --> host
+    tools --> state
+    state --> provider
+    state --> reply
+    host --> reply
+    reply --> cli --> user
+
+    classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
+    classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
+    classDef data fill:#fff5e6,stroke:#8a5a12,stroke-width:1px,color:#3b2608;
+    classDef output fill:#f8edf8,stroke:#7a3d7a,stroke-width:1px,color:#311231;
+
+    class user,cli entry;
+    class provider,policy,tools,host core;
+    class state data;
+    class reply output;

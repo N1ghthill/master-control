@@ -4,6 +4,8 @@ This directory contains the canonical Mermaid diagrams for the current MC flow.
 
 ## Diagrams
 
+- `readme-overview.mmd` / `readme-overview.svg`
+  - Small overview diagram intended for the repository front page
 - `master-control-flow.mmd` / `master-control-flow.svg`
   - End-to-end request flow across CLI, planning, policy, execution, recommendations, and SQLite state
 - `chat-planning-flow.mmd` / `chat-planning-flow.svg`
@@ -14,6 +16,10 @@ This directory contains the canonical Mermaid diagrams for the current MC flow.
   - How sessions, summaries, observations, recommendations, messages, and audit events are written and consumed
 
 ## Preview
+
+### README overview
+
+![README overview](readme-overview.svg)
 
 ### End-to-end flow
 
