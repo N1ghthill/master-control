@@ -61,6 +61,8 @@ Operators can inspect the same freshness state directly through:
 - `mc observations --session-id <id>`
 - `mc observations --session-id <id> --stale-only`
 
+Recommendations also consume this same freshness state. If an alert depends on stale service, process, memory, or disk data, MC now prefers a refresh-oriented recommendation such as `service_status` or `top_processes` before it suggests a riskier follow-up action.
+
 MC also persists those suggestions as explicit session recommendations, so follow-up operations can track recommendation lifecycle instead of recomputing meaning from raw chat alone.
 
 When a recommendation includes an executable action, that action remains provider-independent metadata. The provider proposes observations and plans; MC decides whether a recommendation can expose a typed action such as `restart_service`, and any execution still goes through local policy, confirmation, and audit.

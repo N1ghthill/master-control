@@ -50,6 +50,7 @@ Snapshot date: 2026-03-17
 - session-scoped observations with TTL-based freshness state
 - deterministic session insights
 - persistent recommendation queue with lifecycle states
+- recommendations that degrade to refresh actions when the underlying signal is stale
 
 ### Safe mutations started
 

@@ -137,9 +137,9 @@ def format_observation_freshness(items: Iterable[ObservationFreshness]) -> str |
         status = "stale" if item.stale else "fresh"
         details = [status]
         if item.age_seconds is not None:
-            details.append(f"age={_format_duration(item.age_seconds)}")
+            details.append(f"age={format_duration(item.age_seconds)}")
         if item.ttl_seconds is not None:
-            details.append(f"ttl={_format_duration(item.ttl_seconds)}")
+            details.append(f"ttl={format_duration(item.ttl_seconds)}")
         target = _render_target(item)
         target_text = f" ({target})" if target else ""
         lines.append(f"- {item.key}{target_text}: {', '.join(details)}")
@@ -150,6 +150,10 @@ def format_observation_freshness(items: Iterable[ObservationFreshness]) -> str |
 
 def observation_key_for_tool(tool_name: str) -> str | None:
     return TOOL_OBSERVATION_KEYS.get(tool_name)
+
+
+def format_duration(total_seconds: int) -> str:
+    return _format_duration(total_seconds)
 
 
 def compute_expires_at(

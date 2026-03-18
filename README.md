@@ -76,6 +76,7 @@ This repository currently contains:
 - Session-scoped observations with TTL-based freshness, so stale diagnostic context can be refreshed automatically
 - Deterministic proactive suggestions derived from each session summary
 - A persistent recommendation queue per session with explicit status tracking and optional executable actions
+- Freshness-aware recommendations, so stale signals ask for refresh before they suggest risky actions
 - Approval hints that return the exact CLI and chat commands required to confirm risky actions
 - Managed config tools with allowlisted targets, backup, validation, atomic writes, and restore from backup
 - End-to-end test coverage for the main recommendation and config-edit workflows

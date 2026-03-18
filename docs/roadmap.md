@@ -115,6 +115,7 @@ Current state:
 - OpenAI, Ollama, and heuristic providers are wired to the same planning contract
 - the app can re-plan within the same turn using execution observations from earlier steps
 - session-scoped observations are persisted with TTL metadata and passed to planners as freshness context
+- stale recommendations now prefer refresh actions over risky follow-up actions
 - `qwen2.5:7b` is the current default local Ollama profile for the alpha track
 
 ## Phase 4: Service mode and external interfaces

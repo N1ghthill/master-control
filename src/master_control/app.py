@@ -12,7 +12,11 @@ from master_control.agent.observations import (
     observation_key_for_tool,
 )
 from master_control.agent.recommendation_sync import RecommendationSyncResult
-from master_control.agent.session_insights import SessionInsight, collect_session_insights
+from master_control.agent.session_insights import (
+    SessionInsight,
+    collect_session_insights,
+    collect_session_insights_with_freshness,
+)
 from master_control.agent.planner import ExecutionPlan
 from master_control.agent.session_recommendations import (
     ACTIVE_RECOMMENDATION_STATUSES,
@@ -115,8 +119,10 @@ class MasterControlApp:
         enriched: list[dict[str, object]] = []
         for session in sessions:
             summary_text = session.get("summary_text")
-            insights = collect_session_insights(
-                str(summary_text) if isinstance(summary_text, str) else None
+            observation_freshness = self._load_observation_freshness(int(session["session_id"]))
+            insights = collect_session_insights_with_freshness(
+                str(summary_text) if isinstance(summary_text, str) else None,
+                observation_freshness,
             )
             active_recommendations = self.store.list_session_recommendations(
                 int(session["session_id"]),
@@ -138,10 +144,12 @@ class MasterControlApp:
         self.bootstrap()
         resolved_session_id = self._resolve_session_id(session_id)
         summary_text = self._load_session_summary(resolved_session_id)
-        insights = collect_session_insights(summary_text)
+        observation_freshness = self._load_observation_freshness(resolved_session_id)
+        insights = collect_session_insights_with_freshness(summary_text, observation_freshness)
         return {
             "session_id": resolved_session_id,
             "summary_text": summary_text,
+            "observation_freshness": [item.as_dict() for item in observation_freshness],
             "insights": [insight.as_dict() for insight in insights],
         }
 
@@ -515,7 +523,8 @@ class MasterControlApp:
             assistant_message=final_message,
         )
         self.store.upsert_session_summary(active_session_id, updated_summary)
-        insights = collect_session_insights(updated_summary)
+        observation_freshness = planning_result.working_freshness
+        insights = collect_session_insights_with_freshness(updated_summary, observation_freshness)
         recommendation_sync = self._sync_session_recommendations(active_session_id, insights)
         final_message_with_recommendations = self._append_recommendations_to_message(
             final_message,
@@ -533,9 +542,7 @@ class MasterControlApp:
             "plan": plan_payload,
             "provider_metadata": planning_result.provider_response.metadata,
             "session_summary": updated_summary,
-            "observation_freshness": [
-                item.as_dict() for item in planning_result.working_freshness
-            ],
+            "observation_freshness": [item.as_dict() for item in observation_freshness],
             "insights": [insight.as_dict() for insight in insights],
             "recommendations": recommendation_sync.as_dict(),
             "executions": planning_result.executions,

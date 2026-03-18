@@ -4,8 +4,12 @@ import tempfile
 import unittest
 from pathlib import Path
 
+from master_control.agent.observations import build_observation_freshness
 from master_control.agent.planner import ExecutionPlan, PlanStep
-from master_control.agent.session_insights import collect_session_insights
+from master_control.agent.session_insights import (
+    collect_session_insights,
+    collect_session_insights_with_freshness,
+)
 from master_control.app import MasterControlApp
 from master_control.config import Settings
 from master_control.providers.base import ProviderResponse
@@ -55,6 +59,20 @@ class StaticServicePlanProvider:
                     ),
                 ),
             ),
+        )
+
+
+class StaticNoPlanProvider:
+    name = "static"
+
+    def diagnostics(self) -> dict[str, object]:
+        return {"name": self.name, "ready": True}
+
+    def plan(self, request) -> ProviderResponse:
+        del request
+        return ProviderResponse(
+            message="Ainda não vou executar nada sem atualizar o contexto.",
+            plan=None,
         )
 
 
@@ -160,6 +178,32 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].action_tool_name, "restart_service")
         self.assertEqual(insights[0].action_arguments, {"name": "nginx.service"})
 
+    def test_collect_session_insights_requests_refresh_when_service_signal_is_stale(self) -> None:
+        freshness = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {"service": "nginx.service", "scope": "system"},
+                    "observed_at": "2026-03-17T20:00:00Z",
+                    "expires_at": "2026-03-17T20:03:00Z",
+                },
+            )
+        )
+
+        insights = collect_session_insights_with_freshness(
+            "service: nginx.service: active=failed, sub=failed",
+            freshness,
+        )
+
+        self.assertEqual(len(insights), 1)
+        self.assertEqual(insights[0].key, "service_state_refresh")
+        self.assertEqual(insights[0].action_tool_name, "service_status")
+        self.assertEqual(
+            insights[0].action_arguments,
+            {"name": "nginx.service", "scope": "system"},
+        )
+
     def test_chat_appends_proactive_suggestions_when_summary_is_risky(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             settings = Settings(
@@ -261,6 +305,38 @@ class SessionInsightsTest(unittest.TestCase):
                 confirmed["execution"]["result"]["post_restart"]["activestate"],
                 "active",
             )
+
+    def test_chat_recommendation_prefers_refresh_action_when_service_signal_is_stale(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="heuristic",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+            )
+            app = MasterControlApp(settings, provider_override=StaticNoPlanProvider())
+            app.bootstrap()
+            session_id = app.store.create_session()
+            app.store.upsert_session_summary(
+                session_id,
+                "service: nginx.service: active=failed, sub=failed",
+            )
+            app.store.record_observation(
+                session_id,
+                "service_status",
+                "service",
+                {"service": "nginx.service", "scope": "system"},
+                observed_at="2026-03-17T20:00:00Z",
+                ttl_seconds=180,
+            )
+
+            payload = app.chat("o que devo fazer agora?", session_id=session_id)
+
+            self.assertIn("Recomendações da sessão:", payload["message"])
+            recommendation = payload["recommendations"]["active"][0]
+            self.assertEqual(recommendation["source_key"], "service_state_refresh")
+            self.assertEqual(recommendation["action"]["tool_name"], "service_status")
 
 
 if __name__ == "__main__":
