@@ -120,6 +120,7 @@ This repository currently contains:
 Current maturity:
 
 - late alpha
+- `0.1.0a2` release-candidate package prepared; final tag still blocked on a second host-profile validation report
 - narrow local CLI MVP closeout completed for the alpha baseline on 2026-03-18
 - the narrow local host milestone is now functionally complete and validated
 - service trust hardening for recommendation safety was completed on 2026-03-18
@@ -158,6 +159,8 @@ MVP closeout record:
 - `docs/providers.md`
 - `docs/alpha-validation-report.md`
 - `docs/alpha-release-notes.md`
+- `docs/release-candidate-0.1.0a2.md`
+- `docs/host-profile-validation.md`
 - `docs/release-checklist.md`
 - `docs/security-model.md`
 - `docs/roadmap.md`

@@ -24,7 +24,7 @@ from master_control.providers.base import (
 from master_control.tools.base import ToolSpec
 
 OPENAI_PLAN_FUNCTION_NAME = "submit_plan"
-OPENAI_USER_AGENT = "master-control/0.1.0a1"
+OPENAI_USER_AGENT = "master-control/0.1.0a2"
 DEFAULT_MAX_OUTPUT_TOKENS = 1200
 DEFAULT_SYNTHESIS_MAX_OUTPUT_TOKENS = 700
 ALLOWED_ARGUMENT_VALUE_SCHEMAS: list[dict[str, str]] = [
