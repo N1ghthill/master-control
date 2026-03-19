@@ -5,6 +5,7 @@ Snapshot date: 2026-03-18
 ## Current stage
 
 - late alpha
+- the `0.1.0a2` release-candidate package is prepared, with final tagging blocked on one additional real host validation report
 - foundation, read-only inspection, session memory, provider integration, recommendation tracking, and first mutation workflows are in place
 - service trust hardening is now in place for the current recommendation boundary
 - structured session state and orchestration refactor is now in place for the core decision paths

@@ -114,6 +114,7 @@ Before any beta tag, the repository should have:
 Current assessment on 2026-03-18:
 
 - not yet beta-ready
+- the `0.1.0a2` release-candidate package is prepared locally, but final tagging remains blocked on Gate 1
 
 Main remaining blockers:
 

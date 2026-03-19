@@ -9,7 +9,7 @@ from typing import Callable
 
 from master_control.config import Settings
 
-PROBE_USER_AGENT = "master-control/0.1.0a1"
+PROBE_USER_AGENT = "master-control/0.1.0a2"
 
 
 @dataclass(frozen=True, slots=True)

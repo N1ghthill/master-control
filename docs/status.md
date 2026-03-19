@@ -5,6 +5,7 @@ Snapshot date: 2026-03-18
 ## Maturity
 
 - Stage: late alpha
+- Release candidate note: the `0.1.0a2` package is prepared locally, but final tagging is still blocked on a second host-profile validation report
 - Progress against the narrow MVP: complete for the local alpha baseline
 - Primary gap: future work is now post-MVP: broader production hardening, service mode, and external interfaces
 - Provider integration note: the Ollama path is now validated against a real local server and installed model, not only tests and fake transports
@@ -127,6 +128,7 @@ Alpha release material now available:
 
 - `docs/alpha-validation-report.md`
 - `docs/alpha-release-notes.md`
+- `docs/release-candidate-0.1.0a2.md`
 - `docs/mvp-evolution-plan.md`
 - `docs/operator-workflows.md`
 - `docs/beta-readiness-gate.md`
@@ -160,5 +162,6 @@ At this snapshot, the project is validated by:
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
 - repeatable host-profile validation harness available through `python3 scripts/validate_host_profile.py`
 - clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
+- packaging sanity check via `python3 -m pip wheel . --no-deps -w /tmp/mc-dist`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
 - current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 123 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`

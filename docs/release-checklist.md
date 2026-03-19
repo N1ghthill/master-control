@@ -7,14 +7,15 @@ Run this checklist only after the closeout milestones in `docs/mvp-evolution-pla
 Before calling the narrow local CLI MVP ready for an alpha tag:
 
 1. run the automated baseline
-2. validate provider resolution on the target host
-3. run a real-host smoke test for service actions
-4. run a real-host smoke test for managed config editing
-5. run a real-host smoke test for `reconcile-timer install|remove` in `scope=user`
-6. confirm documentation matches the operator-visible commands
-7. confirm `README.md`, `docs/status.md`, `docs/roadmap.md`, `docs/mvp-plan.md`, `docs/mvp-evolution-plan.md`, and `docs/mvp-closeout-backlog.md` are aligned
-8. confirm GitHub Actions CI is green on `main`
-9. capture release notes in `CHANGELOG.md`
+2. build a wheel or equivalent packaging artifact
+3. validate provider resolution on the target host
+4. run a real-host smoke test for service actions
+5. run a real-host smoke test for managed config editing
+6. run a real-host smoke test for `reconcile-timer install|remove` in `scope=user`
+7. confirm documentation matches the operator-visible commands
+8. confirm `README.md`, `docs/status.md`, `docs/roadmap.md`, `docs/mvp-plan.md`, and `docs/mvp-evolution-plan.md`, and `docs/mvp-closeout-backlog.md` are aligned
+9. confirm GitHub Actions CI is green on `main`
+10. capture release notes in `CHANGELOG.md`
 
 ## Automated baseline
 
@@ -24,6 +25,7 @@ python3 -m mypy src
 PYTHONPATH=src python3 -m unittest discover -s tests
 python3 -m compileall src
 PYTHONPATH=src python3 -m master_control --json doctor
+python3 -m pip wheel . --no-deps -w /tmp/mc-dist
 ```
 
 ## Clean-environment install

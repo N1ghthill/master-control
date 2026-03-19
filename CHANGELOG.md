@@ -76,6 +76,7 @@
 ### Notes
 
 - the repository is still pre-release
+- the current unreleased target is the `0.1.0a2` release candidate documented in `docs/release-candidate-0.1.0a2.md`
 - the narrow local CLI MVP is closed for the current alpha baseline
 - the project is not yet a production-ready Linux operations platform
 

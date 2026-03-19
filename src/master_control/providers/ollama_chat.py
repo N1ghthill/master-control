@@ -23,7 +23,7 @@ from master_control.providers.base import (
 )
 from master_control.tools.base import ToolSpec
 
-OLLAMA_USER_AGENT = "master-control/0.1.0a1"
+OLLAMA_USER_AGENT = "master-control/0.1.0a2"
 DEFAULT_OLLAMA_OPTIONS = {
     "temperature": 0,
 }

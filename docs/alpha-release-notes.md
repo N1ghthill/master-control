@@ -1,8 +1,22 @@
 # Alpha Release Notes
 
-Version target: `0.1.0a1` local CLI alpha baseline
+Version target: `0.1.0a2` local CLI alpha release candidate
 
 Snapshot date: 2026-03-18
+
+## Release candidate status
+
+- package and docs are aligned for `0.1.0a2`
+- local baseline and GitHub CI are green at this snapshot
+- final tag is still blocked on one additional real host-profile validation report
+
+## What changed since `0.1.0a1`
+
+- slow-host diagnosis is materially cleaner and can prefer a more service-relevant process lead before correlation
+- failed-service triage now pushes from failed-unit evidence into status and journal follow-up instead of stopping at a list
+- managed-config writes and restores now surface explicit verification and rollback follow-ups
+- session summary -> context -> insight assembly moved into a narrower seam, reducing app-layer orchestration pressure
+- the repository now includes a repeatable host-profile validation harness for the remaining beta gate
 
 ## What this alpha includes
 
@@ -81,3 +95,4 @@ mc tool service_status --arg name=ollama-local.service --arg scope=user
 ## Validation reference
 
 See `docs/alpha-validation-report.md` for the real-host validation snapshot behind this alpha baseline.
+See `docs/release-candidate-0.1.0a2.md` for the current cut status and remaining blocker.
