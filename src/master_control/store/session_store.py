@@ -6,7 +6,7 @@ from contextlib import closing
 from datetime import UTC, datetime
 from pathlib import Path
 
-from master_control.agent.observations import (
+from master_control.core.observations import (
     compute_expires_at,
     deserialize_observation_value,
     serialize_observation_value,

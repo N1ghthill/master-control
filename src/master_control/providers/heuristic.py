@@ -5,15 +5,15 @@ import re
 import unicodedata
 from dataclasses import dataclass
 
-from master_control.agent.observations import ObservationFreshness
-from master_control.agent.planner import ExecutionPlan, PlanningDecision, PlanStep
-from master_control.agent.process_leads import select_process_lead
-from master_control.agent.session_context import (
+from master_control.core.observations import ObservationFreshness
+from master_control.core.process_leads import select_process_lead
+from master_control.core.session_context import (
     RecentObservationContext,
     SessionContext,
     build_session_context,
 )
 from master_control.providers.base import ConversationMessage, ProviderRequest, ProviderResponse
+from master_control.shared.planning import ExecutionPlan, PlanningDecision, PlanStep
 
 SERVICE_NAME_RE = re.compile(
     r"(?:servi(?:co|ço)|service|unit|status)\s+(?:(?:do|da|de|of|for)\s+)?([A-Za-z0-9_@][A-Za-z0-9_.@-]*)",

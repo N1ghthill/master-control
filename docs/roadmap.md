@@ -1,34 +1,15 @@
 # Roadmap
 
-Snapshot date: 2026-03-20
+Snapshot date: 2026-03-22
 
 ## Current stage
 
 - late alpha
-- the `0.1.0a2` release-candidate package is prepared, and a dedicated Debian 13 VPS now provides the second real host validation report that had been missing
-- foundation, read-only inspection, session memory, provider integration, recommendation tracking, and first mutation workflows are in place
-- service trust hardening is now in place for the current recommendation boundary
-- structured session state and orchestration refactor is now in place for the core decision paths
-- operator utility, approval UX, and alpha hardening are now closed for the narrow local CLI MVP
-- the local alpha baseline is ready for tagging on the validated host profile
-- the selected post-MVP operator workflows now have documented smoke paths and deterministic coverage
-- the current local alpha profile is `qwen2.5:7b`
-- detailed sequencing and result targets live in `docs/mvp-evolution-plan.md`
-- the closed execution record lives in `docs/mvp-closeout-backlog.md`
-- the active post-MVP planning record now lives in `docs/post-mvp-evolution-plan.md`
-- the active beta resume record now lives in `docs/beta-resume-plan.md`
-- the current beta gate lives in `docs/beta-readiness-gate.md`
-- post-MVP Milestone P1 (trust and baseline stabilization) completed on 2026-03-18
-- post-MVP Milestone P2 (workflow depth and operator usefulness) completed on 2026-03-18
-- beta-oriented operator bootstrap preparation started on 2026-03-19
-- comparative follow-ups and safe config-diff follow-ups completed locally on 2026-03-19
-- service-log compression completed locally on 2026-03-20
-- bootstrap evidence hardening completed locally on 2026-03-20
-- comparative phrase collection completed locally on 2026-03-20
-- config-diff refinement completed locally on 2026-03-20
-- service-log pattern refinement completed locally on 2026-03-20
-- bootstrap-to-CI decision completed locally on 2026-03-20
-- community validation intake completed locally on 2026-03-20
+- public pre-release `v0.1.0a2` is out
+- the alpha baseline is validated on the maintainer host and on a dedicated Debian 13 VPS lab
+- the runtime already supports bounded inspection, controlled service/config actions, auditability, and validation workflows
+- the main roadmap change is not "add more AI"; it is to make the product center match the value already present in the runtime
+- the active track is now the runtime-first refactor described in `docs/core-interfaces-refactor-plan.md`
 
 ## Phase 0: Foundation
 
@@ -45,160 +26,99 @@ Deliverables:
 - local SQLite initialization
 - policy engine and initial tool registry
 
-## Phase 1: Read-only Linux introspection
+## Phase 1: Bounded runtime capabilities
+
+Status:
+
+- Completed for the current alpha slice
 
 Deliverables:
 
-- `disk_usage`
-- `memory_usage`
-- `top_processes`
-- `service_status`
-- `read_journal`
-- chat loop wired to a provider abstraction
-
-Status:
-
-- Completed for the narrow MVP slice
-
-Current state:
-
-- read-only tools are implemented
-- the chat loop is wired to a structured heuristic provider
-- an OpenAI Responses API provider is implemented
-- multi-turn session context is persisted locally
-- provider continuation state is persisted when supported
-- audit events are stored for each execution
-
-Exit criteria:
-
-- tool outputs are structured and testable
-- all tools have clear risk levels
-- audit events are persisted for each execution
+- typed host inspection tools
+- structured and testable tool outputs
+- audit persistence
+- local state persistence
+- safe operator-facing CLI entry points
 
 Result:
 
-- Exit criteria met
+- exit criteria met for the current alpha scope
 
-## Phase 2: Safe mutations
+## Phase 2: Controlled mutations and operator trust
 
 Status:
 
-- Implemented for the current MVP slice; the current service trust boundary is hardened
+- Completed for the current alpha slice
 
 Deliverables:
 
 - confirmation flow for mutating tools
 - config write helpers with backup and validation
 - service restart and reload tools
-- approval prompts in the CLI
-
-Current state:
-
-- `restart_service` is implemented as the first privileged tool
-- `reload_service` is implemented as a lower-risk service action
-- service tools can target either system scope or `systemd --user` through `scope=user`
-- direct tool execution and recommendation actions both require explicit confirmation
-- recommendation actions cannot execute until the recommendation is accepted
-- managed config read, write, validation, backup, and restore are implemented for bounded targets
-
-Exit criteria:
-
-- no mutation happens without a visible policy decision
-- rollback paths exist for config changes
-
-## Phase 3: MVP closeout
-
-Status:
-
-- Completed on 2026-03-18
-
-Current state:
-
-- the memory, recommendation, and provider foundations are in place
-- Workstreams 3A, 3B, 3C, and 3D are closed
-- the narrow local CLI MVP now has its intended operator utility, approval UX, and alpha release baseline
-- future work now moves to post-MVP phases, not back into closeout rework
-
-### Workstream 3A: Correctness and context hardening
-
-Status:
-
-- Completed on 2026-03-18 for the current service recommendation boundary
-
-Deliverables:
-
-- evidence-gated service recommendations
-- end-to-end preservation of service scope
-- regression tests for process/service correlation and scope handling
-
-Exit criteria:
-
-- no mutating service recommendation is derived from unsupported inference alone
-- service target identity is preserved through recommendation and execution paths
-
-### Workstream 3B: Structured session state and orchestration refactor
-
-Status:
-
-- Completed on 2026-03-18
-
-Deliverables:
-
-- structured session context for planners and recommendations
-- reduced dependence on text-parsed summary state
-- clearer app-layer boundaries
-
-Exit criteria:
-
-- high-risk recommendation decisions no longer depend primarily on summary parsing
-- hotspot files have narrower responsibilities
-
-### Workstream 3C: Operator utility and approval UX
-
-Status:
-
-- Completed on 2026-03-18
-
-Deliverables:
-
-- a small set of high-value read-only tools
-- clearer recommendation evidence and confirmation guidance
-- lower-friction recommendation lifecycle
-
-Exit criteria:
-
-- the main diagnostic journeys produce evidence-rich next steps
-- recommendation -> accept -> confirm -> execute remains explicit and auditable
+- clearer operator approval prompts
 
 Result:
 
-- `process_to_unit` and `failed_services` were added to the typed read-only toolset
-- slow-host diagnosis can now chain memory -> processes -> process correlation -> service status when correlation evidence exists
-- recommendation and approval output now render evidence summaries and next-step commands directly
+- the current service and config mutation boundary is implemented and evidence-backed
 
-### Workstream 3D: Alpha hardening and release baseline
+## Phase 3: Alpha baseline and validation
 
 Status:
 
-- Completed on 2026-03-18
+- Completed
 
 Deliverables:
 
-- documentation synchronization
-- final validation rerun
-- clean-environment install and packaging sanity checks
-
-Exit criteria:
-
-- canonical documents describe the same MVP closeout order
-- release checklist is green for the intended alpha scope
+- narrow local CLI alpha baseline
+- repeatable bootstrap validation
+- release-facing docs and evidence
+- second real-host validation evidence
 
 Result:
 
-- canonical docs were synchronized to the closed MVP state
-- automated baseline, real-host smokes, and clean-environment install validation were rerun successfully
+- the current alpha baseline is validated and publicly present as `v0.1.0a2`
 
-## Phase 4: Service mode and external interfaces
+## Phase 4: Runtime-first repositioning
+
+Status:
+
+- In progress, with the first code-boundary slices already landed
+
+Goal:
+
+- reposition MC around its runtime value instead of its conversational framing
+
+Deliverables:
+
+- rewritten canonical docs around the runtime-first contract
+- explicit `core` versus `interfaces` ownership in the codebase
+- reduced architectural centrality of the current agent/provider path
+- preserved alpha baseline while boundaries are clarified
+
+Exit criteria:
+
+- the canonical docs describe MC as a runtime with interfaces
+- core ownership is clearer in code than it is today
+- the repository is easier to explain and maintain than the current chat-centric shape
+
+## Phase 5: MCP interface
+
+Status:
+
+- In progress for the first experimental read-only slice
+
+Deliverables:
+
+- first experimental MCP interface on top of the existing runtime
+- same policy and audit path as the CLI
+- local-first activation and administration guidance
+
+Exit criteria:
+
+- MCP does not duplicate business logic already owned by the runtime
+- MCP remains an interface, not a second product
+
+## Phase 6: Service mode and broader interfaces
 
 Status:
 
@@ -206,27 +126,24 @@ Status:
 
 Deliverables:
 
-- long-running daemon mode
-- HTTP or websocket API
-- web UI or chat integrations
+- optional local service mode where justified by MCP or other interfaces
+- any further interface additions that still reuse the same runtime boundary
 - richer observability
 
 Exit criteria:
 
-- interface layer is separate from execution core
+- interface layer remains separate from execution core
 - all external interfaces reuse the same policy and audit paths
 
 ## Next roadmap focus
 
-The MVP closeout is complete. The immediate beta-oriented roadmap track is:
+The immediate roadmap track is:
 
-1. keep operator bootstrap and lifecycle hardening stable
-2. keep the new lightweight GitHub CI bootstrap smoke aligned with the operator install path without inflating it into a second baseline
-3. keep the community validation intake path low-friction so external testers can actually submit host reports
-4. gather additional host-profile validation evidence and close the release gate when host access exists
-5. keep any further natural-language refinement limited to real operator evidence within existing typed workflows
-6. start service mode and external interfaces only after operator trust improves further
+1. finish the canonical documentation rewrite around the runtime-first contract
+2. introduce clearer `core` and `interfaces` ownership in the codebase
+3. keep the current operator bootstrap and validation path stable while code moves
+4. harden the current experimental MCP bridge before expanding it
+5. postpone broader service mode and additional interfaces until the runtime contract is easier to own
 
-The current execution recommendation after Milestone P2 is to use `docs/beta-resume-plan.md` as the short-horizon execution record, keep improving the local operator bootstrap path and typed natural-language coverage, and treat release status as an evidence-backed decision. The comparative follow-up, safe config-diff, config-diff refinement, service-log compression, service-log pattern refinement, bootstrap evidence hardening, comparative phrase collection, bootstrap-to-CI decision, and community validation intake slices are now locally complete, and the dedicated Debian 13 VPS run now closes the previously missing second-host evidence. The next required package is release-document synchronization plus a deliberate tag/positioning decision. See `docs/post-mvp-evolution-plan.md`, `docs/beta-resume-plan.md`, `docs/operator-workflows.md`, `docs/beta-readiness-gate.md`, and `docs/vps-validation-report.md`.
-
-If additional host access is not available yet, continue the first two items and treat item 3 as an external release dependency rather than a stop-work condition.
+Historical milestone sequencing remains recorded in `docs/mvp-evolution-plan.md`, `docs/mvp-closeout-backlog.md`, `docs/post-mvp-evolution-plan.md`, and `docs/beta-resume-plan.md`.
+The current authoritative refactor brief is `docs/core-interfaces-refactor-plan.md`.

@@ -4,9 +4,9 @@
 
 This project is still in an early local-first stage. Contributions should preserve the core design rule:
 
-- conversation is the interface
-- typed tools are the execution surface
-- policy and audit stay in the execution path
+- the runtime owns execution, policy, and audit
+- interfaces sit on top of the runtime instead of owning business logic
+- typed tools remain the default execution surface
 
 ## Local setup
 
@@ -44,9 +44,11 @@ If you use `pre-commit`, the repository will run:
 ### Architecture
 
 - prefer typed tools over generic command execution
+- keep `core` modules legible without requiring the chat path to explain them
 - keep policy checks in front of every tool execution
 - do not let providers execute host actions directly
 - use structured plans instead of free-form action text
+- keep compatibility facades thin when moving public entry points
 - document architectural changes with an ADR when they change core system contracts
 
 ### Security
@@ -71,6 +73,7 @@ If you use `pre-commit`, the repository will run:
 
 - add or update tests for every new tool
 - add chat flow tests when provider routing or summaries change
+- add MCP bridge tests when the exposed read-only capability surface changes
 - add policy tests when risk handling changes
 - prefer deterministic tests over environment-dependent host behavior
 - when touching config editing, prefer tests under `MC_STATE_DIR/managed-configs` over host paths

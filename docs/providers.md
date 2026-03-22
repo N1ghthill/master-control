@@ -1,5 +1,8 @@
 # Providers
 
+Providers only power the optional chat and planning interface.
+The core runtime, direct CLI tools, validation commands, and the first MCP slice do not require any remote model provider.
+
 ## Current providers
 
 Master Control currently supports these planning providers:
@@ -27,7 +30,7 @@ That decision now also carries a typed `kind`, for example:
 - `unsupported_request`
 - `missing_safe_tool`
 
-This is carried in `plan_decision` at the app boundary and recorded in `plan_generated` audit events.
+This is carried in `plan_decision` at the chat-interface boundary and recorded in `plan_generated` audit events.
 
 After execution, MC also derives a `turn_decision` for the final payload and audit trail. This lets the operator distinguish planner intent from turn outcome, including cases such as:
 
@@ -68,7 +71,7 @@ Why this shape:
 
 MC persists provider state per chat session. For providers that support it, the active session can store the last provider response id and reuse it on the next turn.
 
-For OpenAI, this means the app can pass `previous_response_id` when the same session is resumed.
+For OpenAI, this means the chat interface can pass `previous_response_id` when the same session is resumed.
 
 MC also persists recent conversation messages locally and passes them back to the provider when no remote response chain is available. This keeps follow-up requests useful across local and remote providers.
 
@@ -84,7 +87,7 @@ All providers receive the compact summary text and the structured session contex
 
 The summary remains the compact carry-forward artifact, but the intended steady state is for summary text to stay useful for rendering and debugging, not to be the primary safety boundary.
 
-MC also persists session-scoped observations with TTL metadata. Before each planning pass, the app computes freshness for the latest host observations and passes that to the active provider. This gives all planners the same rule:
+MC also persists session-scoped observations with TTL metadata. Before each planning pass, the runtime computes freshness for the latest host observations and the chat interface passes that to the active provider. This gives all planners the same rule:
 
 - fresh observations may be summarized and reused
 - stale observations should be refreshed through the matching typed tool before the planner relies on them
@@ -127,7 +130,7 @@ For service recommendations, executable actions now require explicit service evi
 
 The local heuristic provider also supports a small set of approval-gated actions directly, such as `restart_service`, `reload_service`, and safe reads of managed config paths. Those plans still execute through the same local confirmation boundary as every other tool.
 
-The app can also call a provider multiple times inside one user turn. Earlier tool results are summarized and reassembled into structured session context so the next planning pass can continue the diagnosis or stop and summarize.
+The chat interface can also call a provider multiple times inside one user turn. Earlier tool results are summarized and reassembled into structured session context so the next planning pass can continue the diagnosis or stop and summarize.
 
 For `openai` and `ollama`, MC now also performs a dedicated final response synthesis step after tool execution. This keeps the planning contract strict while still letting the active model produce the operator-facing explanation from the actual observed results.
 

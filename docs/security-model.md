@@ -2,20 +2,21 @@
 
 ## Security posture
 
-Master Control is a high-risk application by definition because it sits close to the operating system. The design must assume:
+Master Control is a high-risk runtime by definition because it sits close to the operating system.
+The design must assume:
 
-- user input can be malformed or malicious
+- interface input can be malformed or malicious
 - model output can be wrong
 - the host may contain sensitive data
 - mistakes in execution can damage availability or integrity
 
 ## Security principles
 
-- Least privilege by default
-- Explicit approval for state-changing operations
-- Strong input validation at the tool boundary
-- No hidden escalation path
-- Every action leaves an audit record
+- least privilege by default
+- explicit approval for state-changing operations
+- strong input validation at the tool boundary
+- no hidden escalation path
+- every action leaves an audit record
 
 ## Current implementation status
 
@@ -28,6 +29,11 @@ Already implemented:
 - bounded subprocess execution with `shell=False`, timeouts, and output truncation
 - recommendation actions that still execute through the same policy path as direct tool calls
 - managed config edit workflow with bounded targets, validation, backup, and restore
+
+Important interpretation:
+
+- the security boundary belongs to the runtime
+- chat, planners, and providers are interface layers and must not bypass that boundary
 
 Not implemented yet:
 
@@ -113,9 +119,9 @@ The executor must never expose raw arbitrary shell execution as the default path
 
 ## File operation rules
 
-- Read access should prefer allowlisted roots or explicit tool ownership
-- Writes must support backup, validation, and atomic replace when feasible
-- Sensitive paths must require elevated approval policy
+- read access should prefer allowlisted roots or explicit tool ownership
+- writes must support backup, validation, and atomic replace when feasible
+- sensitive paths must require elevated approval policy
 
 Current managed write targets are intentionally narrow:
 
