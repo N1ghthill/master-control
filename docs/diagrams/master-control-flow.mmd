@@ -1,18 +1,25 @@
 flowchart TD
-    user[Operator]
-    cli[CLI<br/>chat / tool / recommendations]
+    user[Operator / External Client]
+
+    subgraph interfaces[Interfaces]
+        cli[CLI]
+        mcp[MCP Bridge]
+        chat[Chat Interface]
+    end
+
+    subgraph planning[Optional chat planning]
+        provider[Planner Provider<br/>heuristic / openai / ollama]
+        plan[Structured Plan<br/>plan_decision + tool steps]
+        render[Chat Rendering]
+    end
 
     subgraph runtime[MC Runtime]
-        app[Agent App]
-        ctx[Session Context Builder]
-        provider[Provider Adapter<br/>heuristic / openai / ollama]
-        plan[Structured Plan<br/>plan_decision + tool steps]
+        runtime_core[Runtime Core]
+        ctx[Session Context + Insights]
+        recs[Recommendation Queue]
         policy[Policy Engine]
         registry[Tool Registry]
         exec[Executor / OS Adapters]
-        render[Turn Rendering]
-        insights[Session Insights]
-        recs[Recommendation Queue]
     end
 
     subgraph state[SQLite State]
@@ -25,45 +32,40 @@ flowchart TD
     end
 
     host[Linux Host<br/>systemd / files / proc / journal]
-    reply[Operator Response<br/>answer / evidence / next command]
     approval[Approval Gate<br/>accept / --confirm]
 
-    user --> cli --> app
-    app --> ctx
+    user --> cli --> runtime_core
+    user --> mcp --> runtime_core
+    user --> chat --> provider --> plan --> runtime_core
+
+    runtime_core --> ctx
     ctx --> sessions
     ctx --> summaries
     ctx --> observations
     ctx --> recommendations
     ctx --> messages
 
-    ctx --> provider
-    provider --> plan
-    plan -->|complete| render
-    plan -->|needs_tools| policy
-    plan -->|blocked| render
+    ctx --> recs --> recommendations
 
+    runtime_core --> policy
     policy -->|allow| registry --> exec --> host
     policy -->|needs confirmation| approval
     approval -->|accepted| policy
 
-    host -->|tool results| app
-    app --> observations
-    app --> audit
-    app --> summaries
-    app --> messages
+    host --> exec --> runtime_core
+    runtime_core --> observations
+    runtime_core --> audit
+    runtime_core --> summaries
+    runtime_core --> messages
 
-    app --> insights --> recs --> recommendations
-    app --> render --> reply
-    recommendations --> render
-    observations --> render
-    audit --> render
-    reply --> cli --> user
+    runtime_core --> cli --> user
+    runtime_core --> mcp --> user
+    runtime_core --> render --> chat --> user
 
     classDef entry fill:#e8f3ff,stroke:#1b4d8a,stroke-width:1px,color:#10243e;
     classDef core fill:#eef8ee,stroke:#2f6b2f,stroke-width:1px,color:#102410;
     classDef data fill:#fff5e6,stroke:#8a5a12,stroke-width:1px,color:#3b2608;
-    classDef edge fill:#f6f6f6,stroke:#555,stroke-width:1px,color:#222;
 
-    class user,cli,reply,approval entry;
-    class app,ctx,provider,plan,policy,registry,exec,render,insights,recs,host core;
+    class user,cli,mcp,chat,approval entry;
+    class provider,plan,render,runtime_core,ctx,recs,policy,registry,exec,host core;
     class sessions,summaries,observations,recommendations,audit,messages data;
