@@ -17,7 +17,7 @@ concurrency:
 jobs:
   test:
     runs-on: ubuntu-24.04
-    timeout-minutes: 10
+    timeout-minutes: 15
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: "true"
 
@@ -53,3 +53,67 @@ jobs:
 
       - name: Smoke doctor
         run: MC_PROVIDER=auto PYTHONPATH=src python -m master_control --json doctor
+
+      - name: Bootstrap harness smoke
+        run: >-
+          python scripts/validate_operator_bootstrap.py
+          --output-dir "${RUNNER_TEMP}/mc-bootstrap-validation"
+          --provider heuristic
+          --python python
+
+      - name: Summarize bootstrap harness report
+        if: always()
+        env:
+          MC_BOOTSTRAP_REPORT_DIR: ${{ runner.temp }}/mc-bootstrap-validation
+        run: |
+          python - <<'PY'
+          from __future__ import annotations
+
+          import json
+          import os
+          from pathlib import Path
+
+          report_root = Path(os.environ["MC_BOOTSTRAP_REPORT_DIR"])
+          report_paths = sorted(report_root.glob("*/report.json"))
+          if not report_paths:
+            print(f"No bootstrap validation report found under {report_root}.")
+            raise SystemExit(0)
+
+          report_path = report_paths[-1]
+          payload = json.loads(report_path.read_text(encoding="utf-8"))
+          commands = payload.get("commands", {})
+          cleanup = payload.get("cleanup", {})
+
+          lines = [
+            f"Bootstrap report: {report_path}",
+            f"overall_ok={payload.get('overall_ok')}",
+            f"cleanup_ok={cleanup.get('ok')}",
+          ]
+          for name in ("install", "doctor", "validate_host_profile", "uninstall"):
+            item = commands.get(name, {})
+            lines.append(
+              f"{name}: ok={item.get('ok')} exit_code={item.get('exit_code')} skipped={item.get('skipped', False)}"
+            )
+
+          if not payload.get("overall_ok"):
+            lines.append("Failure excerpts:")
+            for name in ("install", "doctor", "validate_host_profile", "uninstall"):
+              item = commands.get(name, {})
+              stderr_excerpt = item.get("stderr_excerpt")
+              stdout_excerpt = item.get("stdout_excerpt")
+              if stderr_excerpt:
+                lines.append(f"{name} stderr: {stderr_excerpt}")
+              elif stdout_excerpt:
+                lines.append(f"{name} stdout: {stdout_excerpt}")
+
+          rendered = "\n".join(lines)
+          print(rendered)
+
+          summary_path = os.environ.get("GITHUB_STEP_SUMMARY")
+          if summary_path:
+            with open(summary_path, "a", encoding="utf-8") as handle:
+              handle.write("## Bootstrap Harness Smoke\n\n")
+              handle.write("```text\n")
+              handle.write(rendered)
+              handle.write("\n```\n")
+          PY

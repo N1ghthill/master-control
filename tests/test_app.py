@@ -30,6 +30,7 @@ class MasterControlAppTest(unittest.TestCase):
             self.assertEqual(payload["planner_mode"], "heuristic")
             self.assertTrue(payload["store_diagnostics"]["ok"])
             self.assertEqual(payload["store_diagnostics"]["journal_mode"], "wal")
+            self.assertIn("summary", payload["bootstrap_python_diagnostics"])
             self.assertIn("available", payload["reconcile_timer_diagnostics"])
 
     def test_doctor_reports_unavailable_explicit_ollama_provider(self) -> None:

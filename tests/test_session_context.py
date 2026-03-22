@@ -276,6 +276,49 @@ class SessionContextTest(unittest.TestCase):
         self.assertEqual(context.config.validation_kind, "ini_parse")
         self.assertEqual(context.config.backup_path, "/tmp/app.bak")
 
+    def test_build_session_context_keeps_recent_observation_history(self) -> None:
+        history = build_observation_freshness(
+            (
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {
+                        "service": "nginx.service",
+                        "scope": "system",
+                        "activestate": "active",
+                        "substate": "running",
+                    },
+                    "observed_at": "2100-03-18T01:03:00Z",
+                    "expires_at": "2100-03-18T01:06:00Z",
+                },
+                {
+                    "source": "service_status",
+                    "key": "service",
+                    "value": {
+                        "service": "nginx.service",
+                        "scope": "system",
+                        "activestate": "failed",
+                        "substate": "failed",
+                    },
+                    "observed_at": "2100-03-18T01:00:00Z",
+                    "expires_at": "2100-03-18T01:03:00Z",
+                },
+            )
+        )
+
+        context = build_session_context(None, history[:1], history)
+
+        self.assertIn("service", context.recent_observations)
+        self.assertEqual(len(context.recent_observations["service"]), 2)
+        self.assertEqual(
+            context.recent_observations["service"][0].value["activestate"],
+            "active",
+        )
+        self.assertEqual(
+            context.recent_observations["service"][1].value["activestate"],
+            "failed",
+        )
+
     def test_previous_response_id_is_reused_when_session_is_resumed(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             settings = Settings(
@@ -436,6 +479,92 @@ class SessionContextTest(unittest.TestCase):
             response.plan.steps[0].arguments,
             {"path": "/etc/app.ini", "backup_path": "/tmp/backup.bak"},
         )
+
+    def test_heuristic_provider_blocks_contextual_config_read_without_path(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="abre esse arquivo pra mim",
+                available_tools=(
+                    ToolSpec(
+                        name="read_config_file",
+                        description="Read a managed configuration file.",
+                        risk=RiskLevel.READ_ONLY,
+                        arguments=("path",),
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNone(response.plan)
+        self.assertEqual(response.decision.state, "blocked")
+        self.assertEqual(response.decision.kind, "unsupported_request")
+
+    def test_heuristic_provider_blocks_contextual_process_lookup_without_target(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="esse processo pertence a qual serviço?",
+                available_tools=(
+                    ToolSpec(
+                        name="process_to_unit",
+                        description="Correlate a process with systemd.",
+                        risk=RiskLevel.READ_ONLY,
+                        arguments=("name", "pid", "limit"),
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNone(response.plan)
+        self.assertEqual(response.decision.state, "blocked")
+        self.assertEqual(response.decision.kind, "unsupported_request")
+
+    def test_heuristic_provider_blocks_service_failure_investigation_without_target(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="por que esse serviço caiu?",
+                available_tools=(
+                    ToolSpec(
+                        name="read_journal",
+                        description="Read recent journal entries.",
+                        risk=RiskLevel.READ_ONLY,
+                        arguments=("unit", "lines"),
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNone(response.plan)
+        self.assertEqual(response.decision.state, "blocked")
+        self.assertEqual(response.decision.kind, "unsupported_request")
+
+    def test_heuristic_provider_blocks_focus_request_without_recent_artifact_context(self) -> None:
+        provider = HeuristicProvider()
+        response = provider.plan(
+            ProviderRequest(
+                user_message="mostra só o importante",
+                available_tools=(
+                    ToolSpec(
+                        name="read_journal",
+                        description="Read recent journal entries.",
+                        risk=RiskLevel.READ_ONLY,
+                        arguments=("unit", "lines"),
+                    ),
+                    ToolSpec(
+                        name="read_config_file",
+                        description="Read a managed configuration file.",
+                        risk=RiskLevel.READ_ONLY,
+                        arguments=("path",),
+                    ),
+                ),
+            )
+        )
+
+        self.assertIsNone(response.plan)
+        self.assertEqual(response.decision.state, "blocked")
+        self.assertEqual(response.decision.kind, "unsupported_request")
 
 
 if __name__ == "__main__":

@@ -268,6 +268,7 @@ class OpenAIResponsesProvider:
         sections = [
             "You are the planning layer for Master Control, a Linux agent with controlled execution.",
             "Return exactly one function call to submit_plan.",
+            "Interpret informal operator phrasing when it clearly maps to an existing safe workflow.",
             "Use only the provided tools. Never invent tools or arguments.",
             "Prefer the smallest sufficient plan.",
             "Always set decision.state to exactly one of: needs_tools, complete, blocked.",
@@ -281,6 +282,9 @@ class OpenAIResponsesProvider:
             "For live host inspection requests, do not answer from memory alone. Use the matching read-only tool first unless current-turn observations already provide the evidence.",
             "Write the message in the same language as the user.",
             "When previous session context is provided in the input, use it to resolve safe follow-up requests.",
+            "When structured session context includes recent observations for the same target, you may answer comparative follow-ups about whether it changed, improved, or worsened.",
+            "For focused log follow-ups, compress recurring journal patterns such as restart or crash loops, dependency failures, environment failures, timeouts, permission failures, and recovery signals instead of echoing long raw excerpts.",
+            "For config comparison follow-ups, only compare tracked managed files from session context and prefer read_config_file when a fresh comparable read is missing.",
             "You may receive current-turn execution observations in the extra instructions. Use them to continue the same request without repeating completed steps.",
             "If the current-turn observations are already enough, return decision.state=complete and an empty steps array.",
             "Available tools:",

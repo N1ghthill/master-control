@@ -1,5 +1,10 @@
 # Release Checklist
 
+Current organization rule for the beta-prep track:
+
+- use `docs/beta-resume-plan.md` as the short-horizon execution record
+- use `docs/beta-readiness-gate.md` as the release gate, not as the day-to-day work queue
+
 ## Alpha baseline
 
 Run this checklist only after the closeout milestones in `docs/mvp-evolution-plan.md` are satisfied for correctness, context handling, and operator flow quality.
@@ -13,7 +18,7 @@ Before calling the narrow local CLI MVP ready for an alpha tag:
 5. run a real-host smoke test for managed config editing
 6. run a real-host smoke test for `reconcile-timer install|remove` in `scope=user`
 7. confirm documentation matches the operator-visible commands
-8. confirm `README.md`, `docs/status.md`, `docs/roadmap.md`, `docs/mvp-plan.md`, and `docs/mvp-evolution-plan.md`, and `docs/mvp-closeout-backlog.md` are aligned
+8. confirm `README.md`, `docs/status.md`, `docs/roadmap.md`, `docs/beta-resume-plan.md`, `docs/beta-readiness-gate.md`, `docs/mvp-plan.md`, and `docs/mvp-evolution-plan.md`, and `docs/mvp-closeout-backlog.md` are aligned
 9. confirm GitHub Actions CI is green on `main`
 10. capture release notes in `CHANGELOG.md`
 
@@ -30,17 +35,24 @@ python3 -m pip wheel . --no-deps -w /tmp/mc-dist
 
 ## Clean-environment install
 
-- prefer `python3 -m venv` when the host provides stdlib `venv`
+- prefer `./install.sh` for the operator-facing bootstrap path
+- prefer the full operator lifecycle check `install -> doctor -> validate-host-profile -> uninstall`
+- for a repeatable repo-side rerun, prefer `python3 scripts/validate_operator_bootstrap.py --output-dir <tmp>`
+- GitHub CI now runs that same bootstrap harness as a lightweight heuristic-backed smoke; keep it green, but do not treat it as a substitute for an additional host report
+- confirm the generated wrapper can run `mc doctor`
+- if validating the developer path directly, prefer `python3 -m venv` when the host provides stdlib `venv`
 - if the host lacks `ensurepip/python3-venv`, use `python3 -m virtualenv` as the fallback
-- validate `pip install -e .` in that isolated environment
+- validate `pip install .` or `pip install -e .` in that isolated environment
 - run `mc doctor` with isolated `MC_STATE_DIR` and `MC_DB_PATH`
+- run `mc validate-host-profile --output-dir <tmp>`
+- validate `./uninstall.sh` and decide whether `--purge-state` is appropriate for the target host
 
 ## Real-host smoke tests
 
 Preferred execution path for each additional host profile:
 
 ```bash
-python3 scripts/validate_host_profile.py --output-dir ./artifacts/host-validation
+mc validate-host-profile --output-dir ./artifacts/host-validation
 ```
 
 Use the generated JSON report as the release evidence artifact for that host.

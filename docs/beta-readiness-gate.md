@@ -1,6 +1,6 @@
 # Beta Readiness Gate
 
-Snapshot date: 2026-03-18
+Snapshot date: 2026-03-20
 
 ## Purpose
 
@@ -8,6 +8,9 @@ This document defines the minimum bar for moving Master Control from the current
 
 It is not a feature wishlist.
 It is a release gate.
+
+Use `docs/beta-resume-plan.md` for short-horizon execution order.
+Use this document only to decide whether beta claims and tagging are actually justified.
 
 ## Gate Summary
 
@@ -80,6 +83,7 @@ Minimum exit bar:
 - `python3 -m compileall src`
 - `PYTHONPATH=src python3 -m master_control --json doctor`
 - GitHub CI runs the same effective baseline
+- GitHub CI also runs a lightweight non-editable bootstrap smoke via `python3 scripts/validate_operator_bootstrap.py --output-dir <tmp>`
 
 Failure rule:
 
@@ -111,12 +115,15 @@ Before any beta tag, the repository should have:
 
 ## Current Status
 
-Current assessment on 2026-03-18:
+Current assessment on 2026-03-20:
 
 - not yet beta-ready
-- the `0.1.0a2` release-candidate package is prepared locally, but final tagging remains blocked on Gate 1
+- the `0.1.0a2` release-candidate package is prepared locally, and Gate 1 host-count evidence is now satisfied through the maintainer workstation plus a dedicated Debian 13 VPS validation run
+- local hardening has already closed bootstrap, comparative follow-up, config-diff, config-diff refinement, service-log compression, service-log pattern refinement, bootstrap evidence, comparative phrase-collection, bootstrap-to-CI decision, and community validation intake packages
+- release-facing docs and final positioning still need to be synchronized before any beta claim or tag decision
+- dedicated VPS evidence is recorded in `docs/vps-validation-report.md`
 
-Main remaining blockers:
+Main remaining actions:
 
-1. workflow validation is still concentrated on one primary host profile
-2. the repository now has a repeatable host-profile validation harness, but it still needs reports from additional real hosts
+1. update the canonical release-facing docs to reflect that workflow validation now exists on more than one real host profile
+2. decide whether the current maintainability and release posture justify beta language now, or whether the project should remain in late-alpha/private-preview wording a little longer

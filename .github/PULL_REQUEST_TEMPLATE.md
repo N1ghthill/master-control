@@ -14,5 +14,6 @@
 
 ## Docs
 
-- [ ] `README.md` updated if commands or operator-visible behavior changed
+- [ ] `README.md` updated if landing-page messaging or quick-start behavior changed
+- [ ] `docs/README.md` updated if documentation navigation changed
 - [ ] relevant docs under `docs/` updated if contracts or project status changed

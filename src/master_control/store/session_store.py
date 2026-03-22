@@ -344,6 +344,44 @@ class SessionStore:
             )
         return observations
 
+    def list_recent_observations(
+        self,
+        session_id: int,
+        *,
+        limit_per_key: int = 2,
+    ) -> list[dict[str, object]]:
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                SELECT source, key, value, observed_at, expires_at
+                FROM observations
+                WHERE session_id = ?
+                ORDER BY id DESC
+                """,
+                (session_id,),
+            )
+            rows = cursor.fetchall()
+
+        observations: list[dict[str, object]] = []
+        counts_by_key: dict[str, int] = {}
+        for source, key, value, observed_at, expires_at in rows:
+            if not isinstance(key, str):
+                continue
+            seen = counts_by_key.get(key, 0)
+            if seen >= limit_per_key:
+                continue
+            counts_by_key[key] = seen + 1
+            observations.append(
+                {
+                    "source": source,
+                    "key": key,
+                    "value": deserialize_observation_value(value),
+                    "observed_at": observed_at,
+                    "expires_at": expires_at,
+                }
+            )
+        return observations
+
     def upsert_session_summary(self, session_id: int, summary_text: str) -> None:
         with closing(self._connect()) as connection:
             connection.execute(

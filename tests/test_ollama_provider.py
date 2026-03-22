@@ -128,6 +128,15 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertIn(
                 "do not answer from memory alone", captured_payload["messages"][0]["content"]
             )
+            self.assertIn(
+                "Interpret informal operator phrasing", captured_payload["messages"][0]["content"]
+            )
+            self.assertIn("comparative follow-ups", captured_payload["messages"][0]["content"])
+            self.assertIn(
+                "restart or crash loops, dependency failures, environment failures",
+                captured_payload["messages"][0]["content"],
+            )
+            self.assertIn("tracked managed files", captured_payload["messages"][0]["content"])
             self.assertIn("decision", captured_payload["format"]["required"])
 
     def test_provider_can_synthesize_final_response(self) -> None:

@@ -144,6 +144,13 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertIn("memory", captured_payload["instructions"])
             self.assertIn("Always set decision.state", captured_payload["instructions"])
             self.assertIn("do not answer from memory alone", captured_payload["instructions"])
+            self.assertIn("Interpret informal operator phrasing", captured_payload["instructions"])
+            self.assertIn("comparative follow-ups", captured_payload["instructions"])
+            self.assertIn(
+                "restart or crash loops, dependency failures, environment failures",
+                captured_payload["instructions"],
+            )
+            self.assertIn("tracked managed files", captured_payload["instructions"])
             self.assertIn("decision", captured_payload["tools"][0]["parameters"]["required"])
 
     def test_provider_requires_api_key(self) -> None:
