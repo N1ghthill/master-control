@@ -1,11 +1,11 @@
 # Roadmap
 
-Snapshot date: 2026-03-18
+Snapshot date: 2026-03-20
 
 ## Current stage
 
 - late alpha
-- the `0.1.0a2` release-candidate package is prepared, with final tagging blocked on one additional real host validation report
+- the `0.1.0a2` release-candidate package is prepared, and a dedicated Debian 13 VPS now provides the second real host validation report that had been missing
 - foundation, read-only inspection, session memory, provider integration, recommendation tracking, and first mutation workflows are in place
 - service trust hardening is now in place for the current recommendation boundary
 - structured session state and orchestration refactor is now in place for the core decision paths
@@ -16,9 +16,19 @@ Snapshot date: 2026-03-18
 - detailed sequencing and result targets live in `docs/mvp-evolution-plan.md`
 - the closed execution record lives in `docs/mvp-closeout-backlog.md`
 - the active post-MVP planning record now lives in `docs/post-mvp-evolution-plan.md`
+- the active beta resume record now lives in `docs/beta-resume-plan.md`
 - the current beta gate lives in `docs/beta-readiness-gate.md`
 - post-MVP Milestone P1 (trust and baseline stabilization) completed on 2026-03-18
 - post-MVP Milestone P2 (workflow depth and operator usefulness) completed on 2026-03-18
+- beta-oriented operator bootstrap preparation started on 2026-03-19
+- comparative follow-ups and safe config-diff follow-ups completed locally on 2026-03-19
+- service-log compression completed locally on 2026-03-20
+- bootstrap evidence hardening completed locally on 2026-03-20
+- comparative phrase collection completed locally on 2026-03-20
+- config-diff refinement completed locally on 2026-03-20
+- service-log pattern refinement completed locally on 2026-03-20
+- bootstrap-to-CI decision completed locally on 2026-03-20
+- community validation intake completed locally on 2026-03-20
 
 ## Phase 0: Foundation
 
@@ -208,10 +218,15 @@ Exit criteria:
 
 ## Next roadmap focus
 
-The MVP closeout is complete. The next roadmap track is:
+The MVP closeout is complete. The immediate beta-oriented roadmap track is:
 
-1. service mode and external interfaces
-2. broader post-alpha hardening
-3. incremental operator utility beyond the narrow MVP baseline
+1. keep operator bootstrap and lifecycle hardening stable
+2. keep the new lightweight GitHub CI bootstrap smoke aligned with the operator install path without inflating it into a second baseline
+3. keep the community validation intake path low-friction so external testers can actually submit host reports
+4. gather additional host-profile validation evidence and close the release gate when host access exists
+5. keep any further natural-language refinement limited to real operator evidence within existing typed workflows
+6. start service mode and external interfaces only after operator trust improves further
 
-The current execution recommendation after Milestone P2 is to rerun the documented operator workflows on more host profiles before broader interface expansion. See `docs/post-mvp-evolution-plan.md`, `docs/operator-workflows.md`, and `docs/beta-readiness-gate.md`.
+The current execution recommendation after Milestone P2 is to use `docs/beta-resume-plan.md` as the short-horizon execution record, keep improving the local operator bootstrap path and typed natural-language coverage, and treat release status as an evidence-backed decision. The comparative follow-up, safe config-diff, config-diff refinement, service-log compression, service-log pattern refinement, bootstrap evidence hardening, comparative phrase collection, bootstrap-to-CI decision, and community validation intake slices are now locally complete, and the dedicated Debian 13 VPS run now closes the previously missing second-host evidence. The next required package is release-document synchronization plus a deliberate tag/positioning decision. See `docs/post-mvp-evolution-plan.md`, `docs/beta-resume-plan.md`, `docs/operator-workflows.md`, `docs/beta-readiness-gate.md`, and `docs/vps-validation-report.md`.
+
+If additional host access is not available yet, continue the first two items and treat item 3 as an external release dependency rather than a stop-work condition.

@@ -12,9 +12,97 @@ from unittest.mock import patch
 from master_control.app import MasterControlApp
 from master_control.cli import main
 from master_control.config import Settings
+from master_control.host_validation import HostValidationRun
 
 
 class CliObservationCommandTest(unittest.TestCase):
+    def test_validate_host_profile_command_renders_json(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            report_path = Path(tmp_dir) / "report.json"
+            fake_report = {
+                "overall_ok": True,
+                "report_path": str(report_path),
+                "host_profile": {"hostname": "test-host"},
+            }
+
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(Path(tmp_dir) / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "master_control.cli.run_host_validation",
+                    return_value=HostValidationRun(report_path=report_path, report=fake_report),
+                ) as mocked_run:
+                    with redirect_stdout(stdout):
+                        exit_code = main(
+                            [
+                                "--json",
+                                "validate-host-profile",
+                                "--output-dir",
+                                tmp_dir,
+                                "--provider",
+                                "heuristic",
+                            ]
+                        )
+
+            payload = json.loads(stdout.getvalue())
+            self.assertEqual(exit_code, 0)
+            self.assertEqual(payload["report_path"], str(report_path))
+            mocked_run.assert_called_once()
+
+    def test_validate_host_profile_command_renders_report_path(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            report_path = Path(tmp_dir) / "report.json"
+            fake_report = {
+                "overall_ok": True,
+                "report_path": str(report_path),
+                "host_profile": {
+                    "hostname": "beta-host",
+                    "system": "Linux",
+                    "release": "6.12-test",
+                },
+                "settings": {"provider": "heuristic"},
+                "baseline": {"enabled": False, "all_ok": True},
+                "workflows": {
+                    "slow_host": {"ok": True},
+                    "failed_service": {"ok": True},
+                    "managed_config": {"ok": True},
+                },
+            }
+
+            stdout = io.StringIO()
+            with patch.dict(
+                os.environ,
+                {
+                    "MC_STATE_DIR": tmp_dir,
+                    "MC_DB_PATH": str(Path(tmp_dir) / "mc.sqlite3"),
+                    "MC_PROVIDER": "heuristic",
+                },
+                clear=False,
+            ):
+                with patch(
+                    "master_control.cli.run_host_validation",
+                    return_value=HostValidationRun(report_path=report_path, report=fake_report),
+                ):
+                    with redirect_stdout(stdout):
+                        exit_code = main(["validate-host-profile", "--output-dir", tmp_dir])
+
+            output = stdout.getvalue()
+            self.assertEqual(exit_code, 0)
+            self.assertIn("Master Control host validation", output)
+            self.assertIn(f"report:    {report_path}", output)
+            self.assertIn("overall:   ok", output)
+            self.assertIn("host:      beta-host (Linux 6.12-test)", output)
+            self.assertIn("provider:  heuristic", output)
+            self.assertIn("baseline:  skipped", output)
+            self.assertIn("slow_host=ok", output)
+
     def test_observations_command_renders_json(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             state_dir = Path(tmp_dir)

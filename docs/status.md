@@ -1,11 +1,19 @@
 # Project Status
 
-Snapshot date: 2026-03-18
+Snapshot date: 2026-03-20
+
+## Purpose
+
+This document is the authoritative snapshot of project maturity, implemented scope, and validation evidence at a point in time.
+
+It is not the GitHub landing page.
+It is not the long-horizon roadmap.
 
 ## Maturity
 
 - Stage: late alpha
-- Release candidate note: the `0.1.0a2` package is prepared locally, but final tagging is still blocked on a second host-profile validation report
+- Release candidate note: the `0.1.0a2` package is prepared locally, and a dedicated Debian 13 VPS now provides a second real host-profile validation report
+- Execution note: the remaining release-facing work is now documentation synchronization and release-positioning review, not missing multi-host evidence
 - Progress against the narrow MVP: complete for the local alpha baseline
 - Primary gap: future work is now post-MVP: broader production hardening, service mode, and external interfaces
 - Provider integration note: the Ollama path is now validated against a real local server and installed model, not only tests and fake transports
@@ -13,6 +21,7 @@ Snapshot date: 2026-03-18
 - MVP closeout record: `docs/mvp-evolution-plan.md`
 - MVP closeout backlog record: `docs/mvp-closeout-backlog.md`
 - Active post-MVP planning record: `docs/post-mvp-evolution-plan.md`
+- Primary short-horizon beta execution record: `docs/beta-resume-plan.md`
 - Active operator workflow guide: `docs/operator-workflows.md`
 - Active host-profile validation guide: `docs/host-profile-validation.md`
 - Active beta gate: `docs/beta-readiness-gate.md`
@@ -23,6 +32,18 @@ Snapshot date: 2026-03-18
 - Milestone note: post-MVP trust and baseline stabilization completed on 2026-03-18
 - Milestone note: post-MVP workflow depth and operator usefulness completed on 2026-03-18
 - Narrow local CLI MVP closeout: completed on 2026-03-18
+- Beta-oriented operator bootstrap preparation started on 2026-03-19
+- Milestone note: comparative follow-ups for performance, logs, and service status completed locally on 2026-03-19
+- Milestone note: safe config-diff follow-ups for tracked managed files completed locally on 2026-03-19
+- Milestone note: service-log compression for restart loops, timeout patterns, permission failures, and recovery signals completed locally on 2026-03-20
+- Milestone note: bootstrap evidence hardening via `scripts/validate_operator_bootstrap.py` completed locally on 2026-03-20
+- Milestone note: broader comparative phrase collection for performance, service, log, and config follow-ups completed locally on 2026-03-20
+- Milestone note: config-diff refinement for larger section-aware managed-file summaries completed locally on 2026-03-20
+- Milestone note: service-log pattern refinement for crash-loop, dependency, and environment-failure summaries completed locally on 2026-03-20
+- Milestone note: bootstrap-to-CI decision completed locally on 2026-03-20, with a lightweight bootstrap smoke now wired into GitHub CI
+- Milestone note: community validation intake completed locally on 2026-03-20 with a redacted bundle helper and dedicated issue template
+- Milestone note: a dedicated Debian 13 VPS validation lab produced a second real host-profile validation report on 2026-03-20
+- Organization rule: `docs/beta-resume-plan.md` is the canonical source for current package order, deferred release gates, and suggested commit slices
 
 ## What is already implemented
 
@@ -32,10 +53,15 @@ Snapshot date: 2026-03-18
 - SQLite bootstrap and local state directory
 - architecture, security, roadmap, and ADR documentation
 - audit trail for plans, executions, provider errors, and recommendation status updates
+- operator bootstrap scripts for install and removal
+- repeatable repo-side bootstrap validation harness with per-step logs and cleanup checks
+- GitHub CI bootstrap smoke for the non-editable operator path via `scripts/validate_operator_bootstrap.py`
+- redacted host-validation bundle generation plus a dedicated intake path for community-submitted reports
 
 ### Conversational core
 
 - CLI chat loop
+- CLI-integrated `validate-host-profile` command backed by reusable host-validation code
 - provider abstraction
 - heuristic planner for offline development
 - OpenAI Responses API adapter for structured planning
@@ -54,6 +80,7 @@ Snapshot date: 2026-03-18
 - heuristic slow-host diagnosis now ignores non-service `systemd` correlations when deciding whether a `service_status` step is valid
 - rendered hot-process output now collapses repeated commands so slow-host diagnosis is less noisy in operator-facing output
 - slow-host lead selection can now prefer a nearby service-relevant process over generic interpreter noise before running `process_to_unit`
+- heuristic planning now accepts broader informal operator phrasing for slow-host, service-status, failed-service, contextual and cause-oriented service log follow-ups, focused log/config summaries from fresh observations, rollback, short service-action follow-ups, informal disk/process requests, natural config inspection requests, contextual process -> service lookups, broader comparative follow-up phrasing for performance/logs/service status/config, safe config-diff summaries, and refined recurring service-log compression for restart or crash loops, dependency failures, environment failures, timeouts, permission failures, connection failures, and recovery signals while keeping the typed-tool boundary
 
 ### Linux inspection tools
 
@@ -76,6 +103,9 @@ Snapshot date: 2026-03-18
 - compact deterministic session summaries
 - structured session context derived from tracked entities, observations, and freshness
 - session-scoped observations with TTL-based freshness state
+- recent observation history preserves enough repeated reads to support safe comparative follow-ups without leaving the typed-tool boundary
+- recent journal observations can now be compressed into recurring patterns such as restart or crash loops, dependency failures, environment failures, timeouts, permission failures, connection failures, and recovery signals
+- managed config comparisons can now summarize larger tracked file changes by section and collapse overflow into shorter operator-facing diffs
 - deterministic session insights
 - persistent recommendation queue with lifecycle states
 - recommendations that degrade to refresh actions when the underlying signal is stale
@@ -127,6 +157,7 @@ Work that remains beyond this MVP closeout:
 Alpha release material now available:
 
 - `docs/alpha-validation-report.md`
+- `docs/vps-validation-report.md`
 - `docs/alpha-release-notes.md`
 - `docs/release-candidate-0.1.0a2.md`
 - `docs/mvp-evolution-plan.md`
@@ -160,8 +191,15 @@ At this snapshot, the project is validated by:
 - real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
 - real-host validation of `reconcile-timer install|remove` on `systemd --user`
 - real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
-- repeatable host-profile validation harness available through `python3 scripts/validate_host_profile.py`
-- clean-environment install validation via `python3 -m virtualenv`, `pip install -e .`, and `mc doctor`
+- repeatable host-profile validation harness available through `mc validate-host-profile`
+- repeatable operator bootstrap validation harness available through `python3 scripts/validate_operator_bootstrap.py`
+- GitHub CI now reruns the same bootstrap harness as a lightweight heuristic-backed smoke of the non-editable install path
+- host-validation reports can now be repackaged into redacted shareable bundles via `python3 scripts/prepare_host_validation_bundle.py`
+- clean-environment operator bootstrap validation via `./install.sh`, `mc doctor`, `mc validate-host-profile`, and `./uninstall.sh --purge-state`
 - packaging sanity check via `python3 -m pip wheel . --no-deps -w /tmp/mc-dist`
 - repository hygiene baseline with `ruff`, `mypy`, `pre-commit`, CI lint/typecheck, and GitHub issue/PR templates
-- current local rerun after post-MVP workflow depth work: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 123 tests alongside green `ruff`, `mypy`, `compileall`, and `mc doctor`
+- current local rerun after bootstrap-to-CI decision: `python3 -m unittest discover -s tests` and `python3 -m pytest -q` passed with 171 tests alongside green `ruff`, `mypy`, `compileall`, `mc doctor`, and a green local equivalent of the CI bootstrap smoke via `python3 scripts/validate_operator_bootstrap.py --output-dir /tmp/mc-bootstrap-ci-decision`
+- isolated operator bootstrap smoke on 2026-03-19: `install.sh -> mc doctor -> mc validate-host-profile -> uninstall.sh --purge-state`
+- repeatable bootstrap harness rerun on 2026-03-20: `python3 scripts/validate_operator_bootstrap.py --output-dir /tmp/mc-bootstrap-validation`
+- dedicated VPS operator-path validation on 2026-03-20: `install.sh -> mc doctor -> mc validate-host-profile -> uninstall.sh --purge-state` passed on Debian GNU/Linux 13 after installing `python3.13-venv`
+- dedicated VPS bootstrap harness rerun on 2026-03-20: `python3 scripts/validate_operator_bootstrap.py --output-dir ./artifacts/bootstrap-validation --provider heuristic` reported `overall_ok: true`

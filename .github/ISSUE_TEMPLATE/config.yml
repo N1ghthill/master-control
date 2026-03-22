@@ -1,5 +1,11 @@
 blank_issues_enabled: false
 contact_links:
+  - name: Documentation map
+    url: https://github.com/N1ghthill/master-control/blob/main/docs/README.md
+    about: Find the right guide, report, or planning document before opening an issue.
   - name: Project status
     url: https://github.com/N1ghthill/master-control/blob/main/docs/status.md
     about: Check current maturity, scope, and validated capabilities before opening an issue.
+  - name: Host validation guide
+    url: https://github.com/N1ghthill/master-control/blob/main/docs/community-host-validation.md
+    about: Follow the community host-validation flow before submitting a validation report.

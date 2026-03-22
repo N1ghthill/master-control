@@ -25,8 +25,9 @@ Run these before considering a change complete:
 python3 -m ruff check .
 python3 -m mypy src
 PYTHONPATH=src python3 -m unittest discover -s tests
+PYTHONPATH=src python3 -m pytest -q
 python3 -m compileall src
-PYTHONPATH=src python3 -m master_control doctor
+PYTHONPATH=src python3 -m master_control --json doctor
 ```
 
 The repository also has a matching GitHub Actions baseline in `.github/workflows/ci.yml`. Keep local checks and CI checks aligned.
@@ -59,7 +60,9 @@ If you use `pre-commit`, the repository will run:
 
 ### Documentation
 
-- update `README.md` when developer-facing commands change
+- keep `README.md` short and GitHub-facing
+- update `docs/README.md` when docs are added, renamed, or repurposed
+- update `README.md` when quick-start or public-facing positioning changes
 - update `docs/roadmap.md` and `docs/status.md` when project stage changes
 - update `docs/security-model.md` when the execution or approval boundary changes
 - prefer concise docs that capture contracts and decisions rather than implementation trivia

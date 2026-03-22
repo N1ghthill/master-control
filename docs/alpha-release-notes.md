@@ -8,7 +8,7 @@ Snapshot date: 2026-03-18
 
 - package and docs are aligned for `0.1.0a2`
 - local baseline and GitHub CI are green at this snapshot
-- final tag is still blocked on one additional real host-profile validation report
+- a second real host-profile validation report now exists from a dedicated Debian 13 VPS
 
 ## What changed since `0.1.0a1`
 
@@ -94,5 +94,5 @@ mc tool service_status --arg name=ollama-local.service --arg scope=user
 
 ## Validation reference
 
-See `docs/alpha-validation-report.md` for the real-host validation snapshot behind this alpha baseline.
-See `docs/release-candidate-0.1.0a2.md` for the current cut status and remaining blocker.
+See `docs/alpha-validation-report.md` and `docs/vps-validation-report.md` for the current real-host validation snapshots behind this alpha baseline.
+See `docs/release-candidate-0.1.0a2.md` for the current cut status and remaining release work.

@@ -43,6 +43,7 @@ from master_control.agent.turn_rendering import (
     collect_rendered_execution_summaries,
     render_chat_response,
 )
+from master_control.bootstrap_prereqs import collect_bootstrap_python_diagnostics
 from master_control.config import Settings
 from master_control.policy.engine import PolicyEngine
 from master_control.providers.availability import collect_provider_checks
@@ -68,7 +69,13 @@ from master_control.tools.registry import ToolRegistry, build_default_registry
 
 PROVIDER_HISTORY_LIMIT = 8
 MAX_PLANNING_ITERATIONS = 6
-MULTI_STEP_PLANNING_INTENTS = {"diagnose_performance"}
+MULTI_STEP_PLANNING_INTENTS = {
+    "diagnose_performance",
+    "compare_performance",
+    "compare_logs",
+    "compare_service_status",
+    "compare_config",
+}
 
 
 @dataclass(frozen=True, slots=True)
@@ -153,6 +160,7 @@ class MasterControlApp:
         provider_checks = collect_provider_checks(self.settings)
         store_diagnostics = self.store.diagnostics()
         timer_diagnostics = collect_reconcile_timer_diagnostics()
+        bootstrap_python_diagnostics = collect_bootstrap_python_diagnostics("python3")
         active_provider_check = dict(
             provider_checks.get(
                 self.provider.name,
@@ -181,6 +189,7 @@ class MasterControlApp:
             "provider_checks": provider_checks,
             "provider_diagnostics": self.provider.diagnostics(),
             "store_diagnostics": store_diagnostics,
+            "bootstrap_python_diagnostics": bootstrap_python_diagnostics,
             "reconcile_timer_diagnostics": timer_diagnostics,
             "audit_event_count": self.store.count_audit_events(),
             "session_count": len(self.store.list_sessions(limit=10_000)),
@@ -838,7 +847,11 @@ class MasterControlApp:
         available_tools = tuple(self.list_tools())
         working_summary = session_summary
         working_freshness = observation_freshness
-        working_session_context = self._build_session_context(working_summary, working_freshness)
+        working_session_context = self._build_session_context(
+            working_summary,
+            working_freshness,
+            self._load_observation_history(session_id),
+        )
         accumulated_executions: list[dict[str, object]] = []
         executed_signatures: set[str] = set()
         previous_response_id = self.previous_provider_response_id
@@ -902,6 +915,7 @@ class MasterControlApp:
             working_session_context = self._build_session_context(
                 working_summary,
                 working_freshness,
+                self._load_observation_history(session_id),
             )
 
             if any(not execution.get("ok") for execution in new_executions):
@@ -945,12 +959,21 @@ class MasterControlApp:
         rows = self.store.list_latest_observations(session_id)
         return build_observation_freshness(rows)
 
+    def _load_observation_history(self, session_id: int) -> tuple[ObservationFreshness, ...]:
+        rows = self.store.list_recent_observations(session_id, limit_per_key=4)
+        return build_observation_freshness(rows)
+
     def _build_session_context(
         self,
         session_summary: str | None,
         observation_freshness: tuple[ObservationFreshness, ...],
+        observation_history: tuple[ObservationFreshness, ...] = (),
     ) -> SessionContext:
-        return build_session_context(session_summary, observation_freshness)
+        return build_session_context(
+            session_summary,
+            observation_freshness,
+            observation_history,
+        )
 
     def latest_session_id(self) -> int:
         self.bootstrap()

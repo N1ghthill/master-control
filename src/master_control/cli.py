@@ -7,6 +7,7 @@ from typing import Any, cast
 
 from master_control.app import MasterControlApp
 from master_control.config import Settings
+from master_control.host_validation import run_host_validation
 from master_control.logging_utils import configure_logging
 
 
@@ -22,6 +23,25 @@ def build_parser() -> argparse.ArgumentParser:
     )
 
     subparsers = parser.add_subparsers(dest="command", required=True)
+    validate_host_parser = subparsers.add_parser(
+        "validate-host-profile",
+        help="Run the bounded host-profile validation and write a JSON report.",
+    )
+    validate_host_parser.add_argument(
+        "--output-dir",
+        default="artifacts/host-validation",
+        help="Directory where the validation report will be written.",
+    )
+    validate_host_parser.add_argument(
+        "--provider",
+        default="heuristic",
+        help="MC provider to use for host validation. Default: heuristic.",
+    )
+    validate_host_parser.add_argument(
+        "--run-baseline",
+        action="store_true",
+        help="Also rerun the engineering baseline commands on this host.",
+    )
     subparsers.add_parser("doctor", help="Validate local bootstrap state.")
     subparsers.add_parser("tools", help="List registered tools.")
     audit_parser = subparsers.add_parser("audit", help="Show recent audit events.")
@@ -294,6 +314,60 @@ def _render_timer_units(payload: dict[str, Any]) -> None:
     print(timer["content"], end="")
 
 
+def _render_host_validation_payload(payload: dict[str, Any]) -> None:
+    print("Master Control host validation")
+    print(f"report:    {payload['report_path']}")
+    print(f"overall:   {'ok' if payload['overall_ok'] else 'failed'}")
+
+    host_profile = payload.get("host_profile")
+    if isinstance(host_profile, dict):
+        hostname = host_profile.get("hostname")
+        system = host_profile.get("system")
+        release = host_profile.get("release")
+        if isinstance(hostname, str) and hostname:
+            host_summary = hostname
+            if isinstance(system, str) and system:
+                host_summary = f"{host_summary} ({system}"
+                if isinstance(release, str) and release:
+                    host_summary = f"{host_summary} {release}"
+                host_summary = f"{host_summary})"
+            print(f"host:      {host_summary}")
+
+    settings_payload = payload.get("settings")
+    if isinstance(settings_payload, dict):
+        provider = settings_payload.get("provider")
+        if isinstance(provider, str) and provider:
+            print(f"provider:  {provider}")
+
+    baseline = payload.get("baseline")
+    if isinstance(baseline, dict):
+        if baseline.get("enabled"):
+            print(f"baseline:  {'ok' if baseline.get('all_ok') else 'failed'}")
+        else:
+            print("baseline:  skipped")
+
+    workflows = payload.get("workflows")
+    if isinstance(workflows, dict) and workflows:
+        rendered_statuses: list[str] = []
+        for key, item in workflows.items():
+            status = "failed"
+            if isinstance(item, dict) and item.get("ok"):
+                status = "ok"
+            rendered_statuses.append(f"{key}={status}")
+        print(f"workflows: {', '.join(rendered_statuses)}")
+
+        failures = [
+            (key, item)
+            for key, item in workflows.items()
+            if isinstance(item, dict) and not item.get("ok")
+        ]
+        if failures:
+            failed_key, failed_payload = failures[0]
+            error = failed_payload.get("error")
+            if isinstance(error, str) and error:
+                print(f"detail:    {failed_key} -> {error}")
+
+
 def _run_chat(
     app: MasterControlApp,
     once: str | None,
@@ -344,6 +418,20 @@ def main(argv: Sequence[str] | None = None) -> int:
 
     settings = Settings.from_env()
     configure_logging(settings.log_level)
+
+    if args.command == "validate-host-profile":
+        validation_result = run_host_validation(
+            output_dir=args.output_dir,
+            provider=args.provider,
+            run_baseline=args.run_baseline,
+            base_settings=settings,
+        )
+        if args.json:
+            _print_json(validation_result.report)
+        else:
+            _render_host_validation_payload(validation_result.report)
+        return 0 if validation_result.report["overall_ok"] else 1
+
     app = MasterControlApp(settings)
 
     if args.command == "doctor":
@@ -366,6 +454,11 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{store_status} journal={store_diagnostics['journal_mode']} "
                 f"integrity={store_diagnostics['integrity_check']}"
             )
+            bootstrap_diagnostics = cast(
+                dict[str, Any],
+                doctor_payload["bootstrap_python_diagnostics"],
+            )
+            print(f"bootstrap: {bootstrap_diagnostics['summary']}")
             timer_diagnostics = cast(dict[str, Any], doctor_payload["reconcile_timer_diagnostics"])
             timer_summary = "ready" if timer_diagnostics["available"] else "missing systemctl"
             if not timer_diagnostics["user_scope_ready"]:

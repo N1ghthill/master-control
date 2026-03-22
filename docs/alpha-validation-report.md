@@ -2,6 +2,11 @@
 
 Snapshot date: 2026-03-18
 
+Second-host update:
+
+- a dedicated Debian GNU/Linux 13 VPS validation pass was captured on 2026-03-20
+- see `docs/vps-validation-report.md` for the current second-host evidence, operator-path results, and host-specific caveats
+
 ## Environment
 
 - Host: local Linux workstation

@@ -1,0 +1,77 @@
+name: Host validation report
+description: Submit a Linux host validation run for the beta-readiness gate
+title: "[Validation]: "
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Use this template for real Linux host validation runs.
+
+        Preferred flow:
+
+        1. `mc validate-host-profile --output-dir ./artifacts/host-validation --run-baseline`
+        2. `python3 scripts/prepare_host_validation_bundle.py --latest-under ./artifacts/host-validation`
+        3. Attach the generated `.zip` bundle or `report.redacted.json`
+        4. Paste the generated `SUMMARY.md` below
+
+        See `docs/community-host-validation.md` for the full guide.
+
+  - type: textarea
+    id: summary
+    attributes:
+      label: Validation summary
+      description: Paste the generated `SUMMARY.md` contents here
+    validations:
+      required: true
+
+  - type: dropdown
+    id: overall_ok
+    attributes:
+      label: Report result
+      options:
+        - overall_ok=true
+        - overall_ok=false
+        - not sure yet
+    validations:
+      required: true
+
+  - type: textarea
+    id: host_profile
+    attributes:
+      label: Host profile
+      description: Describe the environment honestly. Example: bare metal laptop, live USB, external SSD install, VM, cloud VM, container.
+      placeholder: |
+        Distribution:
+        Kernel:
+        Environment type:
+        Python version:
+    validations:
+      required: true
+
+  - type: textarea
+    id: commands
+    attributes:
+      label: Commands run
+      description: Paste the exact commands you used
+      placeholder: |
+        ./install.sh --provider heuristic
+        ~/.local/bin/mc validate-host-profile --output-dir ./artifacts/host-validation --run-baseline
+        python3 scripts/prepare_host_validation_bundle.py --latest-under ./artifacts/host-validation
+    validations:
+      required: true
+
+  - type: textarea
+    id: caveats
+    attributes:
+      label: Caveats or surprises
+      description: Provider differences, no failed services present, permission quirks, timer limitations, distro-specific behavior, etc.
+
+  - type: checkboxes
+    id: checklist
+    attributes:
+      label: Checklist
+      options:
+        - label: I reviewed the generated files before sharing them publicly
+          required: true
+        - label: I attached the redacted bundle or sanitized report to this issue
+          required: true

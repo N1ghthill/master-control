@@ -223,6 +223,22 @@ class ConfigContext:
 
 
 @dataclass(frozen=True, slots=True)
+class RecentObservationContext:
+    source: str
+    observed_at: str
+    stale: bool
+    value: dict[str, object]
+
+    def as_dict(self) -> dict[str, object]:
+        return {
+            "source": self.source,
+            "observed_at": self.observed_at,
+            "stale": self.stale,
+            "value": dict(self.value),
+        }
+
+
+@dataclass(frozen=True, slots=True)
 class SessionContext:
     tracked: TrackedEntities = field(default_factory=TrackedEntities)
     last_intent: str | None = None
@@ -234,6 +250,9 @@ class SessionContext:
     logs: LogContext | None = None
     failed_services: FailedServicesContext | None = None
     config: ConfigContext | None = None
+    recent_observations: dict[str, tuple[RecentObservationContext, ...]] = field(
+        default_factory=dict
+    )
 
     def as_dict(self) -> dict[str, object]:
         payload: dict[str, object] = {}
@@ -274,15 +293,25 @@ class SessionContext:
             config = self.config.as_dict()
             if config:
                 payload["config"] = config
+        if self.recent_observations:
+            payload["recent_observations"] = {
+                key: [item.as_dict() for item in items]
+                for key, items in self.recent_observations.items()
+                if items
+            }
         return payload
 
 
 def build_session_context(
     session_summary: str | None,
     observation_freshness: tuple[ObservationFreshness, ...] | list[ObservationFreshness] = (),
+    observation_history: tuple[ObservationFreshness, ...] | list[ObservationFreshness] = (),
 ) -> SessionContext:
     summary = parse_session_summary(session_summary)
     freshness_by_key = {item.key: item for item in observation_freshness}
+    recent_observations = _build_recent_observations_context(
+        observation_history or observation_freshness
+    )
 
     memory = _build_memory_context(summary, freshness_by_key.get("memory"))
     disk = _build_disk_context(summary, freshness_by_key.get("disk"))
@@ -331,7 +360,27 @@ def build_session_context(
         logs=logs,
         failed_services=failed_services,
         config=config,
+        recent_observations=recent_observations,
     )
+
+
+def _build_recent_observations_context(
+    observation_history: tuple[ObservationFreshness, ...] | list[ObservationFreshness],
+) -> dict[str, tuple[RecentObservationContext, ...]]:
+    grouped: dict[str, list[RecentObservationContext]] = {}
+    for item in observation_history:
+        bucket = grouped.setdefault(item.key, [])
+        if len(bucket) >= 4:
+            continue
+        bucket.append(
+            RecentObservationContext(
+                source=item.source,
+                observed_at=item.observed_at,
+                stale=item.stale,
+                value=dict(item.value),
+            )
+        )
+    return {key: tuple(items) for key, items in grouped.items() if items}
 
 
 def _build_memory_context(

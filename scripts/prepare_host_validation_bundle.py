@@ -11,7 +11,7 @@ if str(SRC_ROOT) not in sys.path:
 
 
 def main() -> int:
-    from master_control.host_validation import cli_main
+    from master_control.validation_bundle import cli_main
 
     return cli_main()
 
