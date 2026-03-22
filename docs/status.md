@@ -14,7 +14,7 @@ It is not the long-horizon roadmap.
 - Stage: late alpha
 - Public release posture: GitHub pre-release `v0.1.0a2` is published
 - Product posture: MC is being repositioned from an AI-first conversational agent to a runtime-first capability layer with interfaces
-- Interface posture: the CLI remains the primary operator interface; the chat/provider path remains available; an experimental read-only MCP bridge now exists
+- Interface posture: MCP is the main integration interface; the CLI remains the local administration interface; the chat/provider path remains optional
 - Install posture: source checkout plus `install.sh`; no `.deb` package yet
 - Scope posture: single-host and local-first
 - Refactor posture: the runtime-first documentation reset and the first code-boundary slices have landed without resetting the validated alpha baseline
@@ -33,7 +33,9 @@ The core value is the bounded runtime:
 - config safety
 - repeatable validation
 
-The conversational and provider-backed path still exists, but it is now understood as one interface layered on top of that runtime.
+The MCP interface is the main integration path for that runtime.
+The CLI remains the local administration surface.
+The conversational and provider-backed path still exists, but it is now understood as an optional interface layered on top of the same runtime.
 
 ## What is already implemented
 
@@ -74,8 +76,9 @@ The conversational and provider-backed path still exists, but it is now understo
 - `reload_service`
 - `restart_service`
 
-### Operator interfaces
+### Runtime interfaces
 
+- experimental read-only MCP stdio bridge on top of the runtime
 - CLI commands for doctor, tools, audit, sessions, observations, recommendations, direct tool execution, and chat
 - CLI-integrated `validate-host-profile` command backed by reusable host-validation code
 - optional `systemd` timer installation for bounded recommendation reconciliation
@@ -97,8 +100,9 @@ The conversational and provider-backed path still exists, but it is now understo
 The validated alpha baseline should now be interpreted as follows:
 
 - MC is already useful as a bounded runtime for Linux inspection and controlled actions
-- the current CLI is the main supported operational surface
-- the current chat/provider path is an optional interface, not the only explanation of the product
+- MCP is the clearest external integration surface for the current product direction
+- the CLI is the local operator and administration surface
+- the current chat/provider path is an optional interface, not the explanation of the product
 - the current codebase still carries more conversational complexity than the runtime-centered product story requires
 - the current refactor is meant to correct that mismatch without throwing away validated behavior
 

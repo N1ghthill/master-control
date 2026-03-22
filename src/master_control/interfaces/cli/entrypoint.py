@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "mcp-serve",
-        help="Run the experimental stdio MCP bridge over read-only runtime capabilities.",
+        help="Run the experimental read-only MCP interface over runtime capabilities.",
     )
     return parser
 

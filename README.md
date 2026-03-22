@@ -1,12 +1,12 @@
 # Master Control
 
 Master Control (MC) is a local-first runtime for controlled Linux host operations.
-It exposes the same typed capability layer through CLI, MCP, and an optional chat/planning interface, with policy, approval, and audit boundaries around every host action.
+It exposes a typed capability layer through an MCP interface, with policy, approval, and audit boundaries around every host action.
 
 ![Master Control overview](docs/diagrams/readme-overview.svg)
 
-MC is not "the MCP server".
-MC is the runtime. MCP is one interface on top of it.
+MC is not "just the MCP server".
+MC is the runtime. MCP is its main integration interface.
 
 MC is built around three constraints:
 - typed tools before generic shell access
@@ -16,10 +16,12 @@ MC is built around three constraints:
 ## Current status
 
 - late alpha
-- CLI-first and single-host by design
+- single-host and local-first by design
 - install path: source checkout plus `install.sh`
 - validated on the maintainer workstation and on a dedicated Debian 13 VPS lab
-- current interfaces: CLI, experimental read-only MCP stdio, and optional chat/provider path
+- main integration interface: experimental read-only MCP stdio
+- local administration interface: CLI
+- optional interface: chat/provider path
 - not positioned as a production-ready Linux administration platform, security auditor, or package manager
 
 This README intentionally stays short.
@@ -34,11 +36,11 @@ Operational detail, release records, validation evidence, and planning documents
 ~/.local/bin/mc validate-host-profile --output-dir ./artifacts/host-validation
 ```
 
-Optional interfaces:
+Interfaces:
 
 ```bash
-~/.local/bin/mc chat --once "o host esta lento"
 ~/.local/bin/mc mcp-serve
+~/.local/bin/mc chat --once "o host esta lento"
 ```
 
 Remove the user-local install:
