@@ -20,7 +20,8 @@ The authoritative direction is now runtime-first: the conversational path is an 
 
 - run on a single Linux host
 - provide a stable local runtime for bounded host operations
-- keep the CLI as the primary operator and administration interface
+- treat MCP as the main integration interface on top of the runtime
+- keep the CLI as the local operator and administration interface
 - preserve the existing chat/provider path as an optional interface
 - keep an experimental read-only MCP bridge on top of the same runtime
 - persist local state and audit data in SQLite
@@ -41,7 +42,7 @@ The authoritative direction is now runtime-first: the conversational path is an 
 [Operator / Client]
   |
   v
-[CLI | Chat / Agent | Experimental MCP]
+[MCP | CLI | Chat / Agent]
   |
   v
 [Core Runtime]
@@ -73,7 +74,7 @@ The authoritative direction is now runtime-first: the conversational path is an 
   |- audit_events
 ```
 
-The conversation and provider stack is still part of the repository, but it should be understood as one interface path into the runtime, not the foundational layer.
+The conversation and provider stack is still part of the repository, but it should be understood as an optional interface path into the runtime, not the foundational layer.
 
 ## Flow diagrams
 
@@ -194,7 +195,7 @@ For service-oriented actions, MC now requires explicit service evidence from the
 
 ### CLI
 
-The CLI is the primary operator and administration interface today.
+The CLI is the local operator and administration interface.
 It should remain fully capable of inspection, validation, and controlled execution without requiring any remote provider.
 
 ### Chat / agent path
@@ -205,7 +206,7 @@ Its planners, providers, summaries, and rendering helpers are interface logic, n
 ### MCP
 
 An experimental read-only MCP stdio bridge now exists.
-Its job is to expose a deliberately small set of runtime capabilities to external AI clients without duplicating policy, audit, or execution logic.
+It is the main integration interface for exposing runtime capabilities to external AI clients without duplicating policy, audit, or execution logic.
 Broader capability exposure remains intentionally deferred until the runtime boundary is easier to own.
 
 ## Evolution path

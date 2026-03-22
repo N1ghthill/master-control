@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "master-control"
 version = "0.1.0a2"
-description = "Local-first runtime for controlled Linux host operations with policy and auditability."
+description = "Local-first runtime for controlled Linux host operations with an MCP interface, policy, and auditability."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Irving" }]

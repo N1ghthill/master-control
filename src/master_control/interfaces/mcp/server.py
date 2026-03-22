@@ -27,7 +27,7 @@ class MCPError:
 
 
 class MasterControlMCPServer:
-    """Experimental stdio bridge for read-only runtime capabilities."""
+    """Experimental stdio MCP interface for read-only runtime capabilities."""
 
     def __init__(self, runtime: MasterControlRuntime) -> None:
         self.runtime = runtime
@@ -128,7 +128,7 @@ class MasterControlMCPServer:
             spec = self.runtime.registry.get(tool_name).spec
             if spec.risk is not RiskLevel.READ_ONLY:
                 raise ValueError(
-                    f"Tool '{tool_name}' is not exposed through the read-only MCP bridge."
+                    f"Tool '{tool_name}' is not exposed through the read-only MCP interface."
                 )
             return self.runtime.run_tool(
                 tool_name,
@@ -160,7 +160,7 @@ class MasterControlMCPServer:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mc-mcp",
-        description="Run the experimental Master Control MCP stdio bridge.",
+        description="Run the experimental Master Control MCP interface.",
     )
     return parser
 
