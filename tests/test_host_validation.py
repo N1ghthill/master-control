@@ -46,7 +46,7 @@ class HostValidationTest(unittest.TestCase):
                 db_path=Path(tmp_dir) / "base-state" / "mc.sqlite3",
             )
 
-            with patch("master_control.host_validation.MasterControlApp", FakeApp):
+            with patch("master_control.host_validation._build_validation_runtime", side_effect=FakeApp):
                 with patch("master_control.host_validation._utc_now", return_value=FIXED_NOW):
                     with patch(
                         "master_control.host_validation.socket.gethostname",
@@ -106,7 +106,7 @@ class HostValidationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_dir = Path(tmp_dir) / "reports"
 
-            with patch("master_control.host_validation.MasterControlApp", FakeApp):
+            with patch("master_control.host_validation._build_validation_runtime", side_effect=FakeApp):
                 with patch("master_control.host_validation._utc_now", return_value=FIXED_NOW):
                     with patch(
                         "master_control.host_validation.socket.gethostname",

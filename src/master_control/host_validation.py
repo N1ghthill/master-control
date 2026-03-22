@@ -11,8 +11,9 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-from master_control.app import MasterControlApp
 from master_control.config import Settings
+from master_control.core.runtime import MasterControlRuntime
+from master_control.interfaces.agent.chat import MasterControlChatInterface
 
 DEFAULT_BASELINE_COMMANDS = (
     "python3 -m ruff check .",
@@ -105,8 +106,9 @@ def run_host_validation(
         db_path=state_dir / "mc.sqlite3",
     )
 
-    app = MasterControlApp(settings)
-    app.bootstrap()
+    runtime = _build_validation_runtime(settings)
+    chat = _build_validation_chat(runtime)
+    runtime.bootstrap()
 
     baseline_results = _run_baseline_commands() if run_baseline else ()
     report: dict[str, Any] = {
@@ -119,16 +121,16 @@ def run_host_validation(
             "state_dir": str(settings.state_dir),
             "db_path": str(settings.db_path),
         },
-        "doctor": app.doctor(),
+        "doctor": runtime.doctor(),
         "baseline": {
             "enabled": run_baseline,
             "all_ok": all(item.ok for item in baseline_results),
             "commands": [asdict(item) | {"ok": item.ok} for item in baseline_results],
         },
         "workflows": {
-            "slow_host": _validate_slow_host_workflow(app),
-            "failed_service": _validate_failed_service_workflow(app),
-            "managed_config": _validate_managed_config_workflow(app),
+            "slow_host": _validate_slow_host_workflow(runtime, chat),
+            "failed_service": _validate_failed_service_workflow(runtime, chat),
+            "managed_config": _validate_managed_config_workflow(runtime),
         },
     }
     report["overall_ok"] = _is_report_green(report)
@@ -149,12 +151,23 @@ def _build_host_profile() -> dict[str, str]:
     }
 
 
-def _validate_slow_host_workflow(app: MasterControlApp) -> dict[str, Any]:
+def _build_validation_runtime(settings: Settings) -> MasterControlRuntime:
+    return MasterControlRuntime(settings)
+
+
+def _build_validation_chat(runtime: MasterControlRuntime) -> MasterControlChatInterface:
+    return MasterControlChatInterface(runtime)
+
+
+def _validate_slow_host_workflow(
+    runtime: MasterControlRuntime,
+    chat: MasterControlChatInterface,
+) -> dict[str, Any]:
     try:
-        payload = app.chat("o host esta lento", new_session=True)
+        payload = chat.chat("o host esta lento", new_session=True)
         session_id = _as_int(payload.get("session_id"))
         recommendations = (
-            app.list_session_recommendations(session_id=session_id)["recommendations"]
+            runtime.list_session_recommendations(session_id=session_id)["recommendations"]
             if session_id is not None
             else []
         )
@@ -170,16 +183,19 @@ def _validate_slow_host_workflow(app: MasterControlApp) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def _validate_failed_service_workflow(app: MasterControlApp) -> dict[str, Any]:
+def _validate_failed_service_workflow(
+    runtime: MasterControlRuntime,
+    chat: MasterControlChatInterface,
+) -> dict[str, Any]:
     try:
-        payload = app.chat("quais servicos com falha eu tenho?", new_session=True)
+        payload = chat.chat("quais servicos com falha eu tenho?", new_session=True)
         session_id = _as_int(payload.get("session_id"))
         recommendations = (
-            app.list_session_recommendations(session_id=session_id)["recommendations"]
+            runtime.list_session_recommendations(session_id=session_id)["recommendations"]
             if session_id is not None
             else []
         )
-        failed_services_result = app.run_tool(
+        failed_services_result = runtime.run_tool(
             "failed_services",
             {"scope": "system", "limit": 5},
             audit_context={"source": "host_profile_validation"},
@@ -210,10 +226,10 @@ def _validate_failed_service_workflow(app: MasterControlApp) -> dict[str, Any]:
         return {"ok": False, "error": str(exc)}
 
 
-def _validate_managed_config_workflow(app: MasterControlApp) -> dict[str, Any]:
+def _validate_managed_config_workflow(runtime: MasterControlRuntime) -> dict[str, Any]:
     try:
-        session_id = app.store.create_session()
-        config_path = app.settings.state_dir / "managed-configs" / "host-profile-validation.ini"
+        session_id = runtime.store.create_session()
+        config_path = runtime.settings.state_dir / "managed-configs" / "host-profile-validation.ini"
         config_path.parent.mkdir(parents=True, exist_ok=True)
         config_path.write_text("[service]\nmode=old\n", encoding="utf-8")
         audit_context = {
@@ -221,32 +237,32 @@ def _validate_managed_config_workflow(app: MasterControlApp) -> dict[str, Any]:
             "session_id": session_id,
         }
 
-        read_before = app.run_tool(
+        read_before = runtime.run_tool(
             "read_config_file",
             {"path": str(config_path)},
             audit_context=audit_context,
         )
-        write_result = app.run_tool(
+        write_result = runtime.run_tool(
             "write_config_file",
             {"path": str(config_path), "content": "[service]\nmode=new\n"},
             confirmed=True,
             audit_context=audit_context,
         )
-        recommendation_sync = app.reconcile_recommendations(session_id=session_id)
-        read_after_write = app.run_tool(
+        recommendation_sync = runtime.reconcile_recommendations(session_id=session_id)
+        read_after_write = runtime.run_tool(
             "read_config_file",
             {"path": str(config_path)},
             audit_context=audit_context,
         )
         write_payload = write_result.get("result")
         backup_path = write_payload.get("backup_path") if isinstance(write_payload, dict) else None
-        restore_result = app.run_tool(
+        restore_result = runtime.run_tool(
             "restore_config_backup",
             {"path": str(config_path), "backup_path": str(backup_path)},
             confirmed=True,
             audit_context=audit_context,
         )
-        read_after_restore = app.run_tool(
+        read_after_restore = runtime.run_tool(
             "read_config_file",
             {"path": str(config_path)},
             audit_context=audit_context,

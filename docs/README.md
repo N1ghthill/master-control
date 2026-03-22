@@ -35,6 +35,7 @@ Use this file to find the right working document, validation record, or planning
 
 ## Plans And Release Management
 
+- `docs/core-interfaces-refactor-plan.md`: canonical working brief for the runtime-first refactor
 - `docs/roadmap.md`: high-level sequence of work and milestone framing
 - `docs/beta-readiness-gate.md`: beta gate criteria and current release blockers
 - `docs/beta-resume-plan.md`: short-horizon maintainer execution record

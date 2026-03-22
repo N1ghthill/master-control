@@ -1,24 +1,32 @@
 # Master Control
 
-Master Control (MC) is a conversational Linux agent for host inspection and controlled operations.
-It combines natural-language planning with typed tools, explicit approval gates, and an audit trail so the assistant can help without turning into unrestricted shell automation.
+Master Control (MC) is a local-first runtime for controlled Linux host operations.
+It exposes typed capabilities behind policy, approval, and audit boundaries so operators and external clients can inspect and act on a Linux host without falling back to unrestricted shell automation.
 
 ![Master Control overview](docs/diagrams/readme-overview.svg)
 
+## What it is
+
+- safe capability layer for bounded Linux inspection and controlled actions
+- CLI-first today, with room for multiple interfaces on top of the same runtime
+- designed so deterministic clients and AI clients can reuse the same execution, policy, and audit path
+
 ## Why it exists
 
-- conversational interface for Linux operator workflows
 - typed tools before generic shell access
 - explicit confirmation for risky or privileged actions
-- local-first provider routing: `ollama -> openai -> heuristic`
-- persistent session context, observations, and recommendation history
+- local audit trail, state, and validation evidence
+- reusable runtime instead of interface-specific host logic
 
 ## Current status
 
 - late alpha
-- CLI-first and single-host by design
+- single-host and local-first by design
+- current public install path is source checkout plus `install.sh`
 - validated on the maintainer workstation and on a dedicated Debian 13 VPS lab
-- not positioned as a production-ready Linux administration platform
+- the chat/provider path still exists, but it is no longer the product center
+- an experimental read-only MCP stdio bridge now exists on top of the same runtime
+- not positioned as a production-ready Linux administration platform, security auditor, or package manager
 
 This README intentionally stays short.
 Operational detail, release records, validation evidence, and planning documents live under [docs/README.md](docs/README.md).
@@ -30,8 +38,20 @@ From a repository checkout:
 ```bash
 ./install.sh --provider heuristic
 ~/.local/bin/mc doctor
+~/.local/bin/mc tools
 ~/.local/bin/mc validate-host-profile --output-dir ./artifacts/host-validation
+```
+
+The current chat interface is still available:
+
+```bash
 ~/.local/bin/mc chat --once "o host esta lento"
+```
+
+An experimental read-only MCP bridge is also available:
+
+```bash
+~/.local/bin/mc mcp-serve
 ```
 
 To remove the user-local install:
@@ -51,7 +71,7 @@ Debian or Ubuntu note:
 - managed config read, write, backup, and restore inside a constrained policy boundary
 - recommendation workflow with explicit approval before risky execution
 - repeatable host-profile validation through `mc validate-host-profile`
-- local heuristic fallback plus OpenAI and Ollama providers
+- optional heuristic, OpenAI, and Ollama-backed planning path on top of the same runtime
 
 ## Validation posture
 
@@ -64,6 +84,7 @@ See [docs/status.md](docs/status.md), [docs/alpha-validation-report.md](docs/alp
 ## Documentation
 
 - [Documentation map](docs/README.md)
+- [Core + interfaces refactor plan](docs/core-interfaces-refactor-plan.md)
 - [Current status](docs/status.md)
 - [Operator workflows](docs/operator-workflows.md)
 - [Provider setup](docs/providers.md)
@@ -77,6 +98,8 @@ See [docs/status.md](docs/status.md), [docs/alpha-validation-report.md](docs/alp
 
 ```text
 docs/                  Documentation, validation records, and planning docs
-src/master_control/    Application code
+src/master_control/core/        Runtime, policy, persistence, and validation
+src/master_control/interfaces/  CLI, chat, and MCP entry points
+src/master_control/shared/      Neutral contracts shared across boundaries
 tests/                 Automated tests
 ```

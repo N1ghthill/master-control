@@ -1,12 +1,13 @@
 # Operator Workflows
 
-Snapshot date: 2026-03-18
+Snapshot date: 2026-03-22
 
 ## Purpose
 
 This document records the bounded operator workflows that currently define the post-MVP useful baseline for Master Control.
 
 Each workflow below is intentionally small, typed, and auditable.
+They describe runtime-supported operator paths; the same runtime may be reached through direct CLI commands, the optional chat interface, or the current experimental read-only MCP bridge where appropriate.
 
 ## Workflow 1: Slow Host Diagnosis
 

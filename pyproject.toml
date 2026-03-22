@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "master-control"
 version = "0.1.0a2"
-description = "Conversational Linux agent with controlled execution and auditable actions."
+description = "Local-first runtime for controlled Linux host operations with policy and auditability."
 readme = "README.md"
 requires-python = ">=3.13"
 authors = [{ name = "Irving" }]
@@ -21,6 +21,7 @@ dev = [
 
 [project.scripts]
 mc = "master_control.cli:main"
+mc-mcp = "master_control.interfaces.mcp.server:main"
 
 [tool.setuptools]
 package-dir = {"" = "src"}

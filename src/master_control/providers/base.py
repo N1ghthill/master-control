@@ -3,9 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Protocol
 
-from master_control.agent.observations import ObservationFreshness
-from master_control.agent.planner import ExecutionPlan, PlanningDecision
-from master_control.agent.session_context import SessionContext
+from master_control.core.observations import ObservationFreshness
+from master_control.core.session_context import SessionContext
+from master_control.shared.planning import ExecutionPlan, PlanningDecision
 from master_control.tools.base import ToolSpec
 
 
