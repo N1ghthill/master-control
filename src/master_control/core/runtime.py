@@ -675,14 +675,17 @@ class MasterControlRuntime:
             self.store.record_audit_event("tool_execution", payload)
             return payload
 
+        matching_approval: dict[str, object] | None = None
         claimed_approval: dict[str, object] | None = None
         if confirmed and not _has_explicit_approval_id(context_payload):
-            claimed_approval = self.store.claim_latest_matching_tool_approval(
+            claim_result = self.store.prepare_matching_tool_approval_for_execution(
                 tool_name=tool.spec.name,
                 arguments=argument_payload,
                 audit_context=context_payload,
             )
-            if claimed_approval is not None:
+            matching_approval = claim_result.approval
+            if claim_result.outcome == "claimed" and matching_approval is not None:
+                claimed_approval = matching_approval
                 context_payload["approval_id"] = claimed_approval["id"]
 
         decision = self.policy.evaluate(tool.spec, argument_payload)
@@ -708,6 +711,17 @@ class MasterControlRuntime:
             self.store.record_audit_event("tool_execution", payload)
             return payload
 
+        if confirmed and matching_approval is not None and claimed_approval is None:
+            payload = {
+                "ok": False,
+                **audit_base,
+                "approval_in_progress": True,
+                "approval": self._format_tool_approval(matching_approval),
+                "error": "Matching approval is already executing.",
+            }
+            self.store.record_audit_event("tool_execution", payload)
+            return payload
+
         if decision.needs_confirmation and not confirmed:
             approval = self._create_tool_approval(
                 tool_name=tool.spec.name,
@@ -715,12 +729,19 @@ class MasterControlRuntime:
                 arguments=argument_payload,
                 context_payload=context_payload,
             )
+            approval_status = str(approval["status"])
+            approval_required = approval_status == "pending"
             payload = {
                 "ok": False,
                 **audit_base,
-                "pending_confirmation": True,
+                "pending_confirmation": approval_required,
+                "approval_in_progress": approval_status == "executing",
                 "approval": approval,
-                "error": "Tool requires explicit confirmation before execution.",
+                "error": (
+                    "Tool requires explicit confirmation before execution."
+                    if approval_required
+                    else "Matching approval is already executing."
+                ),
             }
             self.store.record_audit_event("tool_execution", payload)
             return payload

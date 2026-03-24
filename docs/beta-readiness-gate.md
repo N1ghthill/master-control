@@ -1,6 +1,6 @@
 # Beta Readiness Gate
 
-Snapshot date: 2026-03-20
+Snapshot date: 2026-03-23
 
 ## Purpose
 
@@ -100,9 +100,10 @@ Minimum exit bar:
 
 Primary hotspots still to watch:
 
-- `src/master_control/app.py`
+- `src/master_control/core/runtime.py`
+- `src/master_control/store/session_store.py`
+- `src/master_control/interfaces/cli/entrypoint.py`
 - `src/master_control/providers/heuristic.py`
-- `src/master_control/agent/session_insights.py`
 
 ## Required Release Artifacts Before Beta
 
@@ -116,15 +117,16 @@ Before any beta tag, the repository should have:
 
 ## Current Status
 
-Current assessment on 2026-03-20:
+Current assessment on 2026-03-23:
 
 - not yet beta-ready
-- the `0.1.0a2` release-candidate package is prepared locally, and Gate 1 host-count evidence is now satisfied through the maintainer workstation plus a dedicated Debian 13 VPS validation run
-- local hardening has already closed bootstrap, comparative follow-up, config-diff, config-diff refinement, service-log compression, service-log pattern refinement, bootstrap evidence, comparative phrase-collection, bootstrap-to-CI decision, and community validation intake packages
-- release-facing docs and final positioning still need to be synchronized before any beta claim or tag decision
-- dedicated VPS evidence is recorded in `docs/vps-validation-report.md`
+- Gate 1 host-count evidence is satisfied through the maintainer workstation plus the dedicated Debian 13 VPS validation lab
+- the operator bootstrap path, host-profile validation, and maintainer engineering baseline were rerun successfully on the VPS on 2026-03-23
+- the MCP approval-mediated mutation flow is now also validated through the official Inspector CLI on the maintainer workstation
+- the remaining blockers are now codebase maintainability, explicit schema governance, and broader operational hardening rather than missing first-pass MCP or host-validation evidence
 
 Main remaining actions:
 
-1. update the canonical release-facing docs to reflect that workflow validation now exists on more than one real host profile
-2. decide whether the current maintainability and release posture justify beta language now, or whether the project should remain in late-alpha/private-preview wording a little longer
+1. reduce the central runtime/store/CLI hotspots enough that the next operational slices stay reviewable
+2. define and enforce tool-schema compatibility rules before broadening the MCP surface further
+3. decide whether late-alpha/private-preview wording should continue until those two bars move

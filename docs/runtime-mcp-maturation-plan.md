@@ -26,11 +26,11 @@ As of this snapshot, MC already has:
 
 The current codebase also still has clear limits:
 
-- the MCP write path now exists through persisted approvals, but real-client validation and broader contract hardening are still pending
+- the MCP write path now exists through persisted approvals, and official Inspector CLI validation now proves the standard-client flow
 - the runtime still carries chat-oriented orchestration inside `core.runtime`
 - a first operator-configurable policy slice now exists through versioned TOML, but broader validation and operator guidance are still pending
 - the tool contract does not yet have explicit schema-version governance
-- concurrency and multi-call behavior are only partially addressed through SQLite WAL and bounded subprocesses, not through a complete runtime concurrency model
+- concurrency and multi-call behavior now include approval-envelope deduplication and in-flight claim protection, but not a complete runtime concurrency model
 - real-host validation exists, but deeper integration coverage for runtime mutation paths and MCP write flows is not yet the main center of the test strategy
 
 ## Product Goal
@@ -127,6 +127,8 @@ Current progress:
 - persisted tool approvals are now part of the runtime state model
 - the experimental MCP bridge now exposes controlled write requests plus `approvals/list|get|approve|reject`
 - approval lifecycle coverage exists at unit and runtime-contract level
+- the stdio server now closes the standard JSON-RPC MCP handshake expected by real clients
+- the official Inspector CLI has now completed the approval-mediated mutation flow against `mc mcp-serve`
 
 Required outcomes:
 
@@ -149,6 +151,7 @@ Recommended approval contract:
   - `approvals/get`
   - `approvals/approve`
   - `approvals/reject`
+- expose the same approval lifecycle through standard MCP tools for interoperable clients that cannot call custom top-level methods directly
 - bind each pending action to an approval id plus a normalized action envelope
 - include operator-facing evidence in the approval payload:
   - requested tool
@@ -166,7 +169,8 @@ Implementation rule:
 Interoperability target:
 
 - `mc mcp-serve` can be used from a standard MCP client
-- a client such as Claude Desktop can inspect the host and complete an approval-mediated mutation flow without unrestricted shell access
+- a standard client such as the official Inspector CLI can inspect the host and complete an approval-mediated mutation flow without unrestricted shell access
+- a desktop-client transcript such as Claude Desktop remains a useful follow-up, not the first blocker
 
 ### Workstream 1.3: Operator-configurable policy model
 

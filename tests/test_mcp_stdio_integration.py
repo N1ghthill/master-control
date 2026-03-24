@@ -85,6 +85,88 @@ class MCPStdioIntegrationTest(unittest.TestCase):
                 self.assertEqual(approved["result"]["approval"]["status"], "completed")
                 self.assertEqual(config_path.read_text(encoding="utf-8"), "[main]\nkey=new\n")
 
+    def test_stdio_server_supports_standard_jsonrpc_tool_flow(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            state_dir = Path(tmp_dir) / "state"
+            managed_root = state_dir / "managed-configs"
+            managed_root.mkdir(parents=True, exist_ok=True)
+            config_path = managed_root / "demo.ini"
+            config_path.write_text("[main]\nkey=old\n", encoding="utf-8")
+
+            with self._start_server(state_dir) as process:
+                initialize = self._request(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 1,
+                        "method": "initialize",
+                        "params": {
+                            "protocolVersion": "2025-06-18",
+                            "capabilities": {},
+                            "clientInfo": {"name": "stdio-test", "version": "1.0.0"},
+                        },
+                    },
+                )
+                self.assertEqual(initialize["jsonrpc"], "2.0")
+                self.assertEqual(initialize["result"]["protocolVersion"], "2025-06-18")
+
+                notification = self._request_optional(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "method": "notifications/initialized",
+                    },
+                )
+                self.assertIsNone(notification)
+
+                listed = self._request(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 2,
+                        "method": "tools/list",
+                    },
+                )
+                tool_names = [item["name"] for item in listed["result"]["tools"] if isinstance(item, dict)]
+                self.assertIn("system_info", tool_names)
+                self.assertIn("approval_approve", tool_names)
+
+                pending = self._request(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 3,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "write_config_file",
+                            "arguments": {
+                                "path": str(config_path),
+                                "content": "[main]\nkey=new\n",
+                            },
+                        },
+                    },
+                )
+                approval_id = pending["result"]["structuredContent"]["approval"]["id"]
+                self.assertTrue(pending["result"]["structuredContent"]["pending_confirmation"])
+
+                approved = self._request(
+                    process,
+                    {
+                        "jsonrpc": "2.0",
+                        "id": 4,
+                        "method": "tools/call",
+                        "params": {
+                            "name": "approval_approve",
+                            "arguments": {"id": approval_id},
+                        },
+                    },
+                )
+                self.assertEqual(
+                    approved["result"]["structuredContent"]["approval"]["status"],
+                    "completed",
+                )
+                self.assertEqual(config_path.read_text(encoding="utf-8"), "[main]\nkey=new\n")
+
     def _request(
         self,
         process: subprocess.Popen[str],
@@ -100,6 +182,26 @@ class MCPStdioIntegrationTest(unittest.TestCase):
             if process.stderr is not None:
                 stderr = process.stderr.read()
             raise AssertionError(f"MCP server closed the pipe unexpectedly. stderr={stderr!r}")
+        return json.loads(line)
+
+    def _request_optional(
+        self,
+        process: subprocess.Popen[str],
+        payload: dict[str, Any],
+    ) -> dict[str, Any] | None:
+        assert process.stdin is not None
+        assert process.stdout is not None
+        process.stdin.write(json.dumps(payload) + "\n")
+        process.stdin.flush()
+        process.stdout.flush()
+        import select
+
+        ready, _, _ = select.select([process.stdout], [], [], 0.25)
+        if not ready:
+            return None
+        line = process.stdout.readline()
+        if not line:
+            return None
         return json.loads(line)
 
     def _start_server(self, state_dir: Path):

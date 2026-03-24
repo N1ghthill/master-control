@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sqlite3
 from contextlib import closing
+from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
 
@@ -85,6 +87,7 @@ CREATE TABLE IF NOT EXISTS tool_approvals (
     risk TEXT NOT NULL,
     arguments_json TEXT NOT NULL,
     audit_context_json TEXT NOT NULL,
+    action_digest TEXT,
     summary TEXT NOT NULL,
     cli_command TEXT NOT NULL,
     chat_command TEXT NOT NULL,
@@ -96,6 +99,12 @@ CREATE TABLE IF NOT EXISTS tool_approvals (
     resolved_at TEXT
 );
 """
+
+
+@dataclass(frozen=True, slots=True)
+class ToolApprovalExecutionMatch:
+    outcome: str
+    approval: dict[str, object] | None
 
 
 class SessionStore:
@@ -165,6 +174,14 @@ class SessionStore:
                 "session_id": "INTEGER",
             },
         )
+        self._ensure_columns(
+            connection,
+            "tool_approvals",
+            {
+                "action_digest": "TEXT",
+            },
+        )
+        self._backfill_tool_approval_digests(connection)
 
     def _ensure_indexes(self, connection: sqlite3.Connection) -> None:
         connection.execute(
@@ -185,6 +202,12 @@ class SessionStore:
             ON tool_approvals(tool_name, status, id DESC)
             """
         )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tool_approvals_action_digest
+            ON tool_approvals(action_digest, status, id DESC)
+            """
+        )
 
     def _ensure_columns(
         self,
@@ -198,6 +221,38 @@ class SessionStore:
             if column_name in existing_columns:
                 continue
             connection.execute(f"ALTER TABLE {table_name} ADD COLUMN {column_name} {column_type}")
+
+    def _backfill_tool_approval_digests(self, connection: sqlite3.Connection) -> None:
+        cursor = connection.execute(
+            """
+            SELECT id, tool_name, arguments_json, audit_context_json
+            FROM tool_approvals
+            WHERE action_digest IS NULL OR action_digest = ''
+            """
+        )
+        rows = cursor.fetchall()
+        for approval_id, tool_name, arguments_json, audit_context_json in rows:
+            if not isinstance(tool_name, str):
+                continue
+            if not isinstance(arguments_json, str):
+                arguments_json = "{}"
+            if not isinstance(audit_context_json, str):
+                audit_context_json = "{}"
+            connection.execute(
+                """
+                UPDATE tool_approvals
+                SET action_digest = ?
+                WHERE id = ?
+                """,
+                (
+                    _build_tool_approval_digest(
+                        tool_name=tool_name,
+                        arguments_json=arguments_json,
+                        audit_context_json=audit_context_json,
+                    ),
+                    approval_id,
+                ),
+            )
 
     def record_audit_event(self, event_type: str, payload: dict[str, object]) -> None:
         serialized_payload = json.dumps(payload, sort_keys=True)
@@ -249,38 +304,51 @@ class SessionStore:
         cli_command: str,
         chat_command: str,
     ) -> dict[str, object]:
+        arguments_json, audit_context_json, action_digest = _serialize_tool_approval_identity(
+            tool_name=tool_name,
+            arguments=arguments,
+            audit_context=audit_context,
+        )
         with closing(self._connect()) as connection:
-            cursor = connection.execute(
-                """
-                INSERT INTO tool_approvals (
-                    tool_name,
-                    risk,
-                    arguments_json,
-                    audit_context_json,
-                    summary,
-                    cli_command,
-                    chat_command
+            connection.execute("BEGIN IMMEDIATE")
+            existing_row = self._select_active_tool_approval_row_by_digest(connection, action_digest)
+            if existing_row is None:
+                cursor = connection.execute(
+                    """
+                    INSERT INTO tool_approvals (
+                        tool_name,
+                        risk,
+                        arguments_json,
+                        audit_context_json,
+                        action_digest,
+                        summary,
+                        cli_command,
+                        chat_command
+                    )
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (
+                        tool_name,
+                        risk,
+                        arguments_json,
+                        audit_context_json,
+                        action_digest,
+                        summary,
+                        cli_command,
+                        chat_command,
+                    ),
                 )
-                VALUES (?, ?, ?, ?, ?, ?, ?)
-                """,
-                (
-                    tool_name,
-                    risk,
-                    json.dumps(arguments, sort_keys=True),
-                    json.dumps(audit_context, sort_keys=True),
-                    summary,
-                    cli_command,
-                    chat_command,
-                ),
-            )
+                approval_id = cursor.lastrowid
+                if approval_id is None:
+                    connection.rollback()
+                    raise RuntimeError("SQLite did not return a tool approval id.")
+                created_row = self._select_tool_approval_row(connection, int(approval_id))
+                connection.commit()
+                if created_row is None:
+                    raise RuntimeError(f"Tool approval {approval_id} disappeared after insert.")
+                return self._row_to_tool_approval(created_row)
             connection.commit()
-            approval_id = cursor.lastrowid
-            if approval_id is None:
-                raise RuntimeError("SQLite did not return a tool approval id.")
-        approval = self.get_tool_approval(int(approval_id))
-        if approval is None:
-            raise RuntimeError(f"Tool approval {approval_id} disappeared after insert.")
-        return approval
+        return self._row_to_tool_approval(existing_row)
 
     def list_tool_approvals(
         self,
@@ -419,30 +487,40 @@ class SessionStore:
         arguments: dict[str, object],
         audit_context: dict[str, object],
     ) -> dict[str, object] | None:
+        match = self.prepare_matching_tool_approval_for_execution(
+            tool_name=tool_name,
+            arguments=arguments,
+            audit_context=audit_context,
+        )
+        if match.outcome != "claimed":
+            return None
+        return match.approval
+
+    def prepare_matching_tool_approval_for_execution(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        audit_context: dict[str, object],
+    ) -> ToolApprovalExecutionMatch:
+        _, _, action_digest = _serialize_tool_approval_identity(
+            tool_name=tool_name,
+            arguments=arguments,
+            audit_context=audit_context,
+        )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            cursor = connection.execute(
-                """
-                SELECT id
-                FROM tool_approvals
-                WHERE tool_name = ?
-                  AND status = 'pending'
-                  AND arguments_json = ?
-                  AND audit_context_json = ?
-                ORDER BY id DESC
-                LIMIT 1
-                """,
-                (
-                    tool_name,
-                    json.dumps(arguments, sort_keys=True),
-                    json.dumps(audit_context, sort_keys=True),
-                ),
-            )
-            row = cursor.fetchone()
+            row = self._select_active_tool_approval_row_by_digest(connection, action_digest)
             if row is None:
                 connection.rollback()
-                return None
-            approval_id = int(row[0])
+                return ToolApprovalExecutionMatch(outcome="none", approval=None)
+            if str(row[8]) == "executing":
+                connection.commit()
+                return ToolApprovalExecutionMatch(
+                    outcome="already_executing",
+                    approval=self._row_to_tool_approval(row),
+                )
+            approval_id = _coerce_int(row[0], "tool approval id")
             cursor = connection.execute(
                 """
                 UPDATE tool_approvals
@@ -452,35 +530,22 @@ class SessionStore:
                 (approval_id,),
             )
             if cursor.rowcount != 1:
-                connection.rollback()
-                return None
-            cursor = connection.execute(
-                """
-                SELECT
-                    id,
-                    tool_name,
-                    risk,
-                    arguments_json,
-                    audit_context_json,
-                    summary,
-                    cli_command,
-                    chat_command,
-                    status,
-                    execution_payload_json,
-                    error_text,
-                    created_at,
-                    updated_at,
-                    resolved_at
-                FROM tool_approvals
-                WHERE id = ?
-                """,
-                (approval_id,),
-            )
-            claimed_row = cursor.fetchone()
+                current_row = self._select_active_tool_approval_row_by_digest(connection, action_digest)
+                if current_row is None:
+                    connection.rollback()
+                    return ToolApprovalExecutionMatch(outcome="none", approval=None)
+                connection.commit()
+                outcome = "already_executing" if str(current_row[8]) == "executing" else "none"
+                approval = self._row_to_tool_approval(current_row) if outcome != "none" else None
+                return ToolApprovalExecutionMatch(outcome=outcome, approval=approval)
+            claimed_row = self._select_tool_approval_row(connection, approval_id)
             connection.commit()
         if claimed_row is None:
-            return None
-        return self._row_to_tool_approval(claimed_row)
+            return ToolApprovalExecutionMatch(outcome="none", approval=None)
+        return ToolApprovalExecutionMatch(
+            outcome="claimed",
+            approval=self._row_to_tool_approval(claimed_row),
+        )
 
     def finish_tool_approval(
         self,
@@ -1191,6 +1256,72 @@ class SessionStore:
             "resolved_at": row[13],
         }
 
+    def _select_tool_approval_row(
+        self,
+        connection: sqlite3.Connection,
+        approval_id: int,
+    ) -> tuple[object, ...] | None:
+        cursor = connection.execute(
+            """
+            SELECT
+                id,
+                tool_name,
+                risk,
+                arguments_json,
+                audit_context_json,
+                summary,
+                cli_command,
+                chat_command,
+                status,
+                execution_payload_json,
+                error_text,
+                created_at,
+                updated_at,
+                resolved_at
+            FROM tool_approvals
+            WHERE id = ?
+            """,
+            (approval_id,),
+        )
+        return cursor.fetchone()
+
+    def _select_active_tool_approval_row_by_digest(
+        self,
+        connection: sqlite3.Connection,
+        action_digest: str,
+    ) -> tuple[object, ...] | None:
+        cursor = connection.execute(
+            """
+            SELECT
+                id,
+                tool_name,
+                risk,
+                arguments_json,
+                audit_context_json,
+                summary,
+                cli_command,
+                chat_command,
+                status,
+                execution_payload_json,
+                error_text,
+                created_at,
+                updated_at,
+                resolved_at
+            FROM tool_approvals
+            WHERE action_digest = ?
+              AND status IN ('pending', 'executing')
+            ORDER BY
+                CASE status
+                    WHEN 'pending' THEN 0
+                    ELSE 1
+                END,
+                id DESC
+            LIMIT 1
+            """,
+            (action_digest,),
+        )
+        return cursor.fetchone()
+
 
 def _coerce_int(value: object, label: str) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
@@ -1210,3 +1341,32 @@ def _deserialize_json_object(value: object) -> dict[str, object]:
     if isinstance(payload, dict):
         return payload
     return {}
+
+
+def _serialize_tool_approval_identity(
+    *,
+    tool_name: str,
+    arguments: dict[str, object],
+    audit_context: dict[str, object],
+) -> tuple[str, str, str]:
+    arguments_json = json.dumps(arguments, sort_keys=True)
+    audit_context_json = json.dumps(audit_context, sort_keys=True)
+    return (
+        arguments_json,
+        audit_context_json,
+        _build_tool_approval_digest(
+            tool_name=tool_name,
+            arguments_json=arguments_json,
+            audit_context_json=audit_context_json,
+        ),
+    )
+
+
+def _build_tool_approval_digest(
+    *,
+    tool_name: str,
+    arguments_json: str,
+    audit_context_json: str,
+) -> str:
+    digest_input = f"{tool_name}\x1f{arguments_json}\x1f{audit_context_json}"
+    return hashlib.sha256(digest_input.encode("utf-8")).hexdigest()

@@ -86,8 +86,9 @@ Validate the interfaces that are part of the release scope.
 
 - `mc mcp-serve` starts cleanly
 - documented MCP behavior matches the currently supported scope
-- if the release includes only read-only MCP, confirm mutating tools are still blocked there
-- if the release includes write-capable MCP in the future, confirm approval-mediated mutation flow from a real MCP client
+- confirm the stdio server still completes the standard JSON-RPC MCP handshake
+- confirm approval-mediated mutation flow from a real MCP client through `python3 scripts/validate_mcp_client.py`
+- if a release claims desktop-client friendliness beyond Inspector CLI, capture that client-specific transcript too
 
 ### Optional planner layer
 

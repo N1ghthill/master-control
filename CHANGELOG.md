@@ -33,6 +33,8 @@
 - typed planning decision kinds plus final turn classification
 - deterministic final-message guidance keyed off turn classification
 - repository hardening with `ruff`, `mypy`, `pre-commit`, and GitHub templates
+- official MCP Inspector CLI validation harness in `scripts/validate_mcp_client.py`
+- MCP approval tools for standard clients: `approval_list`, `approval_get`, `approval_approve`, and `approval_reject`
 
 ### Changed
 
@@ -72,6 +74,10 @@
 - chat payloads and audit now distinguish planner intent from final turn outcome, including missing safe tools and confirmation waits
 - blocked or partial turns now return clearer operator guidance instead of relying only on provider prose
 - CI now enforces lint and typecheck in addition to tests and smoke validation
+- `mc mcp-serve` now closes the standard JSON-RPC MCP handshake expected by real clients
+- MCP stdio now exposes approval resolution through standard `tools/list` and `tools/call`, not only through custom approval methods
+- tool approvals now deduplicate active action envelopes and block duplicate in-flight execution for the same pending action
+- release-facing docs and gates now reflect the latest VPS rerun and the Inspector-backed MCP validation path
 
 ### Notes
 
