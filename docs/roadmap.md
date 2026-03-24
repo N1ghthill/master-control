@@ -9,6 +9,8 @@ Snapshot date: 2026-03-23
 - runtime-first and MCP-first product direction
 - runtime already supports bounded inspection, controlled service/config actions, auditability, and validation workflows
 - a first operator-configurable policy slice now exists through versioned TOML
+- standard-client MCP validation now exists through the official Inspector CLI
+- approval concurrency now deduplicates active envelopes and blocks duplicate in-flight execution
 - current priority is to mature the runtime and MCP path into a trustworthy operational interface
 
 ## Phase 1: Controlled MCP Write Path
@@ -83,10 +85,10 @@ Exit criteria:
 
 ## Near-Term Execution Order
 
-1. add runtime integration coverage and harnesses
-2. validate the MCP contract through real-client and stdio transcript flows
-3. harden concurrency and schema governance
-4. continue core/interface cleanup
+1. define tool-schema compatibility rules and release policy
+2. continue core/interface cleanup
+3. add container-backed service/config integration harnesses
+4. broaden client and host validation evidence
 5. expand tool domains only after the previous items are stable
 
 ## Out Of Scope For This Track

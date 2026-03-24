@@ -1,10 +1,10 @@
 # VPS Validation Report
 
-Snapshot date: 2026-03-20
+Snapshot date: 2026-03-23
 
 ## Purpose
 
-This document records the first controlled VPS validation pass for Master Control as a private proving ground.
+This document records the current controlled VPS validation pass for Master Control as a private proving ground.
 
 It is not a production-readiness claim.
 It is real-host evidence intended to reduce release guesswork.
@@ -20,7 +20,7 @@ It is real-host evidence intended to reduce release guesswork.
 
 ## Operator Path Results
 
-Validated successfully after host preparation:
+Validated successfully on the Debian 13 VPS lab:
 
 - `./install.sh --provider heuristic`
 - `~/.local/bin/mc doctor`
@@ -87,23 +87,25 @@ Observed result:
 
 Validated successfully in a dedicated remote virtual environment:
 
-- `python -m ruff check .`
-- `python -m mypy src`
-- `PYTHONPATH=src python -m unittest discover -s tests`
-- `PYTHONPATH=src python -m pytest -q`
+- `python3 -m ruff check .`
+- `python3 -m mypy src`
+- `PYTHONPATH=src python3 -m unittest discover -s tests`
+- `PYTHONPATH=src python3 -m pytest -q tests --ignore tests/test_runtime_policy_integration.py --ignore tests/test_mcp_stdio_integration.py`
+- `PYTHONPATH=src python3 -m pytest -q tests/test_runtime_policy_integration.py tests/test_mcp_stdio_integration.py`
+- `python3 -m compileall src`
+- `PYTHONPATH=src python3 -m master_control --json doctor`
+- `python3 -m pip wheel . --no-deps -w <dist-dir>`
 
 Observed result:
 
 - `ruff`: passed
 - `mypy`: passed
-- `unittest`: `171` tests passed
-- `pytest`: `171` tests passed
-
-Note:
-
-- later SSH reachability was transient on this VPS during additional reruns
-- because of that transient host issue, this report does not claim a complete second rerun of every maintainer command on the VPS in the same session
-- the operator-path `doctor` proof and the bootstrap harness proof were both still captured successfully
+- `unittest`: passed
+- `pytest` unit slice: passed
+- `pytest` runtime/MCP integration slice: passed
+- `compileall`: passed
+- `doctor`: passed
+- `wheel`: passed
 
 ## Artifact Handling
 

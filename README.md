@@ -19,7 +19,7 @@ MC is built around three constraints:
 - single-host and local-first by design
 - install path: source checkout plus `install.sh`
 - validated on the maintainer workstation and on a dedicated Debian 13 VPS lab
-- main integration interface: experimental MCP stdio with approval-mediated write flow
+- main integration interface: experimental but JSON-RPC-compatible MCP stdio with approval-mediated write flow
 - local administration interface: CLI
 - optional interface: chat/provider path
 - not positioned as a production-ready Linux administration platform, security auditor, or package manager
@@ -72,6 +72,7 @@ If `install.sh` reports that `ensurepip` is unavailable on Debian or Ubuntu, ins
 - [Policy guide](docs/policy.md)
 - [Operator workflows](docs/operator-workflows.md)
 - [Runtime integration testing](docs/runtime-integration-testing.md)
+- [MCP client validation](docs/mcp-client-validation.md)
 - [Provider setup](docs/providers.md)
 - [Host-profile validation guide](docs/host-profile-validation.md)
 - [Validation evidence](docs/alpha-validation-report.md)

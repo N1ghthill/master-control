@@ -27,6 +27,7 @@ Use this file to find the right working document, validation record, or planning
 
 - `docs/alpha-validation-report.md`: main validation summary for the current pre-1.0 baseline
 - `docs/runtime-integration-testing.md`: runtime and MCP contract validation guide
+- `docs/mcp-client-validation.md`: official MCP Inspector CLI validation guide and evidence
 - `docs/vps-validation-report.md`: dedicated Debian VPS validation evidence
 - `docs/vps-validation-runbook.md`: repeatable runbook for the maintainer-controlled VPS lab
 - `docs/call-for-testers.md`: outreach copy for collecting more host-validation evidence

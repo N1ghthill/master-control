@@ -20,6 +20,7 @@ The goal is to validate the real runtime boundaries:
 3. MCP stdio subprocess contract coverage in `tests/test_mcp_stdio_integration.py`
 4. Operator bootstrap validation via `python3 scripts/validate_operator_bootstrap.py`
 5. Host-profile validation via `mc validate-host-profile`
+6. Real MCP client validation via `python3 scripts/validate_mcp_client.py`
 
 ## Local Commands
 
@@ -57,15 +58,23 @@ python3 scripts/validate_operator_bootstrap.py \
   --python python3
 ```
 
+Run the real-client MCP contract check:
+
+```bash
+python3 scripts/validate_mcp_client.py \
+  --output-dir /tmp/mc-client-validation
+```
+
 ## What These Tests Prove Today
 
 - operator policy can disable tools, require confirmation, constrain service targets, and redefine managed config targets
 - invalid policy fails closed and is surfaced through `mc doctor`
-- `mc mcp-serve` works as a real stdio subprocess for `initialize`, `tools/list`, `tools/call`, and `approvals/*`
+- `mc mcp-serve` works as a real stdio subprocess for both the legacy approval API and the standard JSON-RPC MCP handshake
 - approval-mediated config mutation works through the real MCP server process, not just through in-process unit helpers
+- the official MCP Inspector CLI can complete `tools/list`, read-only execution, pending approval, `approval_get`, and `approval_approve`
 
 ## Known Gaps
 
 - no container-backed integration harness yet for repeatable `systemd` service scenarios
-- no external desktop MCP client transcript is checked in yet
+- no desktop-specific GUI transcript is checked in yet
 - real-host smoke validation remains necessary for host-specific paths that containers do not model well

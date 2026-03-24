@@ -78,6 +78,8 @@ Chat and planner providers remain optional layers on top of the same runtime.
 ### Interfaces
 
 - experimental MCP stdio bridge with approval-mediated write flow on top of the runtime
+- standard JSON-RPC-compatible MCP stdio handshake for real MCP clients
+- MCP approval tools exposed through the standard `tools/list` / `tools/call` surface
 - CLI commands for doctor, tools, audit, sessions, observations, recommendations, direct tool execution, and chat
 - CLI-integrated `validate-host-profile` command backed by reusable host-validation code
 - optional `systemd` timer installation for bounded recommendation reconciliation
@@ -96,10 +98,12 @@ Chat and planner providers remain optional layers on top of the same runtime.
 
 - MC is already useful as a bounded runtime for Linux inspection and controlled actions
 - MCP is the main external interface direction, and the current experimental slice already supports approval-mediated write operations
+- the official MCP Inspector CLI now validates that a real client can complete the approval-mediated mutation flow
 - CLI is still the most complete operator surface today
 - chat/provider paths are optional and should not define the product center
 - a first operator-configurable policy slice is landed through versioned TOML, but broader validation and operator evidence are still ahead
-- concurrency and tool-schema governance work are still ahead of the current baseline
+- approval concurrency is now hardened against duplicate active requests and duplicate in-flight execution for the same action envelope
+- tool-schema governance and broader runtime ownership cleanup are still ahead of the current baseline
 
 ## Active Focus
 
@@ -107,10 +111,10 @@ The current execution focus is defined by `docs/runtime-mcp-maturation-plan.md`.
 
 The next maturity steps are:
 
-1. stronger runtime integration coverage for read and write flows
-2. real-client MCP validation and contract hardening on top of the new approval flow
-3. concurrency hardening and state-integrity guarantees
-4. tool-schema compatibility rules and release policy
+1. tool-schema compatibility rules and release policy
+2. narrower runtime ownership seams, especially around `core.runtime` and `session_store`
+3. container-backed integration harnesses for repeatable service/config scenarios
+4. broader client evidence beyond the Inspector CLI transcript
 5. broader tool expansion only after the runtime contract is stable
 
 ## Intentionally Out Of Scope Right Now
@@ -132,6 +136,7 @@ At this snapshot, the project is validated by:
 - `PYTHONPATH=src python3 -m pytest -q`
 - explicit runtime/MCP integration coverage in `tests/test_runtime_policy_integration.py` and `tests/test_mcp_stdio_integration.py`
 - `python3 -m compileall src`
+- real-client MCP validation through `python3 scripts/validate_mcp_client.py`
 - manual CLI smoke checks for chat, recommendations, recommendation-triggered actions, and `reconcile-timer render|install|remove`
 - manual CLI smoke checks for managed config write with validation and backup
 - manual CLI smoke checks for `process_to_unit` and `failed_services`
@@ -152,6 +157,7 @@ At this snapshot, the project is validated by:
 - `docs/policy.md`: operator policy guide
 - `docs/operator-workflows.md`: bounded operator journeys
 - `docs/runtime-integration-testing.md`: runtime and MCP validation guide
+- `docs/mcp-client-validation.md`: real MCP client validation guide
 - `docs/host-profile-validation.md`: validation harness guide
 
 ## Evidence Records
