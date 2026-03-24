@@ -1,5 +1,11 @@
 # MVP Evolution Plan
 
+> Historical document
+>
+> This file is kept as the MVP closeout sequencing record.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Snapshot date: 2026-03-18
 
 ## Purpose
@@ -8,9 +14,9 @@ This document now serves as the completion record for the delivery plan that clo
 
 It remains the canonical reference for how the repository's closeout documents relate to each other:
 
-- `docs/mvp-plan.md`: stable MVP contract and exit criteria
-- `docs/mvp-evolution-plan.md`: milestone sequencing and completion record
-- `docs/mvp-closeout-backlog.md`: closed execution backlog record
+- `docs/history/mvp-plan.md`: stable MVP contract and exit criteria
+- `docs/history/mvp-evolution-plan.md`: milestone sequencing and completion record
+- `docs/history/mvp-closeout-backlog.md`: closed execution backlog record
 - `docs/status.md`: current implementation snapshot
 - `docs/roadmap.md`: phase-level roadmap beyond the closed MVP
 

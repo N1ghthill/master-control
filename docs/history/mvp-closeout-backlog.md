@@ -1,5 +1,11 @@
 # MVP Closeout Backlog
 
+> Historical document
+>
+> This file is kept as the MVP closeout completion record.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Snapshot date: 2026-03-18
 
 ## Purpose
@@ -24,7 +30,7 @@ Completed milestones:
 - Milestone 3: operator utility and approval UX, completed on 2026-03-18
 - Milestone 4: alpha hardening and release baseline, completed on 2026-03-18
 
-The higher-level completion record remains in `docs/mvp-evolution-plan.md`.
+The higher-level completion record remains in `docs/history/mvp-evolution-plan.md`.
 
 ## Closed scope
 

@@ -297,14 +297,14 @@ These documents contain useful evidence or historical execution context and shou
 - `docs/alpha-validation-report.md`
 - `docs/vps-validation-report.md`
 - `docs/vps-validation-runbook.md`
-- `docs/release-candidate-0.1.0a2.md`
-- `docs/alpha-release-notes.md`
+- `docs/history/release-candidate-0.1.0a2.md`
+- `docs/history/alpha-release-notes.md`
 - `docs/beta-readiness-gate.md`
-- `docs/beta-resume-plan.md`
-- `docs/mvp-plan.md`
-- `docs/mvp-evolution-plan.md`
-- `docs/mvp-closeout-backlog.md`
-- `docs/post-mvp-evolution-plan.md`
+- `docs/history/beta-resume-plan.md`
+- `docs/history/mvp-plan.md`
+- `docs/history/mvp-evolution-plan.md`
+- `docs/history/mvp-closeout-backlog.md`
+- `docs/history/post-mvp-evolution-plan.md`
 - `docs/community-host-validation.md`
 - `docs/host-profile-validation.md`
 

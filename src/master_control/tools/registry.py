@@ -1,8 +1,9 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from pathlib import Path
 
-from master_control.config_manager import ConfigManager
+from master_control.config_manager import ConfigManager, ConfigTarget
 from master_control.executor.command_runner import CommandRunner
 from master_control.tools.base import Tool
 from master_control.tools.disk_usage import DiskUsageTool
@@ -37,9 +38,17 @@ class ToolRegistry:
         return [self._tools[name].spec for name in sorted(self._tools)]
 
 
-def build_default_registry(state_dir: Path) -> ToolRegistry:
+def build_default_registry(
+    state_dir: Path,
+    *,
+    config_target_loader: Callable[[], tuple[ConfigTarget, ...]] | None = None,
+) -> ToolRegistry:
     runner = CommandRunner()
-    config_manager = ConfigManager(state_dir, runner)
+    config_manager = ConfigManager(
+        state_dir,
+        runner,
+        target_loader=config_target_loader,
+    )
     registry = ToolRegistry()
     registry.register(SystemInfoTool())
     registry.register(DiskUsageTool())

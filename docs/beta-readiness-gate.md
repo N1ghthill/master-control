@@ -9,7 +9,8 @@ This document defines the minimum bar for moving Master Control from the current
 It is not a feature wishlist.
 It is a release gate.
 
-Use `docs/beta-resume-plan.md` for short-horizon execution order.
+Use `docs/roadmap.md` and `docs/runtime-mcp-maturation-plan.md` for current planning.
+`docs/history/beta-resume-plan.md` remains available as a historical execution record.
 Use this document only to decide whether beta claims and tagging are actually justified.
 
 ## Gate Summary

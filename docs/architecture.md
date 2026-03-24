@@ -23,7 +23,7 @@ The authoritative direction is now runtime-first: the conversational path is an 
 - treat MCP as the main integration interface on top of the runtime
 - keep the CLI as the local operator and administration interface
 - preserve the existing chat/provider path as an optional interface
-- keep an experimental read-only MCP bridge on top of the same runtime
+- keep an experimental MCP bridge with approval-mediated write flow on top of the same runtime
 - persist local state and audit data in SQLite
 - keep the codebase modular, but inside one deployable process
 
@@ -205,7 +205,7 @@ Its planners, providers, summaries, and rendering helpers are interface logic, n
 
 ### MCP
 
-An experimental read-only MCP stdio bridge now exists.
+An experimental MCP stdio bridge now exists with approval-mediated write operations.
 It is the main integration interface for exposing runtime capabilities to external AI clients without duplicating policy, audit, or execution logic.
 Broader capability exposure remains intentionally deferred until the runtime boundary is easier to own.
 

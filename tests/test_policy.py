@@ -1,6 +1,8 @@
 from __future__ import annotations
 
+import tempfile
 import unittest
+from pathlib import Path
 
 from master_control.policy.engine import PolicyEngine
 from master_control.tools.base import RiskLevel, ToolSpec
@@ -8,7 +10,15 @@ from master_control.tools.base import RiskLevel, ToolSpec
 
 class PolicyEngineTest(unittest.TestCase):
     def setUp(self) -> None:
-        self.engine = PolicyEngine()
+        self.tmp_dir = tempfile.TemporaryDirectory()
+        state_dir = Path(self.tmp_dir.name)
+        self.engine = PolicyEngine(
+            state_dir=state_dir,
+            policy_path=state_dir / "policy.toml",
+        )
+
+    def tearDown(self) -> None:
+        self.tmp_dir.cleanup()
 
     def test_read_only_does_not_require_confirmation(self) -> None:
         spec = ToolSpec(

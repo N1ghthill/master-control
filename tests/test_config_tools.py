@@ -59,6 +59,9 @@ class ConfigToolsTest(unittest.TestCase):
             self.assertFalse(pending["ok"])
             self.assertTrue(pending["pending_confirmation"])
             self.assertIn("--confirm", pending["approval"]["cli_command"])
+            approval_id = pending["approval"]["id"]
+            approval = app.get_tool_approval(int(approval_id))
+            self.assertEqual(approval["status"], "pending")
 
             confirmed = app.run_tool(
                 "write_config_file",
@@ -69,6 +72,9 @@ class ConfigToolsTest(unittest.TestCase):
             self.assertTrue(confirmed["result"]["changed"])
             self.assertIsNotNone(confirmed["result"]["backup_path"])
             self.assertEqual(config_path.read_text(encoding="utf-8"), "[main]\nkey=new\n")
+            resolved_approval = app.get_tool_approval(int(approval_id))
+            self.assertEqual(resolved_approval["status"], "completed")
+            self.assertTrue(resolved_approval["execution"]["ok"])
 
     def test_restore_config_backup_restores_previous_content(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:

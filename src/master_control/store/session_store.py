@@ -78,6 +78,23 @@ CREATE TABLE IF NOT EXISTS audit_events (
     payload TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP
 );
+
+CREATE TABLE IF NOT EXISTS tool_approvals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    tool_name TEXT NOT NULL,
+    risk TEXT NOT NULL,
+    arguments_json TEXT NOT NULL,
+    audit_context_json TEXT NOT NULL,
+    summary TEXT NOT NULL,
+    cli_command TEXT NOT NULL,
+    chat_command TEXT NOT NULL,
+    status TEXT NOT NULL DEFAULT 'pending',
+    execution_payload_json TEXT,
+    error_text TEXT,
+    created_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT NOT NULL DEFAULT CURRENT_TIMESTAMP,
+    resolved_at TEXT
+);
 """
 
 
@@ -156,6 +173,18 @@ class SessionStore:
             ON observations(session_id, key, id DESC)
             """
         )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tool_approvals_status_id
+            ON tool_approvals(status, id DESC)
+            """
+        )
+        connection.execute(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tool_approvals_match
+            ON tool_approvals(tool_name, status, id DESC)
+            """
+        )
 
     def _ensure_columns(
         self,
@@ -208,6 +237,301 @@ class SessionStore:
             cursor = connection.execute("SELECT COUNT(*) FROM audit_events")
             row = cursor.fetchone()
         return int(row[0]) if row is not None else 0
+
+    def create_tool_approval(
+        self,
+        *,
+        tool_name: str,
+        risk: str,
+        arguments: dict[str, object],
+        audit_context: dict[str, object],
+        summary: str,
+        cli_command: str,
+        chat_command: str,
+    ) -> dict[str, object]:
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                INSERT INTO tool_approvals (
+                    tool_name,
+                    risk,
+                    arguments_json,
+                    audit_context_json,
+                    summary,
+                    cli_command,
+                    chat_command
+                )
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    tool_name,
+                    risk,
+                    json.dumps(arguments, sort_keys=True),
+                    json.dumps(audit_context, sort_keys=True),
+                    summary,
+                    cli_command,
+                    chat_command,
+                ),
+            )
+            connection.commit()
+            approval_id = cursor.lastrowid
+            if approval_id is None:
+                raise RuntimeError("SQLite did not return a tool approval id.")
+        approval = self.get_tool_approval(int(approval_id))
+        if approval is None:
+            raise RuntimeError(f"Tool approval {approval_id} disappeared after insert.")
+        return approval
+
+    def list_tool_approvals(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> list[dict[str, object]]:
+        with closing(self._connect()) as connection:
+            if status is None:
+                cursor = connection.execute(
+                    """
+                    SELECT
+                        id,
+                        tool_name,
+                        risk,
+                        arguments_json,
+                        audit_context_json,
+                        summary,
+                        cli_command,
+                        chat_command,
+                        status,
+                        execution_payload_json,
+                        error_text,
+                        created_at,
+                        updated_at,
+                        resolved_at
+                    FROM tool_approvals
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (limit,),
+                )
+            else:
+                cursor = connection.execute(
+                    """
+                    SELECT
+                        id,
+                        tool_name,
+                        risk,
+                        arguments_json,
+                        audit_context_json,
+                        summary,
+                        cli_command,
+                        chat_command,
+                        status,
+                        execution_payload_json,
+                        error_text,
+                        created_at,
+                        updated_at,
+                        resolved_at
+                    FROM tool_approvals
+                    WHERE status = ?
+                    ORDER BY id DESC
+                    LIMIT ?
+                    """,
+                    (status, limit),
+                )
+            rows = cursor.fetchall()
+        return [self._row_to_tool_approval(row) for row in rows]
+
+    def get_tool_approval(self, approval_id: int) -> dict[str, object] | None:
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                SELECT
+                    id,
+                    tool_name,
+                    risk,
+                    arguments_json,
+                    audit_context_json,
+                    summary,
+                    cli_command,
+                    chat_command,
+                    status,
+                    execution_payload_json,
+                    error_text,
+                    created_at,
+                    updated_at,
+                    resolved_at
+                FROM tool_approvals
+                WHERE id = ?
+                """,
+                (approval_id,),
+            )
+            row = cursor.fetchone()
+        if row is None:
+            return None
+        return self._row_to_tool_approval(row)
+
+    def claim_tool_approval(self, approval_id: int) -> dict[str, object] | None:
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                UPDATE tool_approvals
+                SET status = 'executing', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'pending'
+                """,
+                (approval_id,),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """
+                SELECT
+                    id,
+                    tool_name,
+                    risk,
+                    arguments_json,
+                    audit_context_json,
+                    summary,
+                    cli_command,
+                    chat_command,
+                    status,
+                    execution_payload_json,
+                    error_text,
+                    created_at,
+                    updated_at,
+                    resolved_at
+                FROM tool_approvals
+                WHERE id = ?
+                """,
+                (approval_id,),
+            )
+            row = cursor.fetchone()
+            connection.commit()
+        if row is None:
+            return None
+        return self._row_to_tool_approval(row)
+
+    def claim_latest_matching_tool_approval(
+        self,
+        *,
+        tool_name: str,
+        arguments: dict[str, object],
+        audit_context: dict[str, object],
+    ) -> dict[str, object] | None:
+        with closing(self._connect()) as connection:
+            connection.execute("BEGIN IMMEDIATE")
+            cursor = connection.execute(
+                """
+                SELECT id
+                FROM tool_approvals
+                WHERE tool_name = ?
+                  AND status = 'pending'
+                  AND arguments_json = ?
+                  AND audit_context_json = ?
+                ORDER BY id DESC
+                LIMIT 1
+                """,
+                (
+                    tool_name,
+                    json.dumps(arguments, sort_keys=True),
+                    json.dumps(audit_context, sort_keys=True),
+                ),
+            )
+            row = cursor.fetchone()
+            if row is None:
+                connection.rollback()
+                return None
+            approval_id = int(row[0])
+            cursor = connection.execute(
+                """
+                UPDATE tool_approvals
+                SET status = 'executing', updated_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'pending'
+                """,
+                (approval_id,),
+            )
+            if cursor.rowcount != 1:
+                connection.rollback()
+                return None
+            cursor = connection.execute(
+                """
+                SELECT
+                    id,
+                    tool_name,
+                    risk,
+                    arguments_json,
+                    audit_context_json,
+                    summary,
+                    cli_command,
+                    chat_command,
+                    status,
+                    execution_payload_json,
+                    error_text,
+                    created_at,
+                    updated_at,
+                    resolved_at
+                FROM tool_approvals
+                WHERE id = ?
+                """,
+                (approval_id,),
+            )
+            claimed_row = cursor.fetchone()
+            connection.commit()
+        if claimed_row is None:
+            return None
+        return self._row_to_tool_approval(claimed_row)
+
+    def finish_tool_approval(
+        self,
+        approval_id: int,
+        *,
+        status: str,
+        execution_payload: dict[str, object],
+    ) -> dict[str, object] | None:
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tool_approvals
+                SET
+                    status = ?,
+                    execution_payload_json = ?,
+                    error_text = ?,
+                    updated_at = CURRENT_TIMESTAMP,
+                    resolved_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'executing'
+                """,
+                (
+                    status,
+                    json.dumps(execution_payload, sort_keys=True),
+                    str(execution_payload.get("error"))
+                    if isinstance(execution_payload.get("error"), str)
+                    else None,
+                    approval_id,
+                ),
+            )
+            connection.commit()
+            if cursor.rowcount != 1:
+                return None
+        return self.get_tool_approval(approval_id)
+
+    def reject_tool_approval(self, approval_id: int) -> dict[str, object] | None:
+        with closing(self._connect()) as connection:
+            cursor = connection.execute(
+                """
+                UPDATE tool_approvals
+                SET
+                    status = 'rejected',
+                    updated_at = CURRENT_TIMESTAMP,
+                    resolved_at = CURRENT_TIMESTAMP
+                WHERE id = ? AND status = 'pending'
+                """,
+                (approval_id,),
+            )
+            connection.commit()
+            if cursor.rowcount != 1:
+                return None
+        return self.get_tool_approval(approval_id)
 
     def create_session(self) -> int:
         with closing(self._connect()) as connection:
@@ -846,6 +1170,27 @@ class SessionStore:
             "last_seen_at": row[13],
         }
 
+    def _row_to_tool_approval(self, row: tuple[object, ...]) -> dict[str, object]:
+        arguments = _deserialize_json_object(row[3])
+        audit_context = _deserialize_json_object(row[4])
+        execution = _deserialize_json_object(row[9]) if row[9] is not None else None
+        return {
+            "id": row[0],
+            "tool": row[1],
+            "risk": row[2],
+            "arguments": arguments,
+            "audit_context": audit_context,
+            "summary": row[5],
+            "cli_command": row[6],
+            "chat_command": row[7],
+            "status": row[8],
+            "execution": execution,
+            "error": row[10],
+            "created_at": row[11],
+            "updated_at": row[12],
+            "resolved_at": row[13],
+        }
+
 
 def _coerce_int(value: object, label: str) -> int:
     if isinstance(value, int) and not isinstance(value, bool):
@@ -853,3 +1198,15 @@ def _coerce_int(value: object, label: str) -> int:
     if isinstance(value, str):
         return int(value)
     raise TypeError(f"Expected integer-compatible value for {label}, got {type(value).__name__}.")
+
+
+def _deserialize_json_object(value: object) -> dict[str, object]:
+    if not isinstance(value, str) or not value:
+        return {}
+    try:
+        payload = json.loads(value)
+    except json.JSONDecodeError:
+        return {}
+    if isinstance(payload, dict):
+        return payload
+    return {}

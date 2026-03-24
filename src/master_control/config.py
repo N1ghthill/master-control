@@ -22,6 +22,7 @@ class Settings:
     provider: str
     state_dir: Path
     db_path: Path
+    policy_path: Path | None = None
     openai_api_key: str | None = None
     openai_base_url: str = DEFAULT_OPENAI_BASE_URL
     openai_model: str = DEFAULT_OPENAI_MODEL
@@ -41,12 +42,14 @@ class Settings:
     def from_env(cls) -> "Settings":
         state_dir = Path(os.getenv("MC_STATE_DIR", DEFAULT_STATE_DIR))
         db_path = Path(os.getenv("MC_DB_PATH", state_dir / "mc.sqlite3"))
+        policy_path = Path(os.getenv("MC_POLICY_PATH", state_dir / "policy.toml"))
         return cls(
             app_name="master-control",
             log_level=os.getenv("MC_LOG_LEVEL", "INFO"),
             provider=os.getenv("MC_PROVIDER", "auto"),
             state_dir=state_dir,
             db_path=db_path,
+            policy_path=policy_path,
             openai_api_key=os.getenv("OPENAI_API_KEY"),
             openai_base_url=os.getenv("OPENAI_BASE_URL", DEFAULT_OPENAI_BASE_URL),
             openai_model=os.getenv("MC_OPENAI_MODEL", DEFAULT_OPENAI_MODEL),
@@ -71,6 +74,9 @@ class Settings:
 
     def ensure_directories(self) -> None:
         self.state_dir.mkdir(parents=True, exist_ok=True)
+
+    def resolved_policy_path(self) -> Path:
+        return self.policy_path or self.state_dir / "policy.toml"
 
 
 def _parse_bool_env(name: str, default: bool) -> bool:

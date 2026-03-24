@@ -140,7 +140,7 @@ After a successful VPS pass, the repository should be able to update:
 
 - `docs/alpha-validation-report.md`
 - `docs/beta-readiness-gate.md`
-- `docs/release-candidate-0.1.0a2.md`
+- `docs/history/release-candidate-0.1.0a2.md`
 - `docs/status.md`
 
 ## Release Interpretation

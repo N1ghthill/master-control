@@ -232,7 +232,7 @@ def build_parser() -> argparse.ArgumentParser:
 
     subparsers.add_parser(
         "mcp-serve",
-        help="Run the experimental read-only MCP interface over runtime capabilities.",
+        help="Run the experimental MCP interface with approval-mediated write operations.",
     )
     return parser
 
@@ -462,6 +462,8 @@ def main(argv: Sequence[str] | None = None) -> int:
                 f"{store_status} journal={store_diagnostics['journal_mode']} "
                 f"integrity={store_diagnostics['integrity_check']}"
             )
+            policy_diagnostics = cast(dict[str, Any], doctor_payload["policy_diagnostics"])
+            print(f"policy:    {policy_diagnostics['summary']}")
             bootstrap_diagnostics = cast(
                 dict[str, Any],
                 doctor_payload["bootstrap_python_diagnostics"],
