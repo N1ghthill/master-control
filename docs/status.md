@@ -1,6 +1,6 @@
 # Project Status
 
-Snapshot date: 2026-03-22
+Snapshot date: 2026-03-23
 
 ## Purpose
 
@@ -9,23 +9,21 @@ This document is the authoritative snapshot of project maturity, implemented sco
 It is not the GitHub landing page.
 It is not the long-horizon roadmap.
 
-## Maturity
+## Current Position
 
-- Stage: late alpha
-- Public release posture: GitHub pre-release `v0.1.0a2` is published
-- Product posture: MC is being repositioned from an AI-first conversational agent to a runtime-first capability layer with interfaces
-- Interface posture: MCP is the main integration interface; the CLI remains the local administration interface; the chat/provider path remains optional
-- Install posture: source checkout plus `install.sh`; no `.deb` package yet
+- Stage: late alpha, pre-1.0
+- Release posture: public pre-release `v0.1.0a2` is published
+- Product posture: runtime-first and MCP-first
+- Interface posture: MCP is the main external integration interface; CLI is the local administration interface; chat/providers are optional
+- Install posture: source checkout plus `install.sh`
 - Scope posture: single-host and local-first
-- Refactor posture: the runtime-first documentation reset and the first code-boundary slices have landed without resetting the validated alpha baseline
-- Historical planning records remain available in `docs/mvp-evolution-plan.md`, `docs/mvp-closeout-backlog.md`, `docs/post-mvp-evolution-plan.md`, and `docs/beta-resume-plan.md`
+- Packaging posture: no `.deb` package and no service-mode requirement yet
 
-## Current product statement
+## Current Product Statement
 
 Master Control is a local-first runtime for controlled Linux host operations, with typed capabilities, approval boundaries, and auditability.
 
-The core value today is not generic AI autonomy.
-The core value is the bounded runtime:
+The core value today is the bounded runtime:
 
 - typed tools
 - policy and confirmation gates
@@ -33,27 +31,28 @@ The core value is the bounded runtime:
 - config safety
 - repeatable validation
 
-The MCP interface is the main integration path for that runtime.
-The CLI remains the local administration surface.
-The conversational and provider-backed path still exists, but it is now understood as an optional interface layered on top of the same runtime.
+MCP is the main integration path for that runtime.
+CLI remains the local administration surface.
+Chat and planner providers remain optional layers on top of the same runtime.
 
-## What is already implemented
+## Implemented Today
 
 ### Runtime foundation
 
 - modular Python monolith with `src/` layout
 - SQLite bootstrap and local state directory
 - architecture, security, roadmap, and ADR documentation
-- audit trail for plans, executions, provider errors, and recommendation status updates
+- audit trail for plans, executions, provider errors, and recommendation status changes
 - operator bootstrap scripts for install and removal
-- repeatable repo-side bootstrap validation harness with per-step logs and cleanup checks
-- GitHub CI bootstrap smoke for the non-editable operator path via `scripts/validate_operator_bootstrap.py`
-- redacted host-validation bundle generation plus a dedicated intake path for community-submitted reports
+- repeatable bootstrap validation harness with per-step logs and cleanup checks
+- GitHub CI bootstrap smoke for the non-editable operator path
+- host-validation bundle generation and community intake path
 
 ### Runtime capabilities
 
 - typed inspection and controlled-action tools
 - policy evaluation before every tool execution
+- versioned operator policy loading with safe defaults, fail-closed errors, and doctor diagnostics
 - explicit confirmation gates for mutating and privileged paths
 - bounded subprocess execution with `shell=False`, timeouts, and output truncation
 - managed config read, write, validation, backup, and restore for bounded targets
@@ -76,14 +75,14 @@ The conversational and provider-backed path still exists, but it is now understo
 - `reload_service`
 - `restart_service`
 
-### Runtime interfaces
+### Interfaces
 
-- experimental read-only MCP stdio bridge on top of the runtime
+- experimental MCP stdio bridge with approval-mediated write flow on top of the runtime
 - CLI commands for doctor, tools, audit, sessions, observations, recommendations, direct tool execution, and chat
 - CLI-integrated `validate-host-profile` command backed by reusable host-validation code
 - optional `systemd` timer installation for bounded recommendation reconciliation
 
-### Optional agent interface
+### Optional planner layer
 
 - provider abstraction
 - heuristic planner for offline development
@@ -91,43 +90,39 @@ The conversational and provider-backed path still exists, but it is now understo
 - Ollama chat adapter for local structured planning
 - local-first auto provider resolution: `ollama -> openai -> heuristic`
 - structured execution plans instead of free-form tool calls
-- iterative per-turn planning loop that can continue a diagnosis using fresh tool outputs
-- provider health reporting in `mc doctor`, including local Ollama endpoint and model availability
-- deterministic turn guidance, structured session context, and recommendation rendering helpers
+- provider health reporting in `mc doctor`
 
-## Product interpretation of the current baseline
-
-The validated alpha baseline should now be interpreted as follows:
+## What Is True Right Now
 
 - MC is already useful as a bounded runtime for Linux inspection and controlled actions
-- MCP is the clearest external integration surface for the current product direction
-- the CLI is the local operator and administration surface
-- the current chat/provider path is an optional interface, not the explanation of the product
-- the current codebase still carries more conversational complexity than the runtime-centered product story requires
-- the current refactor is meant to correct that mismatch without throwing away validated behavior
+- MCP is the main external interface direction, and the current experimental slice already supports approval-mediated write operations
+- CLI is still the most complete operator surface today
+- chat/provider paths are optional and should not define the product center
+- a first operator-configurable policy slice is landed through versioned TOML, but broader validation and operator evidence are still ahead
+- concurrency and tool-schema governance work are still ahead of the current baseline
 
-## Current refactor focus
+## Active Focus
 
-The active refactor is described in `docs/core-interfaces-refactor-plan.md`.
+The current execution focus is defined by `docs/runtime-mcp-maturation-plan.md`.
 
-The near-term objective is:
+The next maturity steps are:
 
-1. finish aligning the remaining supporting docs with the runtime-first contract
-2. continue reducing legacy compatibility surface around the old app-centric entry points
-3. harden the current experimental MCP bridge without expanding its capability surface prematurely
-4. perform broader cleanup only after the replacement structure is stable
+1. stronger runtime integration coverage for read and write flows
+2. real-client MCP validation and contract hardening on top of the new approval flow
+3. concurrency hardening and state-integrity guarantees
+4. tool-schema compatibility rules and release policy
+5. broader tool expansion only after the runtime contract is stable
 
-## What is intentionally out of scope right now
+## Intentionally Out Of Scope Right Now
 
-- general package management
-- full host security auditing or compliance scanning
+- unrestricted shell access
 - web UI
 - voice interface
 - Slack or Discord integrations
 - multi-user auth and remote deployment
 - SaaS-style remote control infrastructure
 
-## Validation baseline
+## Validation Baseline
 
 At this snapshot, the project is validated by:
 
@@ -135,29 +130,44 @@ At this snapshot, the project is validated by:
 - `python3 -m mypy src`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `PYTHONPATH=src python3 -m pytest -q`
+- explicit runtime/MCP integration coverage in `tests/test_runtime_policy_integration.py` and `tests/test_mcp_stdio_integration.py`
 - `python3 -m compileall src`
 - manual CLI smoke checks for chat, recommendations, recommendation-triggered actions, and `reconcile-timer render|install|remove`
 - manual CLI smoke checks for managed config write with validation and backup
 - manual CLI smoke checks for `process_to_unit` and `failed_services`
-- automated coverage for observation freshness and stale-context refresh behavior
-- real-host validation of `service_status`, `reload_service`, and `restart_service` on `systemd --user`
-- real-host validation of `service_status`, `reload_service`, and `restart_service` on system-scoped units
-- real-host validation of managed config read/write/restore on a file under `<MC_STATE_DIR>/managed-configs/`
-- repeatable host-profile validation harness available through `mc validate-host-profile`
-- repeatable operator bootstrap validation harness available through `python3 scripts/validate_operator_bootstrap.py`
+- repeatable host-profile validation through `mc validate-host-profile`
+- repeatable operator bootstrap validation through `python3 scripts/validate_operator_bootstrap.py`
 - GitHub CI bootstrap smoke for the non-editable operator path
 - clean-environment operator bootstrap validation via `./install.sh`, `mc doctor`, `mc validate-host-profile`, and `./uninstall.sh --purge-state`
 - packaging sanity check via `python3 -m pip wheel . --no-deps -w /tmp/mc-dist`
-- dedicated VPS operator-path validation on 2026-03-20 after installing `python3.13-venv`
-- dedicated VPS bootstrap harness rerun on 2026-03-20 with `overall_ok: true`
+- dedicated Debian VPS operator-path validation on 2026-03-20
 
-## Evidence records
+## Current Canonical Docs
 
-Primary evidence and release records remain:
+- `docs/status.md`: reality snapshot
+- `docs/roadmap.md`: concise roadmap
+- `docs/runtime-mcp-maturation-plan.md`: canonical execution plan
+- `docs/architecture.md`: system structure and boundaries
+- `docs/security-model.md`: safety and approval model
+- `docs/policy.md`: operator policy guide
+- `docs/operator-workflows.md`: bounded operator journeys
+- `docs/runtime-integration-testing.md`: runtime and MCP validation guide
+- `docs/host-profile-validation.md`: validation harness guide
+
+## Evidence Records
 
 - `docs/alpha-validation-report.md`
 - `docs/vps-validation-report.md`
-- `docs/alpha-release-notes.md`
-- `docs/release-candidate-0.1.0a2.md`
-- `docs/operator-workflows.md`
 - `docs/beta-readiness-gate.md`
+
+## Historical Records
+
+The following documents remain useful for traceability, but they are not the current product brief or roadmap:
+
+- `docs/history/alpha-release-notes.md`
+- `docs/history/release-candidate-0.1.0a2.md`
+- `docs/history/beta-resume-plan.md`
+- `docs/history/mvp-plan.md`
+- `docs/history/mvp-evolution-plan.md`
+- `docs/history/mvp-closeout-backlog.md`
+- `docs/history/post-mvp-evolution-plan.md`

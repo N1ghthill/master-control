@@ -1,5 +1,11 @@
 # Release Candidate 0.1.0a2
 
+> Historical document
+>
+> This file is kept for traceability of the `0.1.0a2` release cut.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Snapshot date: 2026-03-20
 
 ## Purpose
@@ -97,5 +103,5 @@ Related GitHub issues:
 1. attach or summarize the VPS report in `docs/alpha-validation-report.md`
 2. update `docs/beta-readiness-gate.md`, `docs/status.md`, and `docs/roadmap.md` to reflect that multi-host evidence now exists
 3. rerun the local baseline one final time
-4. confirm `CHANGELOG.md`, `docs/alpha-release-notes.md`, and the release wording are still aligned with the actual scope
+4. confirm `CHANGELOG.md`, `docs/history/alpha-release-notes.md`, and the release wording are still aligned with the actual scope
 5. decide whether to tag `0.1.0a2` immediately or keep the build in private-preview language a little longer

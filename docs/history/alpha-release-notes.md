@@ -1,5 +1,11 @@
 # Alpha Release Notes
 
+> Historical document
+>
+> This file is kept for traceability of the alpha release line.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Version target: `0.1.0a2` local CLI alpha release candidate
 
 Snapshot date: 2026-03-18
@@ -95,4 +101,4 @@ mc tool service_status --arg name=ollama-local.service --arg scope=user
 ## Validation reference
 
 See `docs/alpha-validation-report.md` and `docs/vps-validation-report.md` for the current real-host validation snapshots behind this alpha baseline.
-See `docs/release-candidate-0.1.0a2.md` for the current cut status and remaining release work.
+See `docs/history/release-candidate-0.1.0a2.md` for the current cut status and remaining release work.

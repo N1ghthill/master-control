@@ -9,9 +9,20 @@ from typing import TextIO
 from master_control.config import Settings
 from master_control.core.runtime import MasterControlRuntime
 from master_control.logging_utils import configure_logging
-from master_control.tools.base import RiskLevel
 
-READ_ONLY_METHODS = frozenset({"initialize", "ping", "doctor", "tools/list", "tools/call"})
+SUPPORTED_METHODS = frozenset(
+    {
+        "initialize",
+        "ping",
+        "doctor",
+        "tools/list",
+        "tools/call",
+        "approvals/list",
+        "approvals/get",
+        "approvals/approve",
+        "approvals/reject",
+    }
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -27,7 +38,7 @@ class MCPError:
 
 
 class MasterControlMCPServer:
-    """Experimental stdio MCP interface for read-only runtime capabilities."""
+    """Experimental stdio MCP interface with approval-mediated write operations."""
 
     def __init__(self, runtime: MasterControlRuntime) -> None:
         self.runtime = runtime
@@ -71,7 +82,7 @@ class MasterControlMCPServer:
                 request_id=request_id,
                 error=MCPError("invalid_request", "Request is missing a string method."),
             )
-        if method not in READ_ONLY_METHODS:
+        if method not in SUPPORTED_METHODS:
             return self._error_response(
                 request_id=request_id,
                 error=MCPError("unsupported_method", f"Unsupported method: {method}"),
@@ -106,9 +117,13 @@ class MasterControlMCPServer:
                 },
                 "capabilities": {
                     "tools": {
-                        "mode": "read_only",
+                        "mode": "approval_controlled",
                         "count": len(self._list_exposed_tools()),
-                    }
+                    },
+                    "approvals": {
+                        "mode": "explicit",
+                        "statuses": ["pending", "executing", "completed", "failed", "rejected"],
+                    },
                 },
             }
         if method == "ping":
@@ -125,24 +140,42 @@ class MasterControlMCPServer:
                 raise ValueError("tools/call requires params.name.")
             if not isinstance(tool_arguments, dict):
                 raise ValueError("tools/call params.arguments must be an object.")
-            spec = self.runtime.registry.get(tool_name).spec
-            if spec.risk is not RiskLevel.READ_ONLY:
-                raise ValueError(
-                    f"Tool '{tool_name}' is not exposed through the read-only MCP interface."
-                )
             return self.runtime.run_tool(
                 tool_name,
                 tool_arguments,
                 audit_context={"source": "mcp_stdio"},
             )
+        if method == "approvals/list":
+            arguments = params if isinstance(params, dict) else {}
+            status = arguments.get("status")
+            limit = arguments.get("limit", 100)
+            if status is not None and not isinstance(status, str):
+                raise ValueError("approvals/list params.status must be a string when provided.")
+            if not isinstance(limit, int) or isinstance(limit, bool) or limit <= 0:
+                raise ValueError("approvals/list params.limit must be a positive integer.")
+            return self.runtime.list_tool_approvals(status=status, limit=limit)
+        if method == "approvals/get":
+            arguments = params if isinstance(params, dict) else {}
+            approval_id = arguments.get("id")
+            if not isinstance(approval_id, int) or isinstance(approval_id, bool):
+                raise ValueError("approvals/get requires params.id as an integer.")
+            return self.runtime.get_tool_approval(approval_id)
+        if method == "approvals/approve":
+            arguments = params if isinstance(params, dict) else {}
+            approval_id = arguments.get("id")
+            if not isinstance(approval_id, int) or isinstance(approval_id, bool):
+                raise ValueError("approvals/approve requires params.id as an integer.")
+            return self.runtime.approve_tool_approval(approval_id)
+        if method == "approvals/reject":
+            arguments = params if isinstance(params, dict) else {}
+            approval_id = arguments.get("id")
+            if not isinstance(approval_id, int) or isinstance(approval_id, bool):
+                raise ValueError("approvals/reject requires params.id as an integer.")
+            return self.runtime.reject_tool_approval(approval_id)
         raise ValueError(f"Unsupported method: {method}")
 
     def _list_exposed_tools(self) -> list[dict[str, object]]:
-        return [
-            spec.as_dict()
-            for spec in self.runtime.list_tools()
-            if spec.risk is RiskLevel.READ_ONLY
-        ]
+        return [spec.as_dict() for spec in self.runtime.list_tools()]
 
     def _error_response(
         self,
@@ -160,7 +193,7 @@ class MasterControlMCPServer:
 def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(
         prog="mc-mcp",
-        description="Run the experimental Master Control MCP interface.",
+        description="Run the experimental Master Control MCP interface with approval flow.",
     )
     return parser
 

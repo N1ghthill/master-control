@@ -118,4 +118,4 @@ See also:
 
 - `docs/host-profile-validation.md`
 - `docs/beta-readiness-gate.md`
-- `docs/beta-resume-plan.md`
+- `docs/roadmap.md`

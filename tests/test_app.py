@@ -47,7 +47,7 @@ class MasterControlAppTest(unittest.TestCase):
             app = MasterControlApp(settings)
 
             with patch(
-                "master_control.app.collect_provider_checks",
+                "master_control.core.runtime.collect_provider_checks",
                 return_value={
                     "ollama": {
                         "name": "ollama",

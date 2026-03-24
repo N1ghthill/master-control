@@ -1,5 +1,11 @@
 # Post-MVP Evolution Plan
 
+> Historical document
+>
+> This file is kept as a previous planning record for traceability.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Snapshot date: 2026-03-18
 
 ## Purpose
@@ -8,9 +14,9 @@ This document starts the next planning track after the narrow local CLI MVP clos
 
 It does not replace the closed MVP records:
 
-- `docs/mvp-plan.md`: stable contract for the narrow local CLI MVP
-- `docs/mvp-evolution-plan.md`: closed sequencing record for the MVP closeout
-- `docs/mvp-closeout-backlog.md`: closed backlog record for the MVP closeout
+- `docs/history/mvp-plan.md`: stable contract for the narrow local CLI MVP
+- `docs/history/mvp-evolution-plan.md`: closed sequencing record for the MVP closeout
+- `docs/history/mvp-closeout-backlog.md`: closed backlog record for the MVP closeout
 
 Instead, this file defines the next professional engineering track for turning Master Control from a validated late-alpha baseline into a more functional, operator-useful product.
 
@@ -445,7 +451,7 @@ Use the repository docs as operational artifacts with these roles:
 
 - `docs/status.md`: current implemented state only
 - `docs/roadmap.md`: phase-level direction and sequencing only
-- `docs/post-mvp-evolution-plan.md`: active planning record for the current post-MVP track
+- `docs/history/post-mvp-evolution-plan.md`: active planning record for the current post-MVP track
 - `docs/operator-workflows.md`: bounded operator journeys, smoke commands, and workflow safety notes
 - `docs/beta-readiness-gate.md`: release gate for moving from late alpha to beta-oriented scope
 - `docs/alpha-validation-report.md` or future validation docs: validation evidence only

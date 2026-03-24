@@ -1,5 +1,11 @@
 # Beta Resume Plan
 
+> Historical document
+>
+> This file is kept for traceability of earlier beta-prep execution work.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 Snapshot date: 2026-03-20
 
 ## Purpose
@@ -140,7 +146,7 @@ Status:
 Near-term tasks:
 
 - summarize the dedicated VPS report in `docs/alpha-validation-report.md`
-- update `docs/beta-readiness-gate.md`, `docs/status.md`, `docs/roadmap.md`, and `docs/release-candidate-0.1.0a2.md`
+- update `docs/beta-readiness-gate.md`, `docs/status.md`, `docs/roadmap.md`, and `docs/history/release-candidate-0.1.0a2.md`
 - decide whether to tag now or keep the build in private-preview language a little longer
 - keep the community submission path simple enough that external testers can still contribute broader host diversity reports
 

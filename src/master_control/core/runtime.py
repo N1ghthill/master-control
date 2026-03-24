@@ -6,6 +6,22 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
+from master_control.agent.session_summary import update_session_summary
+from master_control.agent.turn_planning import (
+    build_turn_planning_prompt,
+    classify_turn_decision,
+    collect_planned_refresh_keys,
+    collect_stale_observation_keys,
+    should_continue_planning,
+    summarize_execution_for_planner,
+    validate_provider_response_for_loop,
+)
+from master_control.agent.turn_rendering import (
+    append_recommendations_to_message,
+    apply_turn_decision_guidance,
+    collect_rendered_execution_summaries,
+    render_chat_response,
+)
 from master_control.bootstrap_prereqs import collect_bootstrap_python_diagnostics
 from master_control.config import Settings
 from master_control.core.observations import (
@@ -27,22 +43,6 @@ from master_control.core.session_recommendations import (
     RECOMMENDATION_STATUSES,
     build_recommendation_candidates,
     sort_recommendations,
-)
-from master_control.interfaces.agent.session_summary import update_session_summary
-from master_control.interfaces.agent.turn_planning import (
-    build_turn_planning_prompt,
-    classify_turn_decision,
-    collect_planned_refresh_keys,
-    collect_stale_observation_keys,
-    should_continue_planning,
-    summarize_execution_for_planner,
-    validate_provider_response_for_loop,
-)
-from master_control.interfaces.agent.turn_rendering import (
-    append_recommendations_to_message,
-    apply_turn_decision_guidance,
-    collect_rendered_execution_summaries,
-    render_chat_response,
 )
 from master_control.policy.engine import PolicyEngine
 from master_control.providers.availability import collect_provider_checks
@@ -136,6 +136,11 @@ def _coerce_mapping(value: object) -> dict[str, object]:
     return {}
 
 
+def _has_explicit_approval_id(context_payload: dict[str, object]) -> bool:
+    value = context_payload.get("approval_id")
+    return isinstance(value, int) and not isinstance(value, bool)
+
+
 class MasterControlRuntime:
     def __init__(
         self,
@@ -145,9 +150,15 @@ class MasterControlRuntime:
     ) -> None:
         self.settings = settings
         self.store = SessionStore(settings.db_path)
-        self.policy = PolicyEngine()
+        self.policy = PolicyEngine(
+            state_dir=settings.state_dir,
+            policy_path=settings.resolved_policy_path(),
+        )
         self.provider = provider_override or build_provider(settings)
-        self.registry: ToolRegistry = build_default_registry(settings.state_dir)
+        self.registry: ToolRegistry = build_default_registry(
+            settings.state_dir,
+            config_target_loader=self.policy.config_targets,
+        )
         self.chat_session_id: int | None = None
         self.previous_provider_response_id: str | None = None
 
@@ -159,6 +170,7 @@ class MasterControlRuntime:
         self.bootstrap()
         provider_checks = collect_provider_checks(self.settings)
         store_diagnostics = self.store.diagnostics()
+        policy_diagnostics = self.policy.diagnostics()
         timer_diagnostics = collect_reconcile_timer_diagnostics()
         bootstrap_python_diagnostics = collect_bootstrap_python_diagnostics("python3")
         active_provider_check = dict(
@@ -171,8 +183,10 @@ class MasterControlRuntime:
                 },
             )
         )
-        doctor_ok = bool(active_provider_check.get("available", False)) and bool(
-            store_diagnostics.get("ok", False)
+        doctor_ok = (
+            bool(active_provider_check.get("available", False))
+            and bool(store_diagnostics.get("ok", False))
+            and bool(policy_diagnostics.get("ok", False))
         )
         llm_provider_available = any(
             bool(provider_checks[name].get("available", False)) for name in ("ollama", "openai")
@@ -189,6 +203,7 @@ class MasterControlRuntime:
             "provider_checks": provider_checks,
             "provider_diagnostics": self.provider.diagnostics(),
             "store_diagnostics": store_diagnostics,
+            "policy_diagnostics": policy_diagnostics,
             "bootstrap_python_diagnostics": bootstrap_python_diagnostics,
             "reconcile_timer_diagnostics": timer_diagnostics,
             "audit_event_count": self.store.count_audit_events(),
@@ -202,6 +217,126 @@ class MasterControlRuntime:
     def list_audit_events(self, limit: int = 20) -> list[dict[str, object]]:
         self.bootstrap()
         return self.store.list_audit_events(limit=limit)
+
+    def list_tool_approvals(
+        self,
+        *,
+        status: str | None = None,
+        limit: int = 100,
+    ) -> dict[str, object]:
+        self.bootstrap()
+        return {
+            "status_filter": status,
+            "approvals": self.store.list_tool_approvals(status=status, limit=limit),
+        }
+
+    def get_tool_approval(self, approval_id: int) -> dict[str, object]:
+        self.bootstrap()
+        approval = self.store.get_tool_approval(approval_id)
+        if approval is None:
+            raise ValueError(f"Unknown approval_id: {approval_id}")
+        return approval
+
+    def reject_tool_approval(self, approval_id: int) -> dict[str, object]:
+        self.bootstrap()
+        approval = self.store.reject_tool_approval(approval_id)
+        if approval is None:
+            existing = self.store.get_tool_approval(approval_id)
+            if existing is None:
+                raise ValueError(f"Unknown approval_id: {approval_id}")
+            raise ValueError(
+                f"Approval {approval_id} is in status '{existing['status']}' and cannot be rejected."
+            )
+        self.store.record_audit_event(
+            "tool_approval_rejected",
+            {
+                "approval_id": approval_id,
+                "tool": approval["tool"],
+                "risk": approval["risk"],
+                "audit_context": approval["audit_context"],
+            },
+        )
+        return approval
+
+    def approve_tool_approval(self, approval_id: int) -> dict[str, object]:
+        self.bootstrap()
+        approval = self.store.claim_tool_approval(approval_id)
+        if approval is None:
+            existing = self.store.get_tool_approval(approval_id)
+            if existing is None:
+                raise ValueError(f"Unknown approval_id: {approval_id}")
+            raise ValueError(
+                f"Approval {approval_id} is in status '{existing['status']}' and cannot run."
+            )
+
+        tool_name = approval.get("tool")
+        arguments = approval.get("arguments")
+        audit_context = approval.get("audit_context")
+        if not isinstance(tool_name, str) or not tool_name:
+            raise ValueError(f"Approval {approval_id} is missing a valid tool name.")
+        if not isinstance(arguments, dict):
+            arguments = {}
+        if not isinstance(audit_context, dict):
+            audit_context = {}
+
+        execution_context = dict(audit_context)
+        execution_context["approval_id"] = approval_id
+
+        try:
+            execution = self.run_tool(
+                tool_name,
+                dict(arguments),
+                confirmed=True,
+                audit_context=execution_context,
+            )
+        except Exception as exc:
+            failure_payload = {
+                "ok": False,
+                "tool": tool_name,
+                "arguments": dict(arguments),
+                **execution_context,
+                "error": str(exc),
+            }
+            finalized = self.store.finish_tool_approval(
+                approval_id,
+                status="failed",
+                execution_payload=failure_payload,
+            )
+            self.store.record_audit_event(
+                "tool_approval_execution",
+                {
+                    "approval_id": approval_id,
+                    "tool": tool_name,
+                    "ok": False,
+                    "error": str(exc),
+                },
+            )
+            if finalized is None:
+                raise RuntimeError(
+                    f"Tool approval {approval_id} could not be finalized after failure."
+                ) from exc
+            raise
+
+        finalized = self.store.finish_tool_approval(
+            approval_id,
+            status="completed" if bool(execution.get("ok", False)) else "failed",
+            execution_payload=execution,
+        )
+        if finalized is None:
+            raise RuntimeError(f"Tool approval {approval_id} could not be finalized.")
+        self.store.record_audit_event(
+            "tool_approval_execution",
+            {
+                "approval_id": approval_id,
+                "tool": tool_name,
+                "ok": execution.get("ok", False),
+                "pending_confirmation": execution.get("pending_confirmation", False),
+            },
+        )
+        return {
+            "approval": finalized,
+            "execution": execution,
+        }
 
     def list_sessions(self, limit: int = 20) -> list[dict[str, object]]:
         self.bootstrap()
@@ -540,7 +675,17 @@ class MasterControlRuntime:
             self.store.record_audit_event("tool_execution", payload)
             return payload
 
-        decision = self.policy.evaluate(tool.spec)
+        claimed_approval: dict[str, object] | None = None
+        if confirmed and not _has_explicit_approval_id(context_payload):
+            claimed_approval = self.store.claim_latest_matching_tool_approval(
+                tool_name=tool.spec.name,
+                arguments=argument_payload,
+                audit_context=context_payload,
+            )
+            if claimed_approval is not None:
+                context_payload["approval_id"] = claimed_approval["id"]
+
+        decision = self.policy.evaluate(tool.spec, argument_payload)
         audit_base = {
             "tool": tool.spec.name,
             "risk": tool.spec.risk.value,
@@ -553,21 +698,28 @@ class MasterControlRuntime:
             payload = {
                 "ok": False,
                 **audit_base,
-                "error": "Policy denied tool execution.",
+                "error": decision.reason,
             }
+            self._finalize_claimed_tool_approval(
+                claimed_approval,
+                status="failed",
+                execution_payload=payload,
+            )
             self.store.record_audit_event("tool_execution", payload)
             return payload
 
         if decision.needs_confirmation and not confirmed:
+            approval = self._create_tool_approval(
+                tool_name=tool.spec.name,
+                risk=tool.spec.risk.value,
+                arguments=argument_payload,
+                context_payload=context_payload,
+            )
             payload = {
                 "ok": False,
                 **audit_base,
                 "pending_confirmation": True,
-                "approval": self._build_approval_payload(
-                    tool.spec.name,
-                    argument_payload,
-                    context_payload,
-                ),
+                "approval": approval,
                 "error": "Tool requires explicit confirmation before execution.",
             }
             self.store.record_audit_event("tool_execution", payload)
@@ -581,6 +733,11 @@ class MasterControlRuntime:
                 **audit_base,
                 "error": str(exc),
             }
+            self._finalize_claimed_tool_approval(
+                claimed_approval,
+                status="failed",
+                execution_payload=payload,
+            )
             self.store.record_audit_event("tool_execution", payload)
             return payload
 
@@ -600,6 +757,11 @@ class MasterControlRuntime:
                 arguments=argument_payload,
                 result=result,
             )
+        self._finalize_claimed_tool_approval(
+            claimed_approval,
+            status="completed",
+            execution_payload=payload,
+        )
         self.store.record_audit_event(
             "tool_execution",
             {
@@ -657,6 +819,70 @@ class MasterControlRuntime:
             "chat_command": self._format_chat_tool_command(tool_name, arguments, confirmed=True),
             "summary": f"Confirme a execução de {_describe_tool_target(tool_name, arguments)}.",
         }
+
+    def _create_tool_approval(
+        self,
+        *,
+        tool_name: str,
+        risk: str,
+        arguments: dict[str, object],
+        context_payload: dict[str, object],
+    ) -> dict[str, object]:
+        rendered = self._build_approval_payload(tool_name, arguments, context_payload)
+        approval = self.store.create_tool_approval(
+            tool_name=tool_name,
+            risk=risk,
+            arguments=arguments,
+            audit_context=context_payload,
+            summary=str(rendered["summary"]),
+            cli_command=str(rendered["cli_command"]),
+            chat_command=str(rendered["chat_command"]),
+        )
+        return self._format_tool_approval(approval, required=True)
+
+    def _format_tool_approval(
+        self,
+        approval: dict[str, object],
+        *,
+        required: bool = False,
+    ) -> dict[str, object]:
+        payload = {
+            "id": approval["id"],
+            "tool": approval["tool"],
+            "risk": approval["risk"],
+            "arguments": approval["arguments"],
+            "audit_context": approval["audit_context"],
+            "summary": approval["summary"],
+            "cli_command": approval["cli_command"],
+            "chat_command": approval["chat_command"],
+            "status": approval["status"],
+            "execution": approval["execution"],
+            "error": approval["error"],
+            "created_at": approval["created_at"],
+            "updated_at": approval["updated_at"],
+            "resolved_at": approval["resolved_at"],
+        }
+        if required:
+            payload["required"] = True
+        return payload
+
+    def _finalize_claimed_tool_approval(
+        self,
+        approval: dict[str, object] | None,
+        *,
+        status: str,
+        execution_payload: dict[str, object],
+    ) -> None:
+        if approval is None:
+            return
+        approval_id = approval.get("id")
+        if not isinstance(approval_id, int) or isinstance(approval_id, bool):
+            return
+        self.store.finish_tool_approval(
+            approval_id,
+            status=status,
+            execution_payload=execution_payload,
+        )
 
     def _build_recommendation_commands(self, recommendation_id: int) -> dict[str, str]:
         return {

@@ -1,5 +1,11 @@
 # MVP Plan
 
+> Historical document
+>
+> This file preserves the original MVP framing for traceability.
+> It is not the current product brief or roadmap.
+> Use `docs/status.md`, `docs/roadmap.md`, and `docs/runtime-mcp-maturation-plan.md` for current guidance.
+
 ## Target MVP definition
 
 Master Control MVP means:
@@ -19,9 +25,9 @@ This MVP does not require web UI, daemon mode, plugins, or remote multi-user dep
 
 To avoid legacy planning drift, use the documents this way:
 
-- `docs/mvp-plan.md`: stable MVP contract and exit criteria
-- `docs/mvp-evolution-plan.md`: milestone sequencing and closeout completion record
-- `docs/mvp-closeout-backlog.md`: closed execution backlog record for the MVP closeout
+- `docs/history/mvp-plan.md`: stable MVP contract and exit criteria
+- `docs/history/mvp-evolution-plan.md`: milestone sequencing and closeout completion record
+- `docs/history/mvp-closeout-backlog.md`: closed execution backlog record for the MVP closeout
 - `docs/status.md`: current implementation snapshot
 - `docs/roadmap.md`: phase-level view of the post-closeout roadmap
 
@@ -39,7 +45,7 @@ The MVP should only be called complete when all of these are true:
 
 ## Current delta to close
 
-The narrow local CLI MVP closeout is complete. `docs/mvp-evolution-plan.md` now serves as the completion record for that delivery plan.
+The narrow local CLI MVP closeout is complete. `docs/history/mvp-evolution-plan.md` now serves as the completion record for that delivery plan.
 
 ### Workstream 1: Correctness and context hardening
 

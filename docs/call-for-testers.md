@@ -58,7 +58,7 @@ Master Control `0.1.0a2` is available as a preview build for real Linux host tes
 
 The project already has:
 
-- a bounded CLI-first operator workflow
+- a bounded local-first runtime for host operations
 - typed diagnostics and approval-gated mutations
 - a repeatable host-validation harness
 - a redacted bundle flow for submitting validation reports
@@ -79,7 +79,7 @@ Full guide: docs/community-host-validation.md
 ```text
 I am looking for Linux testers for Master Control.
 
-It is a CLI-first host admin agent with typed diagnostics, approval-gated actions, and a built-in validation flow.
+It is a local-first runtime for controlled Linux host operations, with typed diagnostics, approval-gated actions, and a built-in validation flow.
 
 If you can run a quick validation on your own Linux host and send the generated redacted report, that would help broaden the real-host evidence base beyond the first validated profiles.
 

@@ -5,6 +5,7 @@ import fnmatch
 import json
 import os
 import tempfile
+from collections.abc import Callable
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from pathlib import Path
@@ -53,10 +54,12 @@ class ConfigManager:
         runner: CommandRunner,
         *,
         targets: tuple[ConfigTarget, ...] | None = None,
+        target_loader: Callable[[], tuple[ConfigTarget, ...]] | None = None,
     ) -> None:
         self.state_dir = state_dir
         self.runner = runner
-        self.targets = targets or build_default_config_targets(state_dir)
+        self.targets = targets
+        self.target_loader = target_loader
         self.backup_root = state_dir / "config-backups"
 
     def read_text(self, path_text: str) -> dict[str, Any]:
@@ -143,7 +146,7 @@ class ConfigManager:
         candidate = Path(path_text).expanduser()
         resolved_path = candidate.resolve(strict=False)
 
-        for target in self.targets:
+        for target in self._current_targets():
             if target.matches(resolved_path):
                 return ConfigResolution(path=resolved_path, target=target)
 
@@ -265,6 +268,13 @@ class ConfigManager:
             return True
         except ValueError:
             return False
+
+    def _current_targets(self) -> tuple[ConfigTarget, ...]:
+        if self.target_loader is not None:
+            return self.target_loader()
+        if self.targets is not None:
+            return self.targets
+        return build_default_config_targets(self.state_dir)
 
 
 def build_default_config_targets(state_dir: Path) -> tuple[ConfigTarget, ...]:

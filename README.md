@@ -19,7 +19,7 @@ MC is built around three constraints:
 - single-host and local-first by design
 - install path: source checkout plus `install.sh`
 - validated on the maintainer workstation and on a dedicated Debian 13 VPS lab
-- main integration interface: experimental read-only MCP stdio
+- main integration interface: experimental MCP stdio with approval-mediated write flow
 - local administration interface: CLI
 - optional interface: chat/provider path
 - not positioned as a production-ready Linux administration platform, security auditor, or package manager
@@ -56,6 +56,7 @@ If `install.sh` reports that `ensurepip` is unavailable on Debian or Ubuntu, ins
 - host, disk, memory, process, service, and journal inspection
 - process-to-`systemd` correlation and failed-service triage
 - managed config read, write, backup, and restore inside a constrained policy boundary
+- operator-configurable policy through a versioned TOML file with safe defaults and fail-closed load errors
 - recommendation workflow with explicit approval before risky execution
 - repeatable host-profile validation through `mc validate-host-profile`
 - optional heuristic, OpenAI, and Ollama-backed planning on top of the same runtime
@@ -64,9 +65,13 @@ If `install.sh` reports that `ensurepip` is unavailable on Debian or Ubuntu, ins
 
 - [Documentation map](docs/README.md)
 - [Current status](docs/status.md)
+- [Roadmap](docs/roadmap.md)
+- [Runtime + MCP maturation plan](docs/runtime-mcp-maturation-plan.md)
 - [Architecture](docs/architecture.md)
 - [Security model](docs/security-model.md)
+- [Policy guide](docs/policy.md)
 - [Operator workflows](docs/operator-workflows.md)
+- [Runtime integration testing](docs/runtime-integration-testing.md)
 - [Provider setup](docs/providers.md)
 - [Host-profile validation guide](docs/host-profile-validation.md)
 - [Validation evidence](docs/alpha-validation-report.md)
