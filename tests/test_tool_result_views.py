@@ -2,12 +2,30 @@ from __future__ import annotations
 
 import unittest
 
-from master_control.agent.tool_result_views import build_tool_result_view
-from master_control.agent.turn_planning import summarize_execution_for_planner
-from master_control.agent.turn_rendering import render_execution_summary
+from master_control.interfaces.agent.tool_result_views import build_tool_result_view
+from master_control.interfaces.agent.turn_planning import summarize_execution_for_planner
+from master_control.interfaces.agent.turn_rendering import render_execution_summary
 
 
 class ToolResultViewsTest(unittest.TestCase):
+    def test_agent_namespace_re_exports_preferred_interface_helpers(self) -> None:
+        from master_control.agent.tool_result_views import (
+            build_tool_result_view as compat_build_tool_result_view,
+        )
+        from master_control.agent.turn_planning import (
+            summarize_execution_for_planner as compat_summarize_execution_for_planner,
+        )
+        from master_control.agent.turn_rendering import (
+            render_execution_summary as compat_render_execution_summary,
+        )
+
+        self.assertIs(compat_build_tool_result_view, build_tool_result_view)
+        self.assertIs(
+            compat_summarize_execution_for_planner,
+            summarize_execution_for_planner,
+        )
+        self.assertIs(compat_render_execution_summary, render_execution_summary)
+
     def test_config_read_evidence_includes_excerpt_for_planner_and_renderer(self) -> None:
         execution = {
             "ok": True,

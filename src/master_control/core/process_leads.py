@@ -47,9 +47,7 @@ def select_process_lead(
         return leader
 
     preferred_candidates = [
-        item
-        for item in processes.items[1:]
-        if _is_more_operator_useful_lead(item, leader_cpu)
+        item for item in processes.items[1:] if _is_more_operator_useful_lead(item, leader_cpu)
     ]
     if preferred_candidates:
         return max(

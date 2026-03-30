@@ -216,7 +216,9 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].action_arguments, {"name": "nginx", "limit": "3"})
         self.assertIn("melhor próximo alvo", insights[0].message)
 
-    def test_collect_session_insights_hot_process_known_correlation_proposes_service_follow_up(self) -> None:
+    def test_collect_session_insights_hot_process_known_correlation_proposes_service_follow_up(
+        self,
+    ) -> None:
         insights = collect_session_insights_from_context(
             SessionContext(
                 tracked=TrackedEntities(unit="ollama-local.service", scope="user"),
@@ -243,7 +245,9 @@ class SessionInsightsTest(unittest.TestCase):
         )
         self.assertIn("ollama-local.service", insights[0].message)
 
-    def test_collect_session_insights_hot_process_with_service_correlation_proposes_status(self) -> None:
+    def test_collect_session_insights_hot_process_with_service_correlation_proposes_status(
+        self,
+    ) -> None:
         insights = collect_session_insights_from_context(
             SessionContext(
                 tracked=TrackedEntities(unit="nginx.service", scope="system"),
@@ -373,7 +377,9 @@ class SessionInsightsTest(unittest.TestCase):
         self.assertEqual(insights[0].action_tool_name, "read_config_file")
         self.assertEqual(insights[0].action_arguments, {"path": "/etc/app.ini"})
 
-    def test_collect_session_insights_without_service_evidence_does_not_propose_restart(self) -> None:
+    def test_collect_session_insights_without_service_evidence_does_not_propose_restart(
+        self,
+    ) -> None:
         insights = collect_session_insights("service: nginx.service: active=failed, sub=failed")
 
         self.assertEqual(len(insights), 2)
@@ -488,7 +494,9 @@ class SessionInsightsTest(unittest.TestCase):
             {"name": "ollama-local.service", "scope": "user"},
         )
 
-    def test_collect_session_insights_unhealthy_service_suggests_logs_when_not_reviewed(self) -> None:
+    def test_collect_session_insights_unhealthy_service_suggests_logs_when_not_reviewed(
+        self,
+    ) -> None:
         freshness = build_observation_freshness(
             (
                 {

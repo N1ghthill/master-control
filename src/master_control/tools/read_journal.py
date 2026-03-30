@@ -8,6 +8,7 @@ from master_control.executor.command_runner import CommandExecutionError, Comman
 from master_control.tools.base import (
     RiskLevel,
     Tool,
+    ToolArgumentError,
     ToolSpec,
     get_int_argument,
     get_string_argument,
@@ -29,7 +30,8 @@ class ReadJournalTool(Tool):
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         lines = get_int_argument(arguments, "lines", default=50, min_value=1, max_value=200)
         raw_unit = get_string_argument(arguments, "unit", default=None)
-        assert lines is not None
+        if lines is None:
+            raise ToolArgumentError("Argument 'lines' is required.")
         unit = None
         if raw_unit is not None:
             unit = validate_unit_name(raw_unit, label="unit")

@@ -127,7 +127,9 @@ class MCPStdioIntegrationTest(unittest.TestCase):
                         "method": "tools/list",
                     },
                 )
-                tool_names = [item["name"] for item in listed["result"]["tools"] if isinstance(item, dict)]
+                tool_names = [
+                    item["name"] for item in listed["result"]["tools"] if isinstance(item, dict)
+                ]
                 self.assertIn("system_info", tool_names)
                 self.assertIn("approval_approve", tool_names)
 

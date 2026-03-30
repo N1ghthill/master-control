@@ -340,7 +340,9 @@ def _evaluate_report(steps: list[StepResult], config_path: Path) -> bool:
         return False
 
     pending_structured = pending.get("structuredContent")
-    if not isinstance(pending_structured, dict) or not pending_structured.get("pending_confirmation"):
+    if not isinstance(pending_structured, dict) or not pending_structured.get(
+        "pending_confirmation"
+    ):
         return False
 
     fetched_structured = approval_get.get("structuredContent")

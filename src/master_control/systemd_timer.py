@@ -288,9 +288,7 @@ def _run_systemctl(
     }
     if check and result.returncode != 0:
         reason = (result.stderr or result.stdout).strip()
-        raise SystemdTimerError(
-            reason or f"systemctl command failed: {' '.join(command)}"
-        )
+        raise SystemdTimerError(reason or f"systemctl command failed: {' '.join(command)}")
     return payload
 
 

@@ -351,7 +351,9 @@ class MasterControlMCPServer:
             arguments,
             audit_context={"source": "mcp_stdio"},
         )
-        is_error = bool(payload.get("ok")) is False and not bool(payload.get("pending_confirmation"))
+        is_error = bool(payload.get("ok")) is False and not bool(
+            payload.get("pending_confirmation")
+        )
         return self._build_standard_tool_result(payload, is_error=is_error)
 
     def _list_exposed_tools(self, *, standard_mcp: bool) -> list[dict[str, object]]:

@@ -311,7 +311,9 @@ class SessionStore:
         )
         with closing(self._connect()) as connection:
             connection.execute("BEGIN IMMEDIATE")
-            existing_row = self._select_active_tool_approval_row_by_digest(connection, action_digest)
+            existing_row = self._select_active_tool_approval_row_by_digest(
+                connection, action_digest
+            )
             if existing_row is None:
                 cursor = connection.execute(
                     """
@@ -530,7 +532,9 @@ class SessionStore:
                 (approval_id,),
             )
             if cursor.rowcount != 1:
-                current_row = self._select_active_tool_approval_row_by_digest(connection, action_digest)
+                current_row = self._select_active_tool_approval_row_by_digest(
+                    connection, action_digest
+                )
                 if current_row is None:
                     connection.rollback()
                     return ToolApprovalExecutionMatch(outcome="none", approval=None)
@@ -1022,29 +1026,12 @@ class SessionStore:
 
             auto_resolved_ids: list[int] = []
             if active_keys:
-                placeholders = ", ".join("?" for _ in active_keys)
-                parameters = [session_id, *active_keys]
-                cursor = connection.execute(
-                    f"""
-                    SELECT id
-                    FROM session_recommendations
-                    WHERE session_id = ?
-                      AND status IN ('open', 'accepted')
-                      AND dedupe_key NOT IN ({placeholders})
-                    """,
-                    parameters,
+                auto_resolved_ids = _select_recommendation_ids_excluding_keys(
+                    connection,
+                    session_id=session_id,
+                    active_keys=sorted(active_keys),
                 )
-                auto_resolved_ids = [int(row[0]) for row in cursor.fetchall()]
-                if auto_resolved_ids:
-                    id_placeholders = ", ".join("?" for _ in auto_resolved_ids)
-                    connection.execute(
-                        f"""
-                        UPDATE session_recommendations
-                        SET status = 'resolved', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({id_placeholders})
-                        """,
-                        auto_resolved_ids,
-                    )
+                _mark_recommendations_resolved(connection, auto_resolved_ids)
             else:
                 cursor = connection.execute(
                     """
@@ -1056,16 +1043,7 @@ class SessionStore:
                     (session_id,),
                 )
                 auto_resolved_ids = [int(row[0]) for row in cursor.fetchall()]
-                if auto_resolved_ids:
-                    id_placeholders = ", ".join("?" for _ in auto_resolved_ids)
-                    connection.execute(
-                        f"""
-                        UPDATE session_recommendations
-                        SET status = 'resolved', updated_at = CURRENT_TIMESTAMP
-                        WHERE id IN ({id_placeholders})
-                        """,
-                        auto_resolved_ids,
-                    )
+                _mark_recommendations_resolved(connection, auto_resolved_ids)
 
             connection.commit()
 
@@ -1329,6 +1307,48 @@ def _coerce_int(value: object, label: str) -> int:
     if isinstance(value, str):
         return int(value)
     raise TypeError(f"Expected integer-compatible value for {label}, got {type(value).__name__}.")
+
+
+def _placeholder_csv(count: int) -> str:
+    if count <= 0:
+        raise ValueError("SQL placeholder counts must be positive.")
+    return ", ".join("?" for _ in range(count))
+
+
+def _select_recommendation_ids_excluding_keys(
+    connection: sqlite3.Connection,
+    *,
+    session_id: int,
+    active_keys: list[str],
+) -> list[int]:
+    placeholders = _placeholder_csv(len(active_keys))
+    # The query text is static apart from a placeholder count derived from trusted key counts.
+    query = (  # nosec B608
+        "SELECT id "
+        "FROM session_recommendations "
+        "WHERE session_id = ? "
+        "AND status IN ('open', 'accepted') "
+        f"AND dedupe_key NOT IN ({placeholders})"
+    )
+    parameters = [session_id, *active_keys]
+    cursor = connection.execute(query, parameters)
+    return [int(row[0]) for row in cursor.fetchall()]
+
+
+def _mark_recommendations_resolved(
+    connection: sqlite3.Connection,
+    recommendation_ids: list[int],
+) -> None:
+    if not recommendation_ids:
+        return
+    placeholders = _placeholder_csv(len(recommendation_ids))
+    # The query text is static apart from a placeholder count derived from selected row ids.
+    query = (  # nosec B608
+        "UPDATE session_recommendations "
+        "SET status = 'resolved', updated_at = CURRENT_TIMESTAMP "
+        f"WHERE id IN ({placeholders})"
+    )
+    connection.execute(query, recommendation_ids)
 
 
 def _deserialize_json_object(value: object) -> dict[str, object]:

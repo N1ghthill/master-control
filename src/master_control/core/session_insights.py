@@ -471,9 +471,13 @@ def _build_service_follow_up_arguments(
     service_context: ServiceContext | None,
     freshness: ObservationFreshness | None,
 ) -> dict[str, str]:
-    if service_context is not None and service_context.name == unit and _has_matching_service_evidence(
-        service_context,
-        freshness,
+    if (
+        service_context is not None
+        and service_context.name == unit
+        and _has_matching_service_evidence(
+            service_context,
+            freshness,
+        )
     ):
         if scope not in {"system", "user"} or service_context.scope in {None, scope}:
             return {}
@@ -513,7 +517,11 @@ def _build_service_logs_follow_up_insight(
         return None
 
     lines = "40"
-    if _has_matching_logs_context(service, logs_context) and freshness is not None and freshness.stale:
+    if (
+        _has_matching_logs_context(service, logs_context)
+        and freshness is not None
+        and freshness.stale
+    ):
         return SessionInsight(
             key="service_logs_follow_up",
             severity="warning",
@@ -531,9 +539,7 @@ def _build_service_logs_follow_up_insight(
         key="service_logs_follow_up",
         severity="warning",
         target=service.name,
-        message=(
-            f"Vale revisar logs recentes de `{service.name}` antes de qualquer ação mutável."
-        ),
+        message=(f"Vale revisar logs recentes de `{service.name}` antes de qualquer ação mutável."),
         action_tool_name="read_journal",
         action_title=f"Ler logs recentes de `{service.name}` antes de intervir.",
         action_arguments={"unit": service.name, "lines": lines},
@@ -552,7 +558,11 @@ def _has_fresh_matching_logs(
     logs_context: object,
     freshness: ObservationFreshness | None,
 ) -> bool:
-    if freshness is None or freshness.stale or not _has_matching_logs_context(service, logs_context):
+    if (
+        freshness is None
+        or freshness.stale
+        or not _has_matching_logs_context(service, logs_context)
+    ):
         return False
     observed_unit = freshness.value.get("unit")
     return isinstance(observed_unit, str) and observed_unit == service.name

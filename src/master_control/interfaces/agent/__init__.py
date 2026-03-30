@@ -1,1 +1,1 @@
-"""Agent-facing interfaces for Master Control."""
+"""Preferred namespace for chat and agent-facing interface helpers."""

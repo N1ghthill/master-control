@@ -130,8 +130,4 @@ class InstallScriptsIntegrationTest(unittest.TestCase):
         )
 
     def _render_failure(self, result: subprocess.CompletedProcess[str]) -> str:
-        return (
-            f"exit={result.returncode}\n"
-            f"stdout:\n{result.stdout}\n"
-            f"stderr:\n{result.stderr}"
-        )
+        return f"exit={result.returncode}\nstdout:\n{result.stdout}\nstderr:\n{result.stderr}"

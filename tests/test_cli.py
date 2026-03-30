@@ -196,7 +196,9 @@ class CliObservationCommandTest(unittest.TestCase):
             first_stdout = io.StringIO()
             with patch.dict(os.environ, env, clear=False):
                 with redirect_stdout(first_stdout):
-                    first_exit = main(["--json", "chat", "--once", "me mostre os logs do ssh 5 linhas"])
+                    first_exit = main(
+                        ["--json", "chat", "--once", "me mostre os logs do ssh 5 linhas"]
+                    )
 
             first_payload = json.loads(first_stdout.getvalue())
 

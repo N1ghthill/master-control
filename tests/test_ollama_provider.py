@@ -8,7 +8,12 @@ from pathlib import Path
 from master_control.agent.observations import build_observation_freshness
 from master_control.agent.session_context import build_session_context
 from master_control.config import Settings
-from master_control.providers.base import ConversationMessage, ProviderRequest, SynthesisRequest
+from master_control.providers.base import (
+    ConversationMessage,
+    ProviderError,
+    ProviderRequest,
+    SynthesisRequest,
+)
 from master_control.providers.ollama_chat import OllamaChatProvider, TransportResponse
 from master_control.tools.base import RiskLevel, ToolSpec
 
@@ -121,7 +126,7 @@ class OllamaChatProviderTest(unittest.TestCase):
             self.assertEqual(captured_payload["messages"][0]["role"], "system")
             self.assertIn("Local session summary:", captured_payload["messages"][0]["content"])
             self.assertIn("Structured session context:", captured_payload["messages"][0]["content"])
-            self.assertIn("\"tracked\":", captured_payload["messages"][0]["content"])
+            self.assertIn('"tracked":', captured_payload["messages"][0]["content"])
             self.assertIn("Observation freshness:", captured_payload["messages"][0]["content"])
             self.assertIn("service", captured_payload["messages"][0]["content"])
             self.assertIn("Always set decision.state", captured_payload["messages"][0]["content"])
@@ -204,6 +209,26 @@ class OllamaChatProviderTest(unittest.TestCase):
                 "Rendered tool results:",
                 captured_payload["messages"][1]["content"],
             )
+
+    def test_provider_rejects_non_http_endpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="ollama",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+                ollama_base_url="file:///tmp/ollama",
+                ollama_model="qwen2.5:7b",
+            )
+            provider = OllamaChatProvider(settings)
+            request = ProviderRequest(
+                user_message="mostre o uso de memoria",
+                available_tools=(),
+            )
+
+            with self.assertRaisesRegex(ProviderError, "http or https"):
+                provider.plan(request)
 
 
 if __name__ == "__main__":

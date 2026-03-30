@@ -225,9 +225,7 @@ class HeuristicProvider:
         config_path = explicit_path or _string_or_none(last_context.get("path"))
         config_context = session_context.config
         has_tracked_backup = bool(
-            config_context is not None
-            and config_context.path
-            and config_context.backup_path
+            config_context is not None and config_context.path and config_context.backup_path
         )
 
         if _looks_like_performance_request(normalized):
@@ -282,9 +280,7 @@ class HeuristicProvider:
                     f"Vou correlacionar o processo `{candidate_process}` com um unit do systemd."
                 )
                 if "process_unit" in freshness_map and freshness_map["process_unit"].stale:
-                    message_text = (
-                        f"Vou atualizar a correlação do processo `{candidate_process}` com systemd antes de concluir."
-                    )
+                    message_text = f"Vou atualizar a correlação do processo `{candidate_process}` com systemd antes de concluir."
                 return _needs_tools_response(
                     message_text,
                     "Correlating the hottest process with a systemd unit is the next safe diagnostic step.",
@@ -379,7 +375,10 @@ class HeuristicProvider:
             if comparison_steps:
                 decision_kind = (
                     "refresh_required"
-                    if any(_has_stale_recent_observation(session_context, key) for key in ("memory", "processes"))
+                    if any(
+                        _has_stale_recent_observation(session_context, key)
+                        for key in ("memory", "processes")
+                    )
                     else "inspection_request"
                 )
                 return _needs_tools_response(
@@ -404,7 +403,9 @@ class HeuristicProvider:
                 kind="unsupported_request",
             )
 
-        if _looks_like_failed_services_request(normalized) and ("failed_services" in available_tools):
+        if _looks_like_failed_services_request(normalized) and (
+            "failed_services" in available_tools
+        ):
             return _needs_tools_response(
                 "Vou listar os serviços em estado de falha.",
                 "Listing failed services requires a typed tool step.",
@@ -534,10 +535,13 @@ class HeuristicProvider:
                 kind="missing_safe_tool",
             )
 
-        if _looks_like_contextual_log_request(
-            normalized,
-            has_context_unit=context_unit is not None,
-        ) and "read_journal" in available_tools:
+        if (
+            _looks_like_contextual_log_request(
+                normalized,
+                has_context_unit=context_unit is not None,
+            )
+            and "read_journal" in available_tools
+        ):
             lines = _extract_int(message, default=20, min_value=1, max_value=200)
             return _needs_tools_response(
                 f"Vou consultar os logs recentes de `{context_unit}`.",
@@ -555,7 +559,9 @@ class HeuristicProvider:
                     ),
                 ),
             )
-        if _looks_like_contextual_log_request(normalized, has_context_unit=context_unit is not None):
+        if _looks_like_contextual_log_request(
+            normalized, has_context_unit=context_unit is not None
+        ):
             return _blocked_response(
                 "Entendi que você quer aprofundar pelos logs do serviço atual, mas a tool segura `read_journal` não está disponível neste runtime.",
                 "The runtime does not expose read_journal for this contextual follow-up.",
@@ -727,9 +733,7 @@ class HeuristicProvider:
                 lines = _extract_int(message, default=default_lines, min_value=1, max_value=200)
                 message_text = f"Vou reler os logs recentes de `{unit}` e focar no essencial."
                 if wants_root_cause:
-                    message_text = (
-                        f"Vou reler os logs recentes de `{unit}` para identificar a causa principal."
-                    )
+                    message_text = f"Vou reler os logs recentes de `{unit}` para identificar a causa principal."
                 decision_kind = (
                     "refresh_required"
                     if logs_freshness is not None and logs_freshness.stale
@@ -767,9 +771,7 @@ class HeuristicProvider:
             normalized,
             candidate_service=candidate_service,
             has_context_service=context_service is not None,
-        ) and (
-            "reload_service" in available_tools
-        ):
+        ) and ("reload_service" in available_tools):
             service_name = candidate_service or context_service
             if service_name:
                 return _needs_tools_response(
@@ -806,9 +808,7 @@ class HeuristicProvider:
             normalized,
             candidate_service=candidate_service,
             has_context_service=context_service is not None,
-        ) and (
-            "restart_service" in available_tools
-        ):
+        ) and ("restart_service" in available_tools):
             service_name = candidate_service or context_service
             if service_name:
                 return _needs_tools_response(
@@ -845,9 +845,7 @@ class HeuristicProvider:
             normalized,
             candidate_service=candidate_service,
             has_context_service=context_service is not None,
-        ) and (
-            "service_status" in available_tools
-        ):
+        ) and ("service_status" in available_tools):
             service_name = candidate_service or context_service
             if service_name:
                 return _needs_tools_response(
@@ -918,9 +916,7 @@ class HeuristicProvider:
                     ),
                 )
 
-        if _looks_like_disk_request(normalized) and (
-            "disk_usage" in available_tools
-        ):
+        if _looks_like_disk_request(normalized) and ("disk_usage" in available_tools):
             return _needs_tools_response(
                 f"Vou verificar o uso de disco em `{explicit_path or '/'}`.",
                 "Inspecting filesystem usage requires a typed disk tool.",
@@ -944,14 +940,8 @@ class HeuristicProvider:
         if _looks_like_config_rollback_request(
             normalized,
             has_tracked_backup=has_tracked_backup,
-        ) and (
-            "restore_config_backup" in available_tools
-        ):
-            if (
-                config_context is not None
-                and config_context.path
-                and config_context.backup_path
-            ):
+        ) and ("restore_config_backup" in available_tools):
+            if config_context is not None and config_context.path and config_context.backup_path:
                 return _needs_tools_response(
                     f"Posso restaurar o último backup de `{config_context.path}` com confirmação explícita.",
                     "Rolling back the last managed config change requires a typed restore step.",
@@ -1077,9 +1067,7 @@ class HeuristicProvider:
             normalized,
             has_explicit_path=explicit_path is not None,
             has_context_path=config_path is not None,
-        ) and (
-            "read_config_file" in available_tools
-        ):
+        ) and ("read_config_file" in available_tools):
             if config_path:
                 return _needs_tools_response(
                     f"Vou ler o arquivo gerenciado `{config_path}`.",
@@ -1132,9 +1120,7 @@ class HeuristicProvider:
                 kind="missing_safe_tool",
             )
 
-        if _looks_like_process_request(normalized) and (
-            "top_processes" in available_tools
-        ):
+        if _looks_like_process_request(normalized) and ("top_processes" in available_tools):
             limit = _extract_int(message, default=5, min_value=1, max_value=20)
             return _needs_tools_response(
                 "Vou listar os processos com maior uso de CPU.",
@@ -1563,9 +1549,8 @@ def _looks_like_service_comparison_request(
 ) -> bool:
     if _comparison_request_kind(normalized) is None:
         return False
-    if (
-        _contains_any(normalized, ("servico", "serviço", "service", "status"))
-        and (candidate_service is not None or has_context_service)
+    if _contains_any(normalized, ("servico", "serviço", "service", "status")) and (
+        candidate_service is not None or has_context_service
     ):
         return True
     return _is_service_intent(last_intent)
@@ -1616,7 +1601,9 @@ def _looks_like_log_focus_request(
         return False
     if _looks_like_root_cause_summary_request(normalized):
         return True
-    if _contains_any(normalized, ("log", "logs", "journal")) and _looks_like_focus_request(normalized):
+    if _contains_any(normalized, ("log", "logs", "journal")) and _looks_like_focus_request(
+        normalized
+    ):
         return True
     return _is_log_intent(last_intent) and _looks_like_focus_request(normalized)
 
@@ -2102,9 +2089,8 @@ def _guess_service_name_from_context(
         return unit
     if session_context.service is not None:
         return session_context.service.name
-    if (
-        session_context.process_unit is not None
-        and _looks_like_service_unit(session_context.process_unit.unit)
+    if session_context.process_unit is not None and _looks_like_service_unit(
+        session_context.process_unit.unit
     ):
         return session_context.process_unit.unit
     return None
@@ -2232,10 +2218,7 @@ def _summarize_log_comparison(
         previous_score=previous_score,
         changed=latest_signal != previous_signal,
     )
-    return (
-        f"{trend} nos logs de `{resolved_unit}`: "
-        f"antes {previous_signal}; agora {latest_signal}."
-    )
+    return f"{trend} nos logs de `{resolved_unit}`: antes {previous_signal}; agora {latest_signal}."
 
 
 def _summarize_performance_comparison(
@@ -2258,9 +2241,7 @@ def _summarize_performance_comparison(
 
     process_comparison = _summarize_process_comparison(session_context)
     if process_comparison is not None:
-        fragment, latest_process_score, previous_process_score, process_changed = (
-            process_comparison
-        )
+        fragment, latest_process_score, previous_process_score, process_changed = process_comparison
         fragments.append(fragment)
         latest_score += latest_process_score
         previous_score += previous_process_score
@@ -2293,10 +2274,7 @@ def _summarize_log_observation(
         return None
 
     if root_cause:
-        return (
-            f"Sinal principal nos logs de `{unit}`: "
-            f"{ranked_signals[0].summary}."
-        )
+        return f"Sinal principal nos logs de `{unit}`: {ranked_signals[0].summary}."
 
     fragments = "; ".join(signal.summary for signal in ranked_signals[:2])
     return f"Pontos mais relevantes nos logs de `{unit}`: {fragments}."
@@ -2460,9 +2438,7 @@ def _summarize_config_comparison(
 
     fragments = _build_config_change_fragments(previous_content, latest_content)
     if not fragments:
-        return (
-            f"As mudanças em `{resolved_path}` ficaram restritas a comentários, espaços em branco ou reordenação."
-        )
+        return f"As mudanças em `{resolved_path}` ficaram restritas a comentários, espaços em branco ou reordenação."
     return f"Mudanças mais relevantes em `{resolved_path}`: {'; '.join(fragments)}."
 
 
@@ -2781,7 +2757,9 @@ def _summarize_config_section_changes(
 
     label = _format_config_section_label(section)
     if not previous_section_entries:
-        added_lines = [_truncate_summary_fragment(entry.line, max_chars=80) for entry in latest_section_entries]
+        added_lines = [
+            _truncate_summary_fragment(entry.line, max_chars=80) for entry in latest_section_entries
+        ]
         if not added_lines:
             return f"{label} adicionada", 1, 1
         shown_lines = ", ".join(added_lines[:2])
@@ -2789,7 +2767,8 @@ def _summarize_config_section_changes(
 
     if not latest_section_entries:
         removed_lines = [
-            _truncate_summary_fragment(entry.line, max_chars=80) for entry in previous_section_entries
+            _truncate_summary_fragment(entry.line, max_chars=80)
+            for entry in previous_section_entries
         ]
         if not removed_lines:
             return f"{label} removida", 1, 1
@@ -2870,9 +2849,7 @@ def _compare_unkeyed_config_lines(previous_lines: list[str], latest_lines: list[
         new_lines = latest_lines[j1:j2]
         shared = min(len(old_lines), len(new_lines))
         for index in range(shared):
-            fragments.append(
-                _format_replaced_config_line(old_lines[index], new_lines[index])
-            )
+            fragments.append(_format_replaced_config_line(old_lines[index], new_lines[index]))
         for line in old_lines[shared:]:
             fragments.append(f"removido {_truncate_summary_fragment(line, max_chars=80)}")
         for line in new_lines[shared:]:
@@ -3033,9 +3010,7 @@ def _recent_comparable_pair(
         return None
 
     comparable = [
-        item
-        for item in items
-        if _string_or_none(item.value.get(target_key)) == resolved_target
+        item for item in items if _string_or_none(item.value.get(target_key)) == resolved_target
     ]
     if len(comparable) < 2:
         return None
@@ -3130,16 +3105,13 @@ def _build_diagnostic_summary(session_context: SessionContext) -> str:
         if process_unit.unit:
             query_name = process_unit.query_name or "processo principal"
             scope_text = f" ({process_unit.scope})" if process_unit.scope else ""
-            fragments.append(
-                f"correlacao: {query_name} -> {process_unit.unit}{scope_text}"
-            )
+            fragments.append(f"correlacao: {query_name} -> {process_unit.unit}{scope_text}")
 
     if session_context.service is not None:
         service = session_context.service
         if service.active_state and service.sub_state:
             fragments.append(
-                "serviço: "
-                f"{service.name}: active={service.active_state}, sub={service.sub_state}"
+                f"serviço: {service.name}: active={service.active_state}, sub={service.sub_state}"
             )
 
     if not fragments:

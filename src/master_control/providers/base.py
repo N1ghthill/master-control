@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from typing import Protocol
+from urllib.parse import urlsplit
 
 from master_control.core.observations import ObservationFreshness
 from master_control.core.session_context import SessionContext
@@ -61,6 +62,15 @@ class ProviderResponse:
 
 class ProviderError(RuntimeError):
     """Raised when a provider cannot produce a valid plan."""
+
+
+def validate_http_url(url: str, *, label: str) -> str:
+    parsed = urlsplit(url)
+    if parsed.scheme not in {"http", "https"}:
+        raise ValueError(f"{label} must use http or https.")
+    if not parsed.netloc:
+        raise ValueError(f"{label} is missing a host.")
+    return url
 
 
 class ProviderClient(Protocol):

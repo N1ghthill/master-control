@@ -7,6 +7,7 @@ from master_control.executor.command_runner import CommandExecutionError, Comman
 from master_control.tools.base import (
     RiskLevel,
     Tool,
+    ToolArgumentError,
     ToolSpec,
     get_int_argument,
     get_string_argument,
@@ -33,7 +34,8 @@ class FailedServicesTool(Tool):
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         scope = validate_service_scope(get_string_argument(arguments, "scope"))
         limit = get_int_argument(arguments, "limit", default=10, min_value=1, max_value=50)
-        assert limit is not None
+        if limit is None:
+            raise ToolArgumentError("Argument 'limit' is required.")
 
         try:
             ensure_systemctl_available()

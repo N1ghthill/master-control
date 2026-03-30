@@ -364,7 +364,9 @@ class MultiStepChatTest(unittest.TestCase):
                 executed_tools,
                 ["memory_usage", "top_processes", "process_to_unit", "service_status"],
             )
-            self.assertEqual(payload["executions"][2]["result"]["primary_match"]["unit"], "nginx.service")
+            self.assertEqual(
+                payload["executions"][2]["result"]["primary_match"]["unit"], "nginx.service"
+            )
             self.assertEqual(payload["executions"][3]["arguments"]["name"], "nginx.service")
             self.assertEqual(payload["turn_decision"]["state"], "complete")
             self.assertEqual(payload["turn_decision"]["kind"], "evidence_sufficient")
@@ -450,8 +452,12 @@ class MultiStepChatTest(unittest.TestCase):
             self.assertIsNone(second_payload["plan"])
             self.assertEqual(second_payload["turn_decision"]["kind"], "evidence_sufficient")
             self.assertIn("Melhorou no diagnóstico de desempenho", second_payload["message"])
-            self.assertIn("memória RAM 92.0% e swap 10.0% -> RAM 61.0% e swap 0.0%", second_payload["message"])
-            self.assertIn("processo mais quente nginx(88.0%) -> nginx(31.0%)", second_payload["message"])
+            self.assertIn(
+                "memória RAM 92.0% e swap 10.0% -> RAM 61.0% e swap 0.0%", second_payload["message"]
+            )
+            self.assertIn(
+                "processo mais quente nginx(88.0%) -> nginx(31.0%)", second_payload["message"]
+            )
 
     def test_heuristic_provider_compares_performance_with_less_bad_phrase(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
