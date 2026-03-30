@@ -5,6 +5,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Dependabot currently errors on github/codeql-action in this repository.
+      # Track re-enable work in issue #20 and update the CodeQL action manually meanwhile.
+      - dependency-name: "github/codeql-action"
     labels:
       - "dependencies"
       - "github-actions"

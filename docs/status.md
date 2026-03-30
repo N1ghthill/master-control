@@ -1,6 +1,6 @@
 # Project Status
 
-Snapshot date: 2026-03-23
+Snapshot date: 2026-03-30
 
 ## Purpose
 
@@ -18,6 +18,7 @@ It is not the long-horizon roadmap.
 - Install posture: source checkout plus `install.sh`
 - Scope posture: single-host and local-first
 - Packaging posture: no `.deb` package and no service-mode requirement yet
+- Repository posture: public Apache-2.0 repository with security/support/conduct docs, branch protection, Dependabot, and working `pre-commit` hooks
 
 ## Current Product Statement
 
@@ -42,10 +43,13 @@ Chat and planner providers remain optional layers on top of the same runtime.
 - modular Python monolith with `src/` layout
 - SQLite bootstrap and local state directory
 - architecture, security, roadmap, and ADR documentation
+- published repository governance docs: `LICENSE`, `SECURITY.md`, `SUPPORT.md`, and `CODE_OF_CONDUCT.md`
 - audit trail for plans, executions, provider errors, and recommendation status changes
 - operator bootstrap scripts for install and removal
 - repeatable bootstrap validation harness with per-step logs and cleanup checks
 - GitHub CI bootstrap smoke for the non-editable operator path
+- GitHub CI matrix on Python 3.11 and 3.13, with lint, typecheck, Bandit, tests, wheel smoke, doctor, and bootstrap validation
+- working `pre-commit` baseline for whitespace, formatting, lint, typecheck, and Bandit
 - host-validation bundle generation and community intake path
 
 ### Runtime capabilities
@@ -103,7 +107,9 @@ Chat and planner providers remain optional layers on top of the same runtime.
 - chat/provider paths are optional and should not define the product center
 - a first operator-configurable policy slice is landed through versioned TOML, but broader validation and operator evidence are still ahead
 - approval concurrency is now hardened against duplicate active requests and duplicate in-flight execution for the same action envelope
+- the public repository baseline is now materially stronger: Apache-2.0 license, governance docs, branch protection, `pre-commit`, Bandit, and Dependabot are in place
 - tool-schema governance and broader runtime ownership cleanup are still ahead of the current baseline
+- `github/codeql-action` is temporarily excluded from Dependabot automation due an updater-side failure tracked in issue #20; CodeQL action bumps are currently manual maintainer work
 
 ## Active Focus
 
@@ -111,11 +117,11 @@ The current execution focus is defined by `docs/runtime-mcp-maturation-plan.md`.
 
 The next maturity steps are:
 
-1. tool-schema compatibility rules and release policy
-2. narrower runtime ownership seams, especially around `core.runtime` and `session_store`
-3. container-backed integration harnesses for repeatable service/config scenarios
-4. broader client evidence beyond the Inspector CLI transcript
-5. broader tool expansion only after the runtime contract is stable
+1. tool-schema compatibility rules and release policy in issue #17
+2. narrower runtime ownership seams, especially around `core.runtime`, `session_store`, and `providers/heuristic` in issue #18
+3. lower-friction install and distribution paths in issue #21
+4. simpler product narrative around primary operator workflows in issue #19
+5. broader client and host validation evidence in issue #2
 
 ## Intentionally Out Of Scope Right Now
 
@@ -132,10 +138,12 @@ At this snapshot, the project is validated by:
 
 - `python3 -m ruff check .`
 - `python3 -m mypy src`
+- `python3 -m bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `PYTHONPATH=src python3 -m pytest -q`
 - explicit runtime/MCP integration coverage in `tests/test_runtime_policy_integration.py` and `tests/test_mcp_stdio_integration.py`
 - `python3 -m compileall src`
+- `python3 -m pre_commit run --all-files`
 - real-client MCP validation through `python3 scripts/validate_mcp_client.py`
 - manual CLI smoke checks for chat, recommendations, recommendation-triggered actions, and `reconcile-timer render|install|remove`
 - manual CLI smoke checks for managed config write with validation and backup
@@ -146,6 +154,7 @@ At this snapshot, the project is validated by:
 - clean-environment operator bootstrap validation via `./install.sh`, `mc doctor`, `mc validate-host-profile`, and `./uninstall.sh --purge-state`
 - packaging sanity check via `python3 -m pip wheel . --no-deps -w /tmp/mc-dist`
 - dedicated Debian VPS operator-path validation on 2026-03-20
+- GitHub `main` protection requiring `Analyze (python)`, `test (python-3.11)`, and `test (python-3.13)` after the 2026-03-30 repo-maturity publication pass
 
 ## Current Canonical Docs
 
