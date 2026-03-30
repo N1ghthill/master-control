@@ -37,7 +37,8 @@ class ProcessToUnitTool(Tool):
         process_name = get_string_argument(arguments, "name", default=None)
         pid = get_int_argument(arguments, "pid", default=None, min_value=1)
         limit = get_int_argument(arguments, "limit", default=3, min_value=1, max_value=20)
-        assert limit is not None
+        if limit is None:
+            raise ToolArgumentError("Argument 'limit' is required.")
 
         if process_name is None and pid is None:
             raise ToolArgumentError("Argument 'name' or 'pid' is required.")
@@ -48,7 +49,8 @@ class ProcessToUnitTool(Tool):
             if pid is not None:
                 candidates = self._query_candidates_by_pid(pid)
             else:
-                assert process_name is not None
+                if process_name is None:
+                    raise ToolArgumentError("Argument 'name' is required when 'pid' is omitted.")
                 candidates = self._query_candidates_by_name(process_name, limit)
         except CommandExecutionError as exc:
             return {

@@ -4,9 +4,10 @@ import argparse
 import json
 import os
 import platform
+import shlex
 import socket
 import subprocess
-from dataclasses import asdict, dataclass, replace
+from dataclasses import asdict, dataclass, field, replace
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -15,13 +16,32 @@ from master_control.config import Settings
 from master_control.core.runtime import MasterControlRuntime
 from master_control.interfaces.agent.chat import MasterControlChatInterface
 
+
+@dataclass(frozen=True, slots=True)
+class BaselineCommand:
+    argv: tuple[str, ...]
+    extra_env: dict[str, str] = field(default_factory=dict)
+
+    def render(self) -> str:
+        return shlex.join(self.argv)
+
+
 DEFAULT_BASELINE_COMMANDS = (
-    "python3 -m ruff check .",
-    "python3 -m mypy src",
-    "PYTHONPATH=src python3 -m unittest discover -s tests",
-    "PYTHONPATH=src python3 -m pytest -q",
-    "python3 -m compileall src",
-    "PYTHONPATH=src python3 -m master_control --json doctor",
+    BaselineCommand(argv=("python3", "-m", "ruff", "check", ".")),
+    BaselineCommand(argv=("python3", "-m", "mypy", "src")),
+    BaselineCommand(
+        argv=("python3", "-m", "unittest", "discover", "-s", "tests"),
+        extra_env={"PYTHONPATH": "src"},
+    ),
+    BaselineCommand(
+        argv=("python3", "-m", "pytest", "-q"),
+        extra_env={"PYTHONPATH": "src"},
+    ),
+    BaselineCommand(argv=("python3", "-m", "compileall", "src")),
+    BaselineCommand(
+        argv=("python3", "-m", "master_control", "--json", "doctor"),
+        extra_env={"PYTHONPATH": "src"},
+    ),
 )
 
 
@@ -280,7 +300,13 @@ def _validate_managed_config_workflow(runtime: MasterControlRuntime) -> dict[str
         return {
             "ok": all(
                 item.get("ok")
-                for item in (read_before, write_result, read_after_write, restore_result, read_after_restore)
+                for item in (
+                    read_before,
+                    write_result,
+                    read_after_write,
+                    restore_result,
+                    read_after_restore,
+                )
             )
             and "mode=old" in final_content,
             "session_id": session_id,
@@ -295,22 +321,21 @@ def _validate_managed_config_workflow(runtime: MasterControlRuntime) -> dict[str
 
 
 def _run_baseline_commands() -> tuple[CommandResult, ...]:
-    env = dict(os.environ)
-    env["PYTHONPATH"] = "src"
     results: list[CommandResult] = []
     for command in DEFAULT_BASELINE_COMMANDS:
+        env = dict(os.environ)
+        env.update(command.extra_env)
         completed = subprocess.run(
-            command,
+            command.argv,
             cwd=Path.cwd(),
             env=env,
-            shell=True,
             text=True,
             capture_output=True,
             check=False,
         )
         results.append(
             CommandResult(
-                command=command,
+                command=command.render(),
                 exit_code=completed.returncode,
                 stdout=completed.stdout,
                 stderr=completed.stderr,
@@ -367,9 +392,15 @@ def _is_report_green(report: dict[str, Any]) -> bool:
     doctor = report.get("doctor")
     workflows = report.get("workflows")
     baseline = report.get("baseline")
-    if not isinstance(doctor, dict) or not isinstance(workflows, dict) or not isinstance(baseline, dict):
+    if (
+        not isinstance(doctor, dict)
+        or not isinstance(workflows, dict)
+        or not isinstance(baseline, dict)
+    ):
         return False
-    workflow_ok = all(isinstance(item, dict) and bool(item.get("ok")) for item in workflows.values())
+    workflow_ok = all(
+        isinstance(item, dict) and bool(item.get("ok")) for item in workflows.values()
+    )
     baseline_ok = True
     if baseline.get("enabled"):
         baseline_ok = bool(baseline.get("all_ok"))

@@ -9,9 +9,7 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 
-ABSOLUTE_PATH_RE = re.compile(
-    r"(?:(?<=^)|(?<=[\s(=:'\"`]))/(?:[^/\s'\"`]+/)*[^/\s'\"`]+"
-)
+ABSOLUTE_PATH_RE = re.compile(r"(?:(?<=^)|(?<=[\s(=:'\"`]))/(?:[^/\s'\"`]+/)*[^/\s'\"`]+")
 
 
 @dataclass(frozen=True, slots=True)

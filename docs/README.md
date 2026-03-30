@@ -9,6 +9,7 @@ Use this file to find the right working document, validation record, or planning
 
 - `README.md`: GitHub-facing overview, current posture, and quick-start path
 - `docs/status.md`: authoritative snapshot of current maturity, scope, and validation baseline
+- `docs/product-maturity-assessment.md`: product-facing assessment of readiness gaps, risks, and priorities
 - `docs/roadmap.md`: concise phase-level roadmap for the current direction
 - `docs/runtime-mcp-maturation-plan.md`: canonical execution plan for the MCP-first runtime maturation track
 
@@ -53,6 +54,10 @@ Use this file to find the right working document, validation record, or planning
 ## Contribution And Repository Docs
 
 - `CONTRIBUTING.md`: contributor workflow and engineering guardrails
+- `SECURITY.md`: vulnerability disclosure and supported-version policy
+- `SUPPORT.md`: support scope and compatibility expectations
+- `CODE_OF_CONDUCT.md`: collaboration and behavior expectations
+- `LICENSE`: repository license
 - `CHANGELOG.md`: externally visible change history
 
 ## Documentation Rules

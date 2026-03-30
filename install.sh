@@ -55,7 +55,7 @@ ensure_wrapper_path_is_safe() {
 }
 
 check_python_version() {
-  "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 13) else 1)'
+  "$PYTHON_BIN" -c 'import sys; raise SystemExit(0 if sys.version_info >= (3, 11) else 1)'
 }
 
 venv_failure_looks_like_missing_prereq() {
@@ -206,7 +206,7 @@ WRAPPER_PATH="$BIN_DIR/mc"
 MANIFEST_PATH="$PREFIX/install-manifest.env"
 
 command -v "$PYTHON_BIN" >/dev/null 2>&1 || fail "python interpreter not found: $PYTHON_BIN"
-check_python_version || fail "Master Control currently requires Python 3.13 or newer"
+check_python_version || fail "Master Control currently requires Python 3.11 or newer"
 
 mkdir -p "$PREFIX" "$BIN_DIR" "$STATE_DIR"
 ensure_wrapper_path_is_safe "$WRAPPER_PATH"

@@ -71,9 +71,7 @@ def enrich_recommendations_with_freshness(
     for item in recommendations:
         source_key = item.get("source_key")
         observation_key = (
-            observation_key_for_recommendation(source_key)
-            if isinstance(source_key, str)
-            else None
+            observation_key_for_recommendation(source_key) if isinstance(source_key, str) else None
         )
         freshness = freshness_by_key.get(observation_key) if observation_key else None
         confidence = "unknown"

@@ -122,8 +122,12 @@ class BootstrapValidationTest(unittest.TestCase):
             self.assertTrue(result.report["commands"]["doctor"]["ok"])
             self.assertTrue(result.report["commands"]["validate_host_profile"]["ok"])
             self.assertTrue(result.report["commands"]["uninstall"]["ok"])
-            self.assertEqual(result.report["commands"]["doctor"]["payload"]["provider"], "heuristic")
-            self.assertTrue(result.report["commands"]["validate_host_profile"]["payload"]["overall_ok"])
+            self.assertEqual(
+                result.report["commands"]["doctor"]["payload"]["provider"], "heuristic"
+            )
+            self.assertTrue(
+                result.report["commands"]["validate_host_profile"]["payload"]["overall_ok"]
+            )
             self.assertTrue(result.report["cleanup"]["wrapper_missing"])
             self.assertTrue(result.report["cleanup"]["venv_missing"])
             self.assertTrue(result.report["cleanup"]["state_missing"])

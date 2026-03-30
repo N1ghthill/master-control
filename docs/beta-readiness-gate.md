@@ -79,6 +79,7 @@ Minimum exit bar:
 
 - `python3 -m ruff check .`
 - `python3 -m mypy src`
+- `python3 -m bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts`
 - `PYTHONPATH=src python3 -m unittest discover -s tests`
 - `PYTHONPATH=src python3 -m pytest -q`
 - `python3 -m compileall src`
@@ -113,6 +114,7 @@ Before any beta tag, the repository should have:
 - updated `docs/roadmap.md`
 - updated validation report
 - updated release checklist
+- explicit repository policy docs that match reality: `LICENSE`, `SUPPORT.md`, and `SECURITY.md`
 - a short release note describing workflow scope and remaining boundaries
 
 ## Current Status

@@ -363,7 +363,9 @@ class ChatFlowTest(unittest.TestCase):
             self.assertEqual(payload["turn_decision"]["state"], "blocked")
             self.assertEqual(payload["turn_decision"]["kind"], "awaiting_confirmation")
             self.assertIn("Ação pendente de confirmação explícita.", payload["message"])
-            self.assertIn("Confirme a execução de `restart_service` no serviço `nginx`.", payload["message"])
+            self.assertIn(
+                "Confirme a execução de `restart_service` no serviço `nginx`.", payload["message"]
+            )
             self.assertIn("mc tool restart_service", payload["message"])
             self.assertIn("/tool restart_service", payload["message"])
 
@@ -464,7 +466,9 @@ class ChatFlowTest(unittest.TestCase):
             )
 
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["tool_name"], "restart_service")
-            self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["name"], "ollama-local")
+            self.assertEqual(
+                follow_up_payload["plan"]["steps"][0]["arguments"]["name"], "ollama-local"
+            )
             self.assertEqual(follow_up_payload["plan"]["steps"][0]["arguments"]["scope"], "user")
 
     def test_chat_reuses_service_context_for_short_reload_follow_up(self) -> None:
@@ -1594,8 +1598,7 @@ class ChatFlowTest(unittest.TestCase):
                 {
                     "path": "/etc/app.ini",
                     "content": (
-                        "[service]\nmode=old\nworkers=2\n\n"
-                        "[logging]\nlevel=debug\nformat=json\n"
+                        "[service]\nmode=old\nworkers=2\n\n[logging]\nlevel=debug\nformat=json\n"
                     ),
                     "target": "managed_ini",
                 },
@@ -1678,7 +1681,9 @@ class ChatFlowTest(unittest.TestCase):
             self.assertIsNone(payload["plan"])
             self.assertEqual(payload["executions"], [])
             self.assertEqual(payload["turn_decision"]["kind"], "evidence_sufficient")
-            self.assertIn("[service]: mode=old -> mode=new, workers=2 -> workers=4", payload["message"])
+            self.assertIn(
+                "[service]: mode=old -> mode=new, workers=2 -> workers=4", payload["message"]
+            )
             self.assertIn(
                 "[logging]: level=info -> level=debug, format=text -> format=json",
                 payload["message"],
@@ -1967,9 +1972,7 @@ class ChatFlowTest(unittest.TestCase):
             self.assertTrue(written["ok"])
             active = sync["sessions"][0]["recommendations"]["active"]
             verification = next(
-                item
-                for item in active
-                if item.get("source_key") == "config_verification_available"
+                item for item in active if item.get("source_key") == "config_verification_available"
             )
             self.assertEqual(verification["action"]["tool_name"], "read_config_file")
             self.assertEqual(

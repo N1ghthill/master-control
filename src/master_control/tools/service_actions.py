@@ -27,9 +27,7 @@ def validate_unit_name(unit_name: str, *, label: str = "unit") -> str:
 def validate_service_name(service_name: str) -> str:
     normalized = validate_unit_name(service_name, label="name")
     if "." in normalized and not normalized.endswith(".service"):
-        raise ToolArgumentError(
-            "Argument 'name' must reference a service unit name."
-        )
+        raise ToolArgumentError("Argument 'name' must reference a service unit name.")
     return normalized
 
 

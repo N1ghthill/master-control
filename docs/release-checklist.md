@@ -16,6 +16,7 @@ Before cutting a release or public preview build:
 2. confirm architectural or safety changes are reflected in `docs/architecture.md` and `docs/security-model.md`
 3. confirm operator-visible workflows are still described correctly in `docs/operator-workflows.md`
 4. confirm `CHANGELOG.md` reflects the user-visible scope
+5. confirm repository policy docs are still correct: `LICENSE`, `SUPPORT.md`, `SECURITY.md`, and `CODE_OF_CONDUCT.md`
 
 ## Automated Baseline
 
@@ -24,6 +25,7 @@ Run:
 ```bash
 python3 -m ruff check .
 python3 -m mypy src
+python3 -m bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts
 PYTHONPATH=src python3 -m unittest discover -s tests
 PYTHONPATH=src python3 -m pytest -q
 python3 -m compileall src

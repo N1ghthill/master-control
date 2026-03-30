@@ -7,12 +7,25 @@ name = "master-control"
 version = "0.1.0a2"
 description = "Local-first runtime for controlled Linux host operations with an MCP interface, policy, and auditability."
 readme = "README.md"
-requires-python = ">=3.13"
+requires-python = ">=3.11"
 authors = [{ name = "Irving" }]
+license = { file = "LICENSE" }
+classifiers = [
+  "Development Status :: 3 - Alpha",
+  "Environment :: Console",
+  "Intended Audience :: System Administrators",
+  "License :: OSI Approved :: Apache Software License",
+  "Operating System :: POSIX :: Linux",
+  "Programming Language :: Python :: 3",
+  "Programming Language :: Python :: 3.11",
+  "Programming Language :: Python :: 3.12",
+  "Programming Language :: Python :: 3.13",
+]
 dependencies = []
 
 [project.optional-dependencies]
 dev = [
+  "bandit[toml]>=1.8",
   "mypy>=1.15",
   "pre-commit>=4.2",
   "pytest>=8.3",
@@ -31,14 +44,14 @@ where = ["src"]
 
 [tool.ruff]
 line-length = 100
-target-version = "py313"
+target-version = "py311"
 
 [tool.ruff.lint]
 ignore = ["E501"]
 select = ["E", "F", "I"]
 
 [tool.mypy]
-python_version = "3.13"
+python_version = "3.11"
 files = ["src"]
 warn_unused_configs = true
 warn_redundant_casts = true
@@ -49,3 +62,6 @@ disallow_untyped_defs = false
 exclude = [
   "^tests/",
 ]
+
+[tool.bandit]
+exclude_dirs = ["tests"]

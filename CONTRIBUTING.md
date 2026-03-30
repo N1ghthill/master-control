@@ -8,6 +8,13 @@ This project is still in an early local-first stage. Contributions should preser
 - interfaces sit on top of the runtime instead of owning business logic
 - typed tools remain the default execution surface
 
+Repository policy references:
+
+- `LICENSE`
+- `SUPPORT.md`
+- `SECURITY.md`
+- `CODE_OF_CONDUCT.md`
+
 ## Local setup
 
 ```bash
@@ -24,10 +31,12 @@ Run these before considering a change complete:
 ```bash
 python3 -m ruff check .
 python3 -m mypy src
+python3 -m bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts
 PYTHONPATH=src python3 -m unittest discover -s tests
 PYTHONPATH=src python3 -m pytest -q
 python3 -m compileall src
 PYTHONPATH=src python3 -m master_control --json doctor
+python3 -m pip wheel . --no-deps -w /tmp/mc-dist
 ```
 
 The repository also has a matching GitHub Actions baseline in `.github/workflows/ci.yml`. Keep local checks and CI checks aligned.
@@ -38,6 +47,7 @@ If you use `pre-commit`, the repository will run:
 - `ruff check --fix`
 - `ruff format`
 - `mypy src`
+- `bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts`
 
 ## Engineering guardrails
 
@@ -49,6 +59,7 @@ If you use `pre-commit`, the repository will run:
 - do not let providers execute host actions directly
 - use structured plans instead of free-form action text
 - keep compatibility facades thin when moving public entry points
+- prefer `master_control.interfaces.*` imports for interface-owned helpers; treat `master_control.agent.*` as compatibility-facing unless a module is explicitly owned there
 - document architectural changes with an ADR when they change core system contracts
 
 ### Security
@@ -98,6 +109,10 @@ Recommended examples:
 - `feat(tools): add reload_service`
 - `feat(app): execute accepted recommendation actions`
 - `test(chat): cover service recommendation flow`
+
+## License
+
+Unless explicitly stated otherwise, contributions are made under the repository license in `LICENSE`.
 
 ## Change checklist
 

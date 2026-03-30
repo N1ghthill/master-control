@@ -31,5 +31,6 @@ class WriteConfigFileTool(Tool):
             raise ToolArgumentError("Argument 'content' must be a string.")
         if raw_content == "":
             raise ToolArgumentError("Argument 'content' cannot be empty.")
-        assert path is not None
+        if path is None:
+            raise ToolArgumentError("Argument 'path' is required.")
         return self.manager.write_text(path, raw_content)

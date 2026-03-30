@@ -139,7 +139,7 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             self.assertIn("Local session summary:", captured_payload["instructions"])
             self.assertIn("tracked_unit: ssh", captured_payload["instructions"])
             self.assertIn("Structured session context:", captured_payload["instructions"])
-            self.assertIn("\"last_intent\": \"inspect_logs\"", captured_payload["instructions"])
+            self.assertIn('"last_intent": "inspect_logs"', captured_payload["instructions"])
             self.assertIn("Observation freshness:", captured_payload["instructions"])
             self.assertIn("memory", captured_payload["instructions"])
             self.assertIn("Always set decision.state", captured_payload["instructions"])
@@ -169,6 +169,26 @@ class OpenAIResponsesProviderTest(unittest.TestCase):
             )
 
             with self.assertRaises(ProviderError):
+                provider.plan(request)
+
+    def test_provider_rejects_non_http_endpoint(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            settings = Settings(
+                app_name="master-control",
+                log_level="INFO",
+                provider="openai",
+                state_dir=Path(tmp_dir),
+                db_path=Path(tmp_dir) / "mc.sqlite3",
+                openai_api_key="test-key",
+                openai_base_url="file:///tmp/openai",
+            )
+            provider = OpenAIResponsesProvider(settings)
+            request = ProviderRequest(
+                user_message="mostre o uso de memoria",
+                available_tools=(),
+            )
+
+            with self.assertRaisesRegex(ProviderError, "http or https"):
                 provider.plan(request)
 
     def test_provider_prefers_previous_response_id_over_local_history(self) -> None:

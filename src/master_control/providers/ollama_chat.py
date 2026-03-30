@@ -13,6 +13,7 @@ from master_control.providers.base import (
     ProviderRequest,
     ProviderResponse,
     SynthesisRequest,
+    validate_http_url,
 )
 from master_control.shared.planning import (
     PLANNING_DECISION_KINDS_BY_STATE,
@@ -73,7 +74,7 @@ class OllamaChatProvider:
     def plan(self, request: ProviderRequest) -> ProviderResponse:
         payload = self._build_payload(request)
         headers = self._build_headers()
-        endpoint = f"{self.base_url}/chat"
+        endpoint = self._build_endpoint("/chat")
         response = self.transport(endpoint, payload, headers, self.timeout_s)
 
         try:
@@ -123,7 +124,7 @@ class OllamaChatProvider:
     def synthesize(self, request: SynthesisRequest) -> ProviderResponse:
         payload = self._build_synthesis_payload(request)
         headers = self._build_headers()
-        endpoint = f"{self.base_url}/chat"
+        endpoint = self._build_endpoint("/chat")
         response = self.transport(endpoint, payload, headers, self.timeout_s)
 
         try:
@@ -468,7 +469,7 @@ class OllamaChatProvider:
             method="POST",
         )
         try:
-            with urllib.request.urlopen(request, timeout=timeout_s) as response:
+            with urllib.request.urlopen(request, timeout=timeout_s) as response:  # nosec B310
                 body = response.read().decode("utf-8")
                 response_headers = {key.lower(): value for key, value in response.headers.items()}
                 return TransportResponse(
@@ -483,6 +484,13 @@ class OllamaChatProvider:
             ) from exc
         except urllib.error.URLError as exc:
             raise ProviderError(f"Ollama API request failed: {exc.reason}") from exc
+
+    def _build_endpoint(self, suffix: str) -> str:
+        endpoint = f"{self.base_url}{suffix}"
+        try:
+            return validate_http_url(endpoint, label="Ollama endpoint")
+        except ValueError as exc:
+            raise ProviderError(str(exc)) from exc
 
     def _extract_error_message(self, body: str) -> str:
         try:

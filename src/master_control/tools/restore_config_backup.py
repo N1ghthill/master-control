@@ -4,7 +4,13 @@ from collections.abc import Mapping
 from typing import Any
 
 from master_control.config_manager import ConfigManager
-from master_control.tools.base import RiskLevel, Tool, ToolSpec, get_string_argument
+from master_control.tools.base import (
+    RiskLevel,
+    Tool,
+    ToolArgumentError,
+    ToolSpec,
+    get_string_argument,
+)
 
 
 class RestoreConfigBackupTool(Tool):
@@ -21,6 +27,8 @@ class RestoreConfigBackupTool(Tool):
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         path = get_string_argument(arguments, "path", required=True)
         backup_path = get_string_argument(arguments, "backup_path", required=True)
-        assert path is not None
-        assert backup_path is not None
+        if path is None:
+            raise ToolArgumentError("Argument 'path' is required.")
+        if backup_path is None:
+            raise ToolArgumentError("Argument 'backup_path' is required.")
         return self.manager.restore_backup(path, backup_path)

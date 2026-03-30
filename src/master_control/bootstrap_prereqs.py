@@ -6,7 +6,7 @@ import shutil
 import subprocess
 from pathlib import Path
 
-MIN_PYTHON_VERSION = (3, 13)
+MIN_PYTHON_VERSION = (3, 11)
 OS_RELEASE_PATH = Path("/etc/os-release")
 
 

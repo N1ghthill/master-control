@@ -4,7 +4,13 @@ from collections.abc import Mapping
 from typing import Any
 
 from master_control.config_manager import ConfigManager
-from master_control.tools.base import RiskLevel, Tool, ToolSpec, get_string_argument
+from master_control.tools.base import (
+    RiskLevel,
+    Tool,
+    ToolArgumentError,
+    ToolSpec,
+    get_string_argument,
+)
 
 
 class ReadConfigFileTool(Tool):
@@ -20,5 +26,6 @@ class ReadConfigFileTool(Tool):
 
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         path = get_string_argument(arguments, "path", required=True)
-        assert path is not None
+        if path is None:
+            raise ToolArgumentError("Argument 'path' is required.")
         return self.manager.read_text(path)

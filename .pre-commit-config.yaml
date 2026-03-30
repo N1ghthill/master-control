@@ -6,17 +6,28 @@ repos:
       - id: end-of-file-fixer
       - id: trailing-whitespace
 
-  - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.15.6
-    hooks:
-      - id: ruff-check
-        args: ["--fix"]
-      - id: ruff-format
-
   - repo: local
     hooks:
+      - id: ruff-check
+        name: ruff check --fix
+        entry: python3 -m ruff check --fix .
+        language: system
+        pass_filenames: false
+
+      - id: ruff-format
+        name: ruff format
+        entry: python3 -m ruff format .
+        language: system
+        pass_filenames: false
+
       - id: mypy
-        name: mypy
+        name: mypy src
         entry: python3 -m mypy src
+        language: system
+        pass_filenames: false
+
+      - id: bandit
+        name: bandit src scripts
+        entry: python3 -m bandit -q --severity-level medium --confidence-level medium -c pyproject.toml -r src scripts
         language: system
         pass_filenames: false

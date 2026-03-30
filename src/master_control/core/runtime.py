@@ -6,22 +6,6 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any, cast
 
-from master_control.agent.session_summary import update_session_summary
-from master_control.agent.turn_planning import (
-    build_turn_planning_prompt,
-    classify_turn_decision,
-    collect_planned_refresh_keys,
-    collect_stale_observation_keys,
-    should_continue_planning,
-    summarize_execution_for_planner,
-    validate_provider_response_for_loop,
-)
-from master_control.agent.turn_rendering import (
-    append_recommendations_to_message,
-    apply_turn_decision_guidance,
-    collect_rendered_execution_summaries,
-    render_chat_response,
-)
 from master_control.bootstrap_prereqs import collect_bootstrap_python_diagnostics
 from master_control.config import Settings
 from master_control.core.observations import (
@@ -43,6 +27,22 @@ from master_control.core.session_recommendations import (
     RECOMMENDATION_STATUSES,
     build_recommendation_candidates,
     sort_recommendations,
+)
+from master_control.interfaces.agent.session_summary import update_session_summary
+from master_control.interfaces.agent.turn_planning import (
+    build_turn_planning_prompt,
+    classify_turn_decision,
+    collect_planned_refresh_keys,
+    collect_stale_observation_keys,
+    should_continue_planning,
+    summarize_execution_for_planner,
+    validate_provider_response_for_loop,
+)
+from master_control.interfaces.agent.turn_rendering import (
+    append_recommendations_to_message,
+    apply_turn_decision_guidance,
+    collect_rendered_execution_summaries,
+    render_chat_response,
 )
 from master_control.policy.engine import PolicyEngine
 from master_control.providers.availability import collect_provider_checks
@@ -115,7 +115,12 @@ def _describe_tool_target(tool_name: str, arguments: dict[str, object]) -> str:
             return f"`{tool_name}` para o processo `{process_name}`"
         if isinstance(pid, int):
             return f"`{tool_name}` para `pid={pid}`"
-    if tool_name in {"disk_usage", "read_config_file", "write_config_file", "restore_config_backup"}:
+    if tool_name in {
+        "disk_usage",
+        "read_config_file",
+        "write_config_file",
+        "restore_config_backup",
+    }:
         path = arguments.get("path")
         if isinstance(path, str) and path:
             return f"`{tool_name}` em `{path}`"

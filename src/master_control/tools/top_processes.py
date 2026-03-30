@@ -5,7 +5,7 @@ from collections.abc import Mapping
 from typing import Any
 
 from master_control.executor.command_runner import CommandExecutionError, CommandRunner
-from master_control.tools.base import RiskLevel, Tool, ToolSpec, get_int_argument
+from master_control.tools.base import RiskLevel, Tool, ToolArgumentError, ToolSpec, get_int_argument
 
 
 class TopProcessesTool(Tool):
@@ -21,7 +21,8 @@ class TopProcessesTool(Tool):
 
     def invoke(self, arguments: Mapping[str, Any]) -> dict[str, Any]:
         limit = get_int_argument(arguments, "limit", default=5, min_value=1, max_value=20)
-        assert limit is not None
+        if limit is None:
+            raise ToolArgumentError("Argument 'limit' is required.")
         collector_pid = os.getpid()
 
         try:

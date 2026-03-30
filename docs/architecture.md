@@ -76,6 +76,12 @@ The authoritative direction is now runtime-first: the conversational path is an 
 
 The conversation and provider stack is still part of the repository, but it should be understood as an optional interface path into the runtime, not the foundational layer.
 
+Import-path note:
+
+- `master_control.interfaces.*` is the preferred namespace for interface-owned helpers
+- conversational planning, rendering, session-summary, and tool-result helpers now live under `master_control.interfaces.agent.*`
+- `master_control.agent.*` remains available as a compatibility namespace during the refactor track
+
 ## Flow diagrams
 
 The repository keeps the canonical Mermaid diagrams under `docs/diagrams/`:

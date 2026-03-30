@@ -5,10 +5,16 @@ import tempfile
 import unittest
 from datetime import datetime, timezone
 from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from master_control.config import Settings
-from master_control.host_validation import CommandResult, run_host_validation
+from master_control.host_validation import (
+    DEFAULT_BASELINE_COMMANDS,
+    CommandResult,
+    _run_baseline_commands,
+    run_host_validation,
+)
 
 FIXED_NOW = datetime(2026, 3, 19, 20, 27, 19, tzinfo=timezone.utc)
 
@@ -46,7 +52,9 @@ class HostValidationTest(unittest.TestCase):
                 db_path=Path(tmp_dir) / "base-state" / "mc.sqlite3",
             )
 
-            with patch("master_control.host_validation._build_validation_runtime", side_effect=FakeApp):
+            with patch(
+                "master_control.host_validation._build_validation_runtime", side_effect=FakeApp
+            ):
                 with patch("master_control.host_validation._utc_now", return_value=FIXED_NOW):
                     with patch(
                         "master_control.host_validation.socket.gethostname",
@@ -106,7 +114,9 @@ class HostValidationTest(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp_dir:
             output_dir = Path(tmp_dir) / "reports"
 
-            with patch("master_control.host_validation._build_validation_runtime", side_effect=FakeApp):
+            with patch(
+                "master_control.host_validation._build_validation_runtime", side_effect=FakeApp
+            ):
                 with patch("master_control.host_validation._utc_now", return_value=FIXED_NOW):
                     with patch(
                         "master_control.host_validation.socket.gethostname",
@@ -157,6 +167,30 @@ class HostValidationTest(unittest.TestCase):
                 [item["ok"] for item in result.report["baseline"]["commands"]],
                 [True, False],
             )
+
+    def test_run_baseline_commands_uses_argv_without_shell(self) -> None:
+        completed = SimpleNamespace(returncode=0, stdout="", stderr="")
+
+        with patch(
+            "master_control.host_validation.subprocess.run", return_value=completed
+        ) as run_mock:
+            results = _run_baseline_commands()
+
+        self.assertEqual(len(results), len(DEFAULT_BASELINE_COMMANDS))
+        self.assertEqual(run_mock.call_count, len(DEFAULT_BASELINE_COMMANDS))
+        for call, command in zip(run_mock.call_args_list, DEFAULT_BASELINE_COMMANDS, strict=True):
+            args = call.args
+            kwargs = call.kwargs
+            self.assertEqual(args[0], command.argv)
+            self.assertNotIn("shell", kwargs)
+            self.assertEqual(kwargs["cwd"], Path.cwd())
+            self.assertTrue(kwargs["capture_output"])
+            self.assertTrue(kwargs["text"])
+            self.assertFalse(kwargs["check"])
+
+        self.assertEqual(run_mock.call_args_list[2].kwargs["env"]["PYTHONPATH"], "src")
+        self.assertEqual(run_mock.call_args_list[3].kwargs["env"]["PYTHONPATH"], "src")
+        self.assertEqual(run_mock.call_args_list[5].kwargs["env"]["PYTHONPATH"], "src")
 
 
 if __name__ == "__main__":

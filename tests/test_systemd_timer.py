@@ -35,7 +35,9 @@ class StubRunner:
 
 class SystemdTimerTest(unittest.TestCase):
     def test_collect_timer_diagnostics_reports_missing_user_scope_env(self) -> None:
-        with patch("master_control.systemd_timer._find_systemctl_path", return_value="/usr/bin/systemctl"):
+        with patch(
+            "master_control.systemd_timer._find_systemctl_path", return_value="/usr/bin/systemctl"
+        ):
             with patch.dict(os.environ, {}, clear=True):
                 payload = collect_reconcile_timer_diagnostics()
 
@@ -62,7 +64,9 @@ class SystemdTimerTest(unittest.TestCase):
                     CommandResult(0, "", "", False, False),
                 ]
             )
-            with patch("master_control.systemd_timer.ensure_systemctl_available", return_value=None):
+            with patch(
+                "master_control.systemd_timer.ensure_systemctl_available", return_value=None
+            ):
                 with patch.dict(
                     os.environ,
                     {
@@ -103,7 +107,9 @@ class SystemdTimerTest(unittest.TestCase):
                     CommandResult(0, "", "", False, False),
                 ]
             )
-            with patch("master_control.systemd_timer.ensure_systemctl_available", return_value=None):
+            with patch(
+                "master_control.systemd_timer.ensure_systemctl_available", return_value=None
+            ):
                 with patch.dict(
                     os.environ,
                     {

@@ -101,9 +101,7 @@ class PolicyEngine:
                 fnmatch.fnmatch(normalized_name, pattern) for pattern in rule.service_patterns
             ):
                 patterns = ", ".join(rule.service_patterns)
-                return (
-                    f"Tool `{tool_name}` is limited by policy to these service patterns: {patterns}."
-                )
+                return f"Tool `{tool_name}` is limited by policy to these service patterns: {patterns}."
         return None
 
     def _normalize_scope(self, raw_scope: object) -> str:

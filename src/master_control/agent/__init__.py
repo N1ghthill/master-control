@@ -1,1 +1,1 @@
-"""Agent planning primitives."""
+"""Compatibility namespace for historical agent imports."""

@@ -4,6 +4,13 @@
 
 ### Added
 
+- product maturity assessment document for evaluating MC as a real public product
+- real `.pre-commit-config.yaml` so contributor setup matches the documented local workflow
+- Apache-2.0 `LICENSE`
+- `SUPPORT.md` for public support scope and compatibility expectations
+- `SECURITY.md` for vulnerability reporting and supported-version policy
+- `CODE_OF_CONDUCT.md` for public collaboration expectations
+- `dependabot` automation for Python and GitHub Actions updates
 - structured `SessionContext` for the core high-risk planner and recommendation paths
 - extracted session-analysis seam for summary -> context -> insight assembly outside the central app orchestrator
 - repeatable host-profile validation harness and guide for collecting multi-host workflow evidence
@@ -38,6 +45,14 @@
 
 ### Changed
 
+- interface-owned planning, rendering, session-summary, and tool-result helpers now live under `master_control.interfaces.agent.*`, while `master_control.agent.*` remains a compatibility namespace
+- CI now runs Bandit and a wheel-build smoke in addition to lint, typecheck, tests, and runtime validation
+- Python support floor is now `3.11+` instead of `3.13+`
+- README now leads with the operator journey and repository policy instead of only architectural posture
+- host validation baseline commands now execute without `shell=True`
+- provider endpoints now require `http` or `https` before any network call is attempted
+- production tool paths no longer rely on `assert` for runtime argument guarantees
+- generated `artifacts/` output is now ignored by git
 - the narrow local CLI MVP closeout is now complete for the alpha baseline
 - slow-host diagnosis can now chain memory, processes, process correlation, and service status when correlation evidence exists
 - hot-process follow-up logic no longer relies on guessed service identity and can use typed correlation evidence instead

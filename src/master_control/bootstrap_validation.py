@@ -197,7 +197,8 @@ def run_bootstrap_validation(
         "--purge-state",
     )
     has_install_artifacts = any(
-        path.exists() for path in (prefix, bin_dir, state_dir, wrapper_path, manifest_path, venv_dir)
+        path.exists()
+        for path in (prefix, bin_dir, state_dir, wrapper_path, manifest_path, venv_dir)
     )
     if has_install_artifacts:
         uninstall_result = _run_logged_command(
@@ -380,7 +381,9 @@ def _is_report_green(
 
 
 def _command_ok(payload: object) -> bool:
-    return isinstance(payload, dict) and bool(payload.get("ok")) and not bool(payload.get("skipped"))
+    return (
+        isinstance(payload, dict) and bool(payload.get("ok")) and not bool(payload.get("skipped"))
+    )
 
 
 def _utc_now() -> datetime:
