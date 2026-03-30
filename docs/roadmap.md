@@ -1,6 +1,6 @@
 # Roadmap
 
-Snapshot date: 2026-03-23
+Snapshot date: 2026-03-30
 
 ## Current Direction
 
@@ -11,6 +11,7 @@ Snapshot date: 2026-03-23
 - a first operator-configurable policy slice now exists through versioned TOML
 - standard-client MCP validation now exists through the official Inspector CLI
 - approval concurrency now deduplicates active envelopes and blocks duplicate in-flight execution
+- the public repository baseline now includes Apache-2.0 licensing, governance docs, working `pre-commit`, Bandit, Dependabot, and protected `main` status checks
 - current priority is to mature the runtime and MCP path into a trustworthy operational interface
 
 ## Phase 1: Controlled MCP Write Path
@@ -85,11 +86,12 @@ Exit criteria:
 
 ## Near-Term Execution Order
 
-1. define tool-schema compatibility rules and release policy
-2. continue core/interface cleanup
-3. add container-backed service/config integration harnesses
-4. broaden client and host validation evidence
-5. expand tool domains only after the previous items are stable
+1. define tool-schema compatibility rules and release policy in issue #17
+2. continue core/interface cleanup in issue #18
+3. reduce install and distribution friction beyond source checkout in issue #21
+4. simplify the operator journey around primary workflows in issue #19
+5. broaden client and host validation evidence in issue #2
+6. keep `github/codeql-action` updates manual until the Dependabot failure tracked in issue #20 is resolved
 
 ## Out Of Scope For This Track
 
